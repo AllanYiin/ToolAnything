@@ -77,3 +77,11 @@ ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 
   ```
 
 將此片段加入 Claude Desktop 設定檔（例如 macOS 的 `~/Library/Application Support/Claude/config.json`）並重新啟動，即可自動載入 ToolAnything 所提供的所有工具。
+
+- 直接安裝 MCP 設定到 Claude Desktop：
+
+  ```bash
+  toolanything install-claude --config "~/Library/Application Support/Claude/config.json" --port 9090
+  ```
+
+  指令會讀取（或建立）指定的 Claude Desktop 設定檔，將 `mcpServers.toolanything` 自動寫入，重新啟動 Claude Desktop 後即可套用，無需手動複製貼上。

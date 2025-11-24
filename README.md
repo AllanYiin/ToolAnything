@@ -43,3 +43,37 @@ def trip_plan(ctx, city: str):
 - 撰寫更多自動化測試涵蓋 decorator 與 adapter。
 - 擴充 CLI、文件與 examples 目錄。
 - 引入 SecurityManager、ResultSerializer 等擴展點的實際應用範例。
+
+## 與 Claude Desktop 的自動註冊整合
+
+ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 Claude Desktop 設定：
+
+- 啟動 MCP Server：
+
+  ```bash
+  toolanything run-mcp --port 9090
+  ```
+
+  伺服器提供 `/health`、`/tools` 與 `POST /invoke` 三個端點，預設監聽 `0.0.0.0`，可透過 `--host` 覆寫。
+
+- 產生 Claude Desktop 設定片段：
+
+  ```bash
+  toolanything init-claude
+  ```
+
+  指令會在當前路徑生成 `claude_desktop_config.json`（如需覆寫可加上 `--force`），內容如下：
+
+  ```json
+  {
+    "mcpServers": {
+      "toolanything": {
+        "command": "python",
+        "args": ["-m", "toolanything.server.mcp_tool_server", "--port", "9090"],
+        "autoStart": true
+      }
+    }
+  }
+  ```
+
+將此片段加入 Claude Desktop 設定檔（例如 macOS 的 `~/Library/Application Support/Claude/config.json`）並重新啟動，即可自動載入 ToolAnything 所提供的所有工具。

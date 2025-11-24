@@ -16,4 +16,9 @@ setup(
     package_dir={"": "src"},
     python_requires=">=3.10",
     install_requires=[],
+    entry_points={
+        "console_scripts": [
+            "toolanything=toolanything.cli:main",
+        ],
+    },
 )

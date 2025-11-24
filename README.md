@@ -11,19 +11,23 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 ```python
 from toolanything import tool, pipeline, ToolRegistry, StateManager
 
-registry = ToolRegistry()
 state_manager = StateManager()
 
-@tool(path="weather.query", description="取得城市天氣", registry=registry)
+# 不需額外指定 registry，會自動使用全域預設註冊表
+@tool(path="weather.query", description="取得城市天氣")
 def get_weather(city: str, unit: str = "c") -> dict:
     return {"city": city, "unit": unit, "temp": 25}
 
-@pipeline(name="trip.plan", description="簡易行程規劃", registry=registry)
+# Pipeline 同樣自動註冊
+@pipeline(name="trip.plan", description="簡易行程規劃")
 def trip_plan(ctx, city: str):
+    registry = ToolRegistry.global_instance()
     weather = registry.get("weather.query")
     ctx.set("latest_city", city)
     return weather(city=city)
 ```
+
+預設會使用惰性初始化的全域 Registry，進階使用者仍可手動建立 `ToolRegistry()`，並透過 decorator 的 `registry` 參數覆寫使用的實例。
 
 ## 目錄結構
 

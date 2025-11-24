@@ -8,9 +8,6 @@ from ..core.tool_definition import ToolDefinition
 from ..core.tool_registry import ToolRegistry
 
 
-DEFAULT_REGISTRY = ToolRegistry()
-
-
 def tool(
     *,
     name: str | None = None,
@@ -19,9 +16,8 @@ def tool(
     group: str | None = None,
     registry: ToolRegistry | None = None,
 ):
-    registry = registry or DEFAULT_REGISTRY
-
     def decorator(fn: Callable[..., Any]):
+        active_registry = registry or ToolRegistry.global_instance()
         args, input_schema = build_input_schema(fn)
         output_schema = build_output_schema(fn.__annotations__.get("return"))
         definition = ToolDefinition(
@@ -37,7 +33,7 @@ def tool(
             annotations={},
             extra={},
         )
-        registry.register(definition)
+        active_registry.register(definition)
 
         @wraps(fn)
         def wrapper(*args: Any, **kwargs: Any):

@@ -8,7 +8,6 @@ from ..core.tool_registry import ToolRegistry
 from ..core.schema_engine import build_input_schema, build_output_schema
 from ..pipeline.engine import call_tool
 from ..state.context import StateContext
-from .tool_decorator import DEFAULT_REGISTRY
 
 
 def pipeline(
@@ -17,9 +16,8 @@ def pipeline(
     description: str | None = None,
     registry: ToolRegistry | None = None,
 ):
-    registry = registry or DEFAULT_REGISTRY
-
     def decorator(fn: Callable[..., Any]):
+        active_registry = registry or ToolRegistry.global_instance()
         args, input_schema = build_input_schema(fn)
         output_schema = build_output_schema(fn.__annotations__.get("return"))
         definition = ToolDefinition(
@@ -34,14 +32,14 @@ def pipeline(
             annotations={"type": "pipeline"},
             extra={},
         )
-        registry.register(definition)
+        active_registry.register(definition)
 
         @wraps(fn)
         def wrapper(ctx: StateContext, *args: Any, **kwargs: Any):
             return fn(ctx, *args, **kwargs)
 
         wrapper.tool_definition = definition  # type: ignore[attr-defined]
-        wrapper.call_tool = lambda tool_name, **kwargs: call_tool(tool_name, registry=registry, **kwargs)  # type: ignore[attr-defined]
+        wrapper.call_tool = lambda tool_name, **kwargs: call_tool(tool_name, registry=active_registry, **kwargs)  # type: ignore[attr-defined]
         return wrapper
 
     return decorator

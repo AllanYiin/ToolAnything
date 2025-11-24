@@ -1,15 +1,29 @@
 """工具與 pipeline 註冊中心。"""
 from __future__ import annotations
 
+from threading import Lock
 from typing import Any, Callable, Dict
 
 from .models import PipelineDefinition, ToolDefinition
 
 
 class ToolRegistry:
+    _global_instance: "ToolRegistry | None" = None
+    _lock = Lock()
+
     def __init__(self) -> None:
         self._tools: Dict[str, ToolDefinition] = {}
         self._pipelines: Dict[str, PipelineDefinition] = {}
+
+    @classmethod
+    def global_instance(cls) -> "ToolRegistry":
+        """取得全域預設的惰性初始化 Registry。"""
+
+        if cls._global_instance is None:
+            with cls._lock:
+                if cls._global_instance is None:
+                    cls._global_instance = ToolRegistry()
+        return cls._global_instance
 
     # 工具
     def register_tool(self, definition: ToolDefinition) -> None:

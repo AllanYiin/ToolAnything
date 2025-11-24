@@ -13,6 +13,7 @@ def tool(path: str, description: str, registry: Optional[ToolRegistry] = None) -
     """註冊一般工具函數。"""
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        active_registry = registry or ToolRegistry.global_instance()
         params_schema = build_parameters_schema(func)
         definition = ToolDefinition(
             path=path,
@@ -21,8 +22,7 @@ def tool(path: str, description: str, registry: Optional[ToolRegistry] = None) -
             parameters=params_schema,
         )
 
-        if registry is not None:
-            registry.register_tool(definition)
+        active_registry.register_tool(definition)
 
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:

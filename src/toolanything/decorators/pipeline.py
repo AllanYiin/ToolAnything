@@ -20,6 +20,7 @@ def pipeline(
     """註冊 pipeline 函數，預設會注入 PipelineContext。"""
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        active_registry = registry or ToolRegistry.global_instance()
         params_schema = build_parameters_schema(func)
         definition = PipelineDefinition(
             name=name,
@@ -28,8 +29,7 @@ def pipeline(
             parameters=params_schema,
         )
 
-        if registry is not None:
-            registry.register_pipeline(definition)
+        active_registry.register_pipeline(definition)
 
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:

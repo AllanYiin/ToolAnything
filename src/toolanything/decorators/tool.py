@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 from toolanything.core.models import ToolDefinition
 from toolanything.core.registry import ToolRegistry
 from toolanything.core.schema import build_parameters_schema
+from toolanything.utils.docstring_parser import parse_docstring
 
 
 def tool(path: str, description: str, registry: Optional[ToolRegistry] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -15,11 +16,13 @@ def tool(path: str, description: str, registry: Optional[ToolRegistry] = None) -
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         active_registry = registry or ToolRegistry.global_instance()
         params_schema = build_parameters_schema(func)
+        documentation = parse_docstring(func)
         definition = ToolDefinition(
             path=path,
             description=description,
             func=func,
             parameters=params_schema,
+            documentation=documentation,
         )
 
         active_registry.register_tool(definition)

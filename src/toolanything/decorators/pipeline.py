@@ -9,6 +9,7 @@ from toolanything.core.registry import ToolRegistry
 from toolanything.core.schema import build_parameters_schema
 from toolanything.pipeline.context import PipelineContext
 from toolanything.state.manager import StateManager
+from toolanything.utils.docstring_parser import parse_docstring
 
 
 def pipeline(
@@ -22,11 +23,13 @@ def pipeline(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         active_registry = registry or ToolRegistry.global_instance()
         params_schema = build_parameters_schema(func)
+        documentation = parse_docstring(func)
         definition = PipelineDefinition(
             name=name,
             description=description,
             func=func,
             parameters=params_schema,
+            documentation=documentation,
         )
 
         active_registry.register_pipeline(definition)

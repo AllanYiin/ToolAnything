@@ -3,8 +3,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import platform
 from pathlib import Path
 from typing import Any, Dict
+
+
+def _get_default_claude_config_path() -> Path:
+    """取得 Claude Desktop 設定檔的預設路徑 (跨平台)。"""
+    if platform.system() == "Windows":
+        return Path(os.environ["APPDATA"]) / "Claude" / "config.json"
+    return Path.home() / "Library" / "Application Support" / "Claude" / "config.json"
 
 
 def _init_claude_config(path: Path, port: int, force: bool) -> None:
@@ -80,9 +89,9 @@ def _build_parser() -> argparse.ArgumentParser:
     install_parser = subparsers.add_parser("install-claude", help="直接寫入 Claude Desktop 設定檔")
     install_parser.add_argument(
         "--config",
-        default=Path.home() / "Library" / "Application Support" / "Claude" / "config.json",
+        default=_get_default_claude_config_path(),
         type=Path,
-        help="Claude Desktop 設定檔路徑，預設為 macOS 的用戶設定位置",
+        help="Claude Desktop 設定檔路徑",
     )
     install_parser.add_argument("--port", type=int, default=9090, help="MCP server port，預設 9090")
     install_parser.add_argument(

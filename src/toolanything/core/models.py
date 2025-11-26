@@ -7,18 +7,18 @@ from typing import Any, Callable, Dict, Optional
 from toolanything.utils.docstring_parser import DocMetadata
 
 
-@dataclass
-class BaseDefinition:
-    """工具與 Pipeline 的共用基底類別。"""
+class DefinitionMixin:
+    """工具與 Pipeline 的共用基底類別 (Mixin)。"""
 
-    description: str
-    parameters: Dict[str, Any]
-    documentation: Optional[DocMetadata]
+    # 這些欄位將由子類別 (dataclass) 定義
+    # description: str
+    # parameters: Dict[str, Any]
+    # documentation: Optional[DocMetadata]
 
-    @property
-    def name(self) -> str:
-        """取得名稱，子類別需實作或透過欄位提供。"""
-        raise NotImplementedError
+    # @property
+    # def name(self) -> str:
+    #     """取得名稱，子類別需實作或透過欄位提供。"""
+    #     raise NotImplementedError
 
     def _compose_description(self) -> str:
         if self.documentation is None:
@@ -48,7 +48,7 @@ class BaseDefinition:
 
 
 @dataclass
-class ToolDefinition(BaseDefinition):
+class ToolDefinition(DefinitionMixin):
     path: str
     description: str
     func: Callable[..., Any]
@@ -61,7 +61,7 @@ class ToolDefinition(BaseDefinition):
 
 
 @dataclass
-class PipelineDefinition(BaseDefinition):
+class PipelineDefinition(DefinitionMixin):
     name: str
     description: str
     func: Callable[..., Any]

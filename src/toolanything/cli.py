@@ -21,7 +21,7 @@ def _init_claude_config(path: Path, port: int, force: bool) -> None:
         "mcpServers": {
             "toolanything": {
                 "command": "python",
-                "args": ["-m", "toolanything.server.mcp_tool_server", "--port", str(port)],
+                "args": ["-m", "toolanything.cli", "run-stdio"],
                 "autoStart": True,
             }
         }
@@ -40,13 +40,19 @@ def _run_mcp_server(port: int, host: str) -> None:
     run_server(port=port, host=host)
 
 
+def _run_stdio_server() -> None:
+    from toolanything.server.mcp_stdio_server import run_stdio_server
+
+    run_stdio_server()
+
+
 def _install_claude_config(path: Path, port: int, name: str) -> None:
     path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     mcp_entry = {
         "command": "python",
-        "args": ["-m", "toolanything.server.mcp_tool_server", "--port", str(port)],
+        "args": ["-m", "toolanything.cli", "run-stdio"],
         "autoStart": True,
     }
 
@@ -73,6 +79,9 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
     run_parser.add_argument("--host", default="0.0.0.0", help="監聽 host，預設 0.0.0.0")
     run_parser.set_defaults(func=lambda args: _run_mcp_server(port=args.port, host=args.host))
+
+    stdio_parser = subparsers.add_parser("run-stdio", help="啟動 MCP Stdio Server (供 Claude Desktop 使用)")
+    stdio_parser.set_defaults(func=lambda args: _run_stdio_server())
 
     init_parser = subparsers.add_parser("init-claude", help="生成 Claude Desktop MCP 設定片段")
     init_parser.add_argument("--output", default="claude_desktop_config.json", help="輸出檔案路徑")

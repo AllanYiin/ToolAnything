@@ -6,7 +6,9 @@ authors = [{ name = "ToolAnything" }]
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-dependencies = []
+dependencies = [
+    "tenacity>=8.2.0",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]

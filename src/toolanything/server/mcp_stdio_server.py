@@ -10,7 +10,6 @@ import traceback
 from typing import Any, Dict, Optional
 
 from toolanything.core.registry import ToolRegistry
-from toolanything.pipeline.context import PipelineContext
 
 
 class MCPStdioServer:
@@ -73,14 +72,12 @@ class MCPStdioServer:
         arguments = params.get("arguments", {})
         
         try:
-            if name in self.registry.list_pipelines():
-                definition = self.registry.get_pipeline(name)
-                # TODO: 支援狀態管理
-                ctx = PipelineContext(state_manager=None, user_id="default")
-                result = definition.func(ctx, **arguments)
-            else:
-                func = self.registry.get(name)
-                result = func(**arguments)
+            result = self.registry.execute_tool(
+                name,
+                arguments=arguments,
+                user_id="default",
+                state_manager=None,
+            )
             
             response = {
                 "jsonrpc": "2.0",

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from inspect import signature
-from typing import Any, get_origin, get_args
+from typing import Any, Callable, Dict, get_args, get_origin
 
 from .tool_definition import ToolArgument
 
 
-def _python_type_to_json_schema(py_type: Any) -> dict:
+def _python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
     origin = get_origin(py_type)
     args = get_args(py_type)
     if origin is None:
@@ -31,10 +31,10 @@ def _python_type_to_json_schema(py_type: Any) -> dict:
     return {"type": "string"}
 
 
-def build_input_schema(fn) -> tuple[list[ToolArgument], dict]:
+def build_input_schema(fn: Callable[..., Any]) -> tuple[list[ToolArgument], Dict[str, Any]]:
     sig = signature(fn)
-    properties = {}
-    required = []
+    properties: Dict[str, Any] = {}
+    required: list[str] = []
     args: list[ToolArgument] = []
     for name, param in sig.parameters.items():
         annotation = param.annotation if param.annotation is not param.empty else Any
@@ -61,7 +61,7 @@ def build_input_schema(fn) -> tuple[list[ToolArgument], dict]:
     return args, json_schema
 
 
-def build_output_schema(return_type: Any) -> dict | None:
+def build_output_schema(return_type: Any) -> Dict[str, Any] | None:
     if return_type is None:
         return None
     return _python_type_to_json_schema(return_type)

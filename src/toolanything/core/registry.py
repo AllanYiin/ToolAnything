@@ -4,7 +4,11 @@ from __future__ import annotations
 from threading import Lock
 from typing import Any, Callable, Dict
 
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from .models import PipelineDefinition, ToolDefinition
+from ..pipeline.context import PipelineContext
+from ..state.manager import StateManager
 
 
 class ToolRegistry:
@@ -70,3 +74,25 @@ class ToolRegistry:
         entries = [definition.to_mcp() for definition in self._tools.values()]
         entries += [definition.to_mcp() for definition in self._pipelines.values()]
         return entries
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+    )
+    def execute_tool(
+        self,
+        name: str,
+        *,
+        arguments: Dict[str, Any] | None = None,
+        user_id: str | None = None,
+        state_manager: StateManager | None = None,
+    ) -> Any:
+        arguments = arguments or {}
+
+        if name in self._pipelines:
+            definition = self.get_pipeline(name)
+            ctx = PipelineContext(state_manager=state_manager, user_id=user_id)
+            return definition.func(ctx, **arguments)
+
+        func = self.get(name)
+        return func(**arguments)

@@ -8,7 +8,6 @@ from typing import Any, Dict
 from urllib.parse import urlparse
 
 from toolanything.core.registry import ToolRegistry
-from toolanything.pipeline.context import PipelineContext
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: Dict[str, Any]) -> None:
@@ -72,13 +71,12 @@ def _build_handler(registry: ToolRegistry) -> type[BaseHTTPRequestHandler]:
                 return
 
             try:
-                if name in registry.list_pipelines():
-                    definition = registry.get_pipeline(name)
-                    ctx = PipelineContext(state_manager=None, user_id=user_id)
-                    result = definition.func(ctx, **arguments)
-                else:
-                    func = registry.get(name)
-                    result = func(**arguments)
+                result = registry.execute_tool(
+                    name,
+                    arguments=arguments,
+                    user_id=user_id,
+                    state_manager=None,
+                )
             except Exception as exc:  # pragma: no cover - runtime error handling
                 _json_response(self, 500, {"error": str(exc)})
                 return

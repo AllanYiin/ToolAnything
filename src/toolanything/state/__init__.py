@@ -1,3 +1,3 @@
-from .manager import StateManager
+from .manager import PersistentStateManager, StateManager
 
-__all__ = ["StateManager"]
+__all__ = ["StateManager", "PersistentStateManager"]

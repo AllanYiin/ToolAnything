@@ -18,6 +18,7 @@ class ToolRegistry:
     def __init__(self) -> None:
         self._tools: Dict[str, ToolDefinition] = {}
         self._pipelines: Dict[str, PipelineDefinition] = {}
+        self._lookup_cache: Dict[str, Callable[..., Any]] = {}
 
     @classmethod
     def global_instance(cls) -> "ToolRegistry":
@@ -34,6 +35,7 @@ class ToolRegistry:
         if definition.path in self._tools:
             raise ValueError(f"工具 {definition.path} 已存在")
         self._tools[definition.path] = definition
+        self._lookup_cache.clear()
 
     def get_tool(self, path: str) -> ToolDefinition:
         if path not in self._tools:
@@ -48,6 +50,7 @@ class ToolRegistry:
         if definition.name in self._pipelines:
             raise ValueError(f"Pipeline {definition.name} 已存在")
         self._pipelines[definition.name] = definition
+        self._lookup_cache.clear()
 
     def get_pipeline(self, name: str) -> PipelineDefinition:
         if name not in self._pipelines:
@@ -59,10 +62,17 @@ class ToolRegistry:
 
     # Common API
     def get(self, name: str) -> Callable[..., Any]:
+        if name in self._lookup_cache:
+            return self._lookup_cache[name]
+
         if name in self._tools:
-            return self._tools[name].func
+            func = self._tools[name].func
+            self._lookup_cache[name] = func
+            return func
         if name in self._pipelines:
-            return self._pipelines[name].func
+            func = self._pipelines[name].func
+            self._lookup_cache[name] = func
+            return func
         raise KeyError(f"找不到 {name}")
 
     def to_openai_tools(self) -> list[dict[str, Any]]:

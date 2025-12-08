@@ -1,7 +1,9 @@
 """Schema 生成工具，根據函數 type hints 產生 JSON Schema。"""
 from __future__ import annotations
 
+import copy
 import inspect
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import Any, Dict, get_args, get_origin
 
@@ -41,8 +43,9 @@ def _container_schema(origin: Any, args: tuple[Any, ...]) -> Dict[str, Any]:
     return {"type": "string"}
 
 
-def python_type_to_schema(py_type: Any) -> Dict[str, Any]:
-    """將 Python 類型轉換成 JSON Schema 片段。"""
+@lru_cache(maxsize=128)
+def _python_type_to_schema_cached(py_type: Any) -> Dict[str, Any]:
+    """快取版本的類型轉換，避免重複計算。"""
     if py_type in _TYPE_MAPPING:
         return dict(_TYPE_MAPPING[py_type])
 
@@ -62,6 +65,13 @@ def python_type_to_schema(py_type: Any) -> Dict[str, Any]:
         return _literal_schema(py_type)
 
     return _container_schema(origin, args)
+
+
+def python_type_to_schema(py_type: Any) -> Dict[str, Any]:
+    """將 Python 類型轉換成 JSON Schema 片段並確保回傳可安全修改的副本。"""
+
+    # 深拷貝避免外部修改破壞快取內容
+    return copy.deepcopy(_python_type_to_schema_cached(py_type))
 
 
 def build_parameters_schema(func: Any) -> Dict[str, Any]:

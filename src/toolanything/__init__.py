@@ -7,6 +7,11 @@ from toolanything.core import (
     python_type_to_schema,
 )
 from toolanything.decorators import pipeline, tool
+from toolanything.exceptions import (
+    SchemaValidationError,
+    ToolAnythingError,
+    ToolNotFoundError,
+)
 from toolanything.state import StateManager
 from toolanything.pipeline import PipelineContext
 
@@ -20,4 +25,7 @@ __all__ = [
     "tool",
     "StateManager",
     "PipelineContext",
+    "ToolAnythingError",
+    "ToolNotFoundError",
+    "SchemaValidationError",
 ]

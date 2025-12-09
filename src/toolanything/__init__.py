@@ -10,6 +10,8 @@ from toolanything.core import (
 )
 from toolanything.decorators import pipeline, tool
 from toolanything.exceptions import (
+    AdapterError,
+    RegistryError,
     SchemaValidationError,
     ToolAnythingError,
     ToolNotFoundError,
@@ -32,4 +34,6 @@ __all__ = [
     "ToolAnythingError",
     "ToolNotFoundError",
     "SchemaValidationError",
+    "RegistryError",
+    "AdapterError",
 ]

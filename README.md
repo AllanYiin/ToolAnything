@@ -44,6 +44,11 @@ def trip_plan(ctx, city: str):
 - 擴充 CLI、文件與 examples 目錄。
 - 引入 SecurityManager、ResultSerializer 等擴展點的實際應用範例。
 
+## 相依套件說明
+
+- 執行與測試時會隨套件一併安裝 `tenacity`、`pytest` 與 `pytest-asyncio`，確保非同步測試所需外掛始終可用（詳見 `requirements.txt` 與 `pyproject.toml`）。
+- `http.server`、`urllib`、`asyncio`、`dataclasses` 等皆為 Python 標準庫模組，隨 CPython 內建提供，無需額外安裝或列入 requirements。
+
 ## 與 Claude Desktop 的自動註冊整合
 
 ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 Claude Desktop 設定：

@@ -15,7 +15,14 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.10",
-    install_requires=[],
+    install_requires=[
+        "tenacity>=8.2.0",
+        "pytest>=8.0.0",
+        "pytest-asyncio>=0.23.0",
+    ],
+    extras_require={
+        "dev": ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"],
+    },
     entry_points={
         "console_scripts": [
             "toolanything=toolanything.cli:main",

@@ -9,12 +9,14 @@ import sys
 import traceback
 from typing import Any, Dict, Optional
 
+from toolanything.adapters.mcp_adapter import MCPAdapter
 from toolanything.core.registry import ToolRegistry
 
 
 class MCPStdioServer:
     def __init__(self, registry: Optional[ToolRegistry] = None):
         self.registry = registry or ToolRegistry.global_instance()
+        self.adapter = MCPAdapter(self.registry)
 
     def _read_message(self) -> Dict[str, Any] | None:
         """從 stdin 讀取一行 JSON 訊息。"""
@@ -38,18 +40,7 @@ class MCPStdioServer:
         response = {
             "jsonrpc": "2.0",
             "id": request.get("id"),
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "tools": {
-                        "listChanged": False
-                    }
-                },
-                "serverInfo": {
-                    "name": "ToolAnything",
-                    "version": "0.1.0"
-                }
-            }
+            "result": self.adapter.to_capabilities(),
         }
         self._send_message(response)
 

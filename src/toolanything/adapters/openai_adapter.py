@@ -41,7 +41,7 @@ class OpenAIAdapter(BaseAdapter):
         return json.dumps(result, ensure_ascii=False)
 
     def to_schema(self) -> List[Dict[str, Any]]:
-        return self.registry.to_openai_tools()
+        return self.registry.to_openai_tools(adapter="openai")
 
     def to_function_call(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """生成符合 Chat Completions tool_call 的 function 結構。"""

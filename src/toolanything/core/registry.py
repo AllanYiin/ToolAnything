@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from threading import Lock
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from .models import PipelineDefinition, ToolDefinition
+from .models import PipelineDefinition, ToolSpec
 from ..pipeline.context import PipelineContext
 from ..state.manager import StateManager
 
@@ -16,7 +16,7 @@ class ToolRegistry:
     _lock = Lock()
 
     def __init__(self) -> None:
-        self._tools: Dict[str, ToolDefinition] = {}
+        self._tools: Dict[str, ToolSpec] = {}
         self._pipelines: Dict[str, PipelineDefinition] = {}
         self._lookup_cache: Dict[str, Callable[..., Any]] = {}
 
@@ -31,19 +31,34 @@ class ToolRegistry:
         return cls._global_instance
 
     # 工具
-    def register_tool(self, definition: ToolDefinition) -> None:
-        if definition.path in self._tools:
-            raise ValueError(f"工具 {definition.path} 已存在")
-        self._tools[definition.path] = definition
+    def register(self, spec: ToolSpec) -> None:
+        if spec.name in self._tools:
+            raise ValueError(f"工具 {spec.name} 已存在")
+        self._tools[spec.name] = spec
         self._lookup_cache.clear()
 
-    def get_tool(self, path: str) -> ToolDefinition:
-        if path not in self._tools:
-            raise KeyError(f"找不到工具 {path}")
-        return self._tools[path]
+    # 舊介面的相容別名
+    def register_tool(self, definition: ToolSpec) -> None:
+        self.register(definition)
 
-    def list_tools(self) -> Dict[str, ToolDefinition]:
-        return dict(self._tools)
+    def unregister(self, name: str) -> None:
+        if name not in self._tools:
+            raise KeyError(f"找不到工具 {name}")
+        del self._tools[name]
+        self._lookup_cache.clear()
+
+    def get_tool(self, name: str) -> ToolSpec:
+        if name not in self._tools:
+            raise KeyError(f"找不到工具 {name}")
+        return self._tools[name]
+
+    def list(self, *, tags: Optional[List[str]] = None) -> List[ToolSpec]:
+        specs = list(self._tools.values())
+        if not tags:
+            return specs
+
+        tag_set = set(tags)
+        return [spec for spec in specs if tag_set.issubset(set(spec.tags))]
 
     # pipeline
     def register_pipeline(self, definition: PipelineDefinition) -> None:
@@ -75,13 +90,25 @@ class ToolRegistry:
             return func
         raise KeyError(f"找不到 {name}")
 
-    def to_openai_tools(self) -> list[dict[str, Any]]:
-        entries = [definition.to_openai() for definition in self._tools.values()]
+    def to_openai_tools(self, *, adapter: str | None = None) -> list[dict[str, Any]]:
+        entries = [
+            definition.to_openai()
+            for definition in self._tools.values()
+            if adapter is None
+            or definition.adapters is None
+            or adapter in definition.adapters
+        ]
         entries += [definition.to_openai() for definition in self._pipelines.values()]
         return entries
 
-    def to_mcp_tools(self) -> list[dict[str, Any]]:
-        entries = [definition.to_mcp() for definition in self._tools.values()]
+    def to_mcp_tools(self, *, adapter: str | None = None) -> list[dict[str, Any]]:
+        entries = [
+            definition.to_mcp()
+            for definition in self._tools.values()
+            if adapter is None
+            or definition.adapters is None
+            or adapter in definition.adapters
+        ]
         entries += [definition.to_mcp() for definition in self._pipelines.values()]
         return entries
 

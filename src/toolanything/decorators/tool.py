@@ -1,38 +1,58 @@
 """`@tool` decorator 實作。"""
 from __future__ import annotations
 
+from dataclasses import replace
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from toolanything.core.models import ToolDefinition
+from toolanything.core.models import ToolSpec
 from toolanything.core.registry import ToolRegistry
-from toolanything.core.schema import build_parameters_schema
-from toolanything.utils.docstring_parser import parse_docstring
 
 
-def tool(path: str, description: str, registry: Optional[ToolRegistry] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """註冊一般工具函數。"""
+def tool(
+    func: Callable[..., Any] | None = None,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    adapters: list[str] | None = None,
+    tags: list[str] | None = None,
+    strict: bool = True,
+    metadata: dict[str, Any] | None = None,
+    registry: Optional[ToolRegistry] = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]] | Callable[..., Any]:
+    """註冊工具函數並產生統一的 :class:`ToolSpec` 描述。
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    若未提供 description，會優先使用 docstring 第一段。strict 為 True 且仍無
+    描述時會拋出錯誤。
+    """
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         active_registry = registry or ToolRegistry.global_instance()
-        params_schema = build_parameters_schema(func)
-        documentation = parse_docstring(func)
-        definition = ToolDefinition(
-            path=path,
+        spec = ToolSpec.from_function(
+            fn,
+            name=name,
             description=description,
-            func=func,
-            parameters=params_schema,
-            documentation=documentation,
+            adapters=adapters,
+            tags=tags,
+            strict=strict,
+            metadata=metadata,
         )
 
-        active_registry.register_tool(definition)
+        # 為了讓 adapter 取得預設 adapter 設定，若 decorator 未指定 adapters 則
+        # 保留 None，讓外部 manager/registry 可套用全域預設。
+        if adapters is None and hasattr(active_registry, "default_adapters"):
+            spec = replace(spec, adapters=getattr(active_registry, "default_adapters"))
 
-        @wraps(func)
+        active_registry.register(spec)
+
+        @wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return func(*args, **kwargs)
+            return fn(*args, **kwargs)
 
-        # 讓使用者可透過 wrapper.metadata 取得 schema
-        wrapper.metadata = definition  # type: ignore[attr-defined]
+        wrapper.tool_spec = spec  # type: ignore[attr-defined]
         return wrapper
+
+    if func is not None and callable(func):
+        return decorator(func)
 
     return decorator

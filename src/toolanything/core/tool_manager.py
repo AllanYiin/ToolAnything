@@ -17,7 +17,7 @@ class ToolManager:
         default_adapters: Iterable[str] = ("openai", "mcp"),
         strict: bool = True,
     ) -> None:
-        self.registry = registry or ToolRegistry()
+        self.registry = registry or ToolRegistry.global_instance()
         self.default_adapters = tuple(default_adapters)
         self.strict = strict
         # 讓 decorator 有機會讀取預設 adapter 設定。

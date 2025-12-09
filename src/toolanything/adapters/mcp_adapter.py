@@ -19,13 +19,13 @@ class MCPAdapter(BaseAdapter):
     def to_schema(self) -> List[Dict[str, Any]]:
         return self.registry.to_mcp_tools(adapter="mcp")
 
-    def to_invocation(
+    async def to_invocation(
         self,
         name: str,
         arguments: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        result = self.registry.execute_tool(
+        result = await self.registry.execute_tool_async(
             name,
             arguments=arguments or {},
             user_id=user_id,

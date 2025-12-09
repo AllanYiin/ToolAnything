@@ -1,6 +1,7 @@
 """`@pipeline` decorator 實作。"""
 from __future__ import annotations
 
+import inspect
 from functools import wraps
 from typing import Any, Callable, Optional
 
@@ -34,11 +35,18 @@ def pipeline(
 
         active_registry.register_pipeline(definition)
 
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            user_id = kwargs.pop("user_id", None)
-            ctx = PipelineContext(state_manager=state_manager, user_id=user_id)
-            return func(ctx, *args, **kwargs)
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
+                user_id = kwargs.pop("user_id", None)
+                ctx = PipelineContext(state_manager=state_manager, user_id=user_id)
+                return await func(ctx, *args, **kwargs)
+        else:
+            @wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                user_id = kwargs.pop("user_id", None)
+                ctx = PipelineContext(state_manager=state_manager, user_id=user_id)
+                return func(ctx, *args, **kwargs)
 
         wrapper.metadata = definition  # type: ignore[attr-defined]
         return wrapper

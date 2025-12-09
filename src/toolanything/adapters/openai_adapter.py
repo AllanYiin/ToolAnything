@@ -55,7 +55,7 @@ class OpenAIAdapter(BaseAdapter):
             },
         }
 
-    def to_invocation(
+    async def to_invocation(
         self,
         name: str,
         arguments: Optional[Any] = None,
@@ -66,7 +66,7 @@ class OpenAIAdapter(BaseAdapter):
         """執行工具並回傳符合 OpenAI tool message 的格式。"""
 
         normalized_args = self._normalize_arguments(arguments)
-        result = self.registry.execute_tool(
+        result = await self.registry.execute_tool_async(
             name,
             arguments=normalized_args,
             user_id=user_id,

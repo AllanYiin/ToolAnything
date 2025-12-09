@@ -68,10 +68,45 @@ class MCPAdapter(BaseAdapter):
 
     def _tool_dependencies(self) -> List[Dict[str, str]]:
         tools: List[Dict[str, str]] = []
-        for name in sorted(self.registry.list_tools().keys()):
-            tools.append({"name": name, "kind": "tool"})
-        for name in sorted(self.registry.list_pipelines().keys()):
-            tools.append({"name": name, "kind": "pipeline"})
+
+        # 向後相容：部分 Registry 使用 list_tools/list_pipelines，
+        # 另一版本使用 list()/to_mcp_tools() 介面。
+        list_tools = getattr(self.registry, "list_tools", None)
+        list_pipelines = getattr(self.registry, "list_pipelines", None)
+
+        if callable(list_tools):
+            tool_entries = self.registry.list_tools()
+            if isinstance(tool_entries, dict):
+                tool_names = tool_entries.keys()
+            else:
+                tool_names = [
+                    getattr(item, "path", getattr(item, "name", ""))
+                    for item in tool_entries
+                ]
+            for name in sorted(tool_names):
+                tools.append({"name": name, "kind": "tool"})
+        else:
+            for entry in self.registry.to_mcp_tools():
+                name = entry.get("name")
+                if name:
+                    tools.append({"name": name, "kind": "tool"})
+
+        if callable(list_pipelines):
+            pipeline_entries = self.registry.list_pipelines()
+            pipeline_names = (
+                pipeline_entries.keys()
+                if isinstance(pipeline_entries, dict)
+                else [
+                    getattr(item, "name", getattr(item, "path", ""))
+                    for item in pipeline_entries
+                ]
+            )
+            for name in sorted(pipeline_names):
+                tools.append({"name": name, "kind": "pipeline"})
+        elif hasattr(self.registry, "_pipelines"):
+            for name in sorted(getattr(self.registry, "_pipelines").keys()):
+                tools.append({"name": name, "kind": "pipeline"})
+
         return tools
 
     def _get_package_version(self) -> str:

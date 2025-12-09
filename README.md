@@ -74,7 +74,7 @@ ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 
     "mcpServers": {
       "toolanything": {
         "command": "python",
-        "args": ["-m", "toolanything.server.mcp_tool_server", "--port", "9090"],
+        "args": ["-m", "toolanything.cli", "run-mcp", "--port", "9090"],
         "autoStart": true
       }
     }

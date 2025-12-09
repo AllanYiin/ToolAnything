@@ -22,9 +22,12 @@ async def test_mcp_adapter_invocation():
     assert invocation["result"] == 4
 
 
+
 @pytest.mark.asyncio
 async def test_mcp_adapter_supports_async_tool():
     adapter = MCPAdapter(async_registry)
     invocation = await adapter.to_invocation("async.echo", {"message": "mcp"})
 
     assert invocation["result"] == "mcp"
+
+

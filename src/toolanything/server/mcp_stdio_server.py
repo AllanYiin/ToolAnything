@@ -14,12 +14,17 @@ from toolanything.core.registry import ToolRegistry
 
 
 class MCPStdioServer:
+    """透過標準輸入輸出的 MCP 伺服器實作。"""
+
     def __init__(self, registry: Optional[ToolRegistry] = None):
+        """初始化伺服器並準備好可用的 registry 與 adapter。"""
+
         self.registry = registry or ToolRegistry.global_instance()
         self.adapter = MCPAdapter(self.registry)
 
     def _read_message(self) -> Dict[str, Any] | None:
-        """從 stdin 讀取一行 JSON 訊息。"""
+        """從 stdin 讀取一行 JSON 訊息並轉為字典。"""
+
         try:
             line = sys.stdin.readline()
             if not line:
@@ -31,12 +36,12 @@ class MCPStdioServer:
             return None
 
     def _send_message(self, message: Dict[str, Any]) -> None:
-        """寫入 JSON 訊息到 stdout。"""
+        """將字典轉為 JSON 字串後寫入 stdout。"""
         sys.stdout.write(json.dumps(message, ensure_ascii=False) + "\n")
         sys.stdout.flush()
 
     def _handle_initialize(self, request: Dict[str, Any]) -> None:
-        """處理初始化請求。"""
+        """處理初始化請求並回傳伺服器能力描述。"""
         response = {
             "jsonrpc": "2.0",
             "id": request.get("id"),
@@ -45,7 +50,7 @@ class MCPStdioServer:
         self._send_message(response)
 
     def _handle_tools_list(self, request: Dict[str, Any]) -> None:
-        """處理工具列表請求。"""
+        """處理工具列表請求並回傳可用工具集合。"""
         tools = self.registry.to_mcp_tools()
         response = {
             "jsonrpc": "2.0",
@@ -57,10 +62,10 @@ class MCPStdioServer:
         self._send_message(response)
 
     def _handle_tools_call(self, request: Dict[str, Any]) -> None:
-        """處理工具呼叫請求。"""
+        """根據名稱呼叫工具並回傳執行結果。"""
         params = request.get("params", {})
         name = params.get("name")
-        arguments = params.get("arguments", {})
+        arguments: Dict[str, Any] = params.get("arguments", {})
         
         try:
             result = self.registry.execute_tool(
@@ -118,5 +123,7 @@ class MCPStdioServer:
                 pass
 
 def run_stdio_server(registry: Optional[ToolRegistry] = None) -> None:
+    """建立並啟動 MCP Stdio 伺服器主迴圈。"""
+
     server = MCPStdioServer(registry)
     server.run()

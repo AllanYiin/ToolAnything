@@ -12,7 +12,7 @@ class MCPAdapter(BaseAdapter):
     """提供 MCP 工具列表與統一呼叫介面。"""
 
     def to_schema(self) -> List[Dict[str, Any]]:
-        return self.registry.to_mcp_tools()
+        return self.registry.to_mcp_tools(adapter="mcp")
 
     def to_invocation(
         self,

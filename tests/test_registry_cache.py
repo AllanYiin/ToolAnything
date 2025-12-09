@@ -1,4 +1,4 @@
-from toolanything.core.models import PipelineDefinition, ToolDefinition
+from toolanything.core.models import PipelineDefinition, ToolSpec
 from toolanything.core.registry import ToolRegistry
 
 
@@ -12,9 +12,9 @@ def sample_pipeline():
 
 def test_registry_lookup_cache_and_invalidation():
     registry = ToolRegistry()
-    registry.register_tool(
-        ToolDefinition(
-            path="demo.tool",
+    registry.register(
+        ToolSpec(
+            name="demo.tool",
             description="Demo tool",
             func=sample_tool,
             parameters={},
@@ -41,3 +41,4 @@ def test_registry_lookup_cache_and_invalidation():
     assert registry._lookup_cache == {}
     assert registry.get("demo.tool") is sample_tool
     assert registry.get("demo.pipeline") is sample_pipeline
+

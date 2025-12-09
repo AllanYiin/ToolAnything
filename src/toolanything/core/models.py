@@ -1,10 +1,12 @@
 """核心資料模型。"""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from toolanything.utils.docstring_parser import DocMetadata
+from toolanything.utils.docstring_parser import parse_docstring
+from toolanything.core.schema import build_parameters_schema
 
 
 class DefinitionMixin:
@@ -47,17 +49,49 @@ class DefinitionMixin:
         }
 
 
-@dataclass
-class ToolDefinition(DefinitionMixin):
-    path: str
-    description: str
+@dataclass(frozen=True)
+class ToolSpec(DefinitionMixin):
+    """標準化的工具描述，作為所有 adapter 的單一資料來源。"""
+
+    name: str
     func: Callable[..., Any]
+    description: str
     parameters: Dict[str, Any]
+    adapters: Tuple[str, ...] | None = None
+    tags: Tuple[str, ...] = ()
+    strict: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
     documentation: Optional[DocMetadata] = None
 
-    @property
-    def name(self) -> str:
-        return self.path
+    @classmethod
+    def from_function(
+        cls,
+        func: Callable[..., Any],
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        adapters: list[str] | Tuple[str, ...] | None = None,
+        tags: list[str] | Tuple[str, ...] | None = None,
+        strict: bool = True,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "ToolSpec":
+        documentation = parse_docstring(func)
+        derived_description = description or (documentation.summary if documentation else None)
+        if strict and not derived_description:
+            raise ValueError("Tool description is required when strict mode is enabled.")
+
+        params_schema = build_parameters_schema(func)
+        return cls(
+            name=name or func.__name__,
+            func=func,
+            description=derived_description or "",
+            parameters=params_schema,
+            adapters=tuple(adapters) if adapters is not None else None,
+            tags=tuple(tags or ()),
+            strict=strict,
+            metadata=dict(metadata or {}),
+            documentation=documentation,
+        )
 
 
 @dataclass
@@ -68,3 +102,7 @@ class PipelineDefinition(DefinitionMixin):
     parameters: Dict[str, Any]
     stateful: bool = True
     documentation: Optional[DocMetadata] = None
+
+
+# 向後相容：保留舊名稱供既有匯入使用。
+ToolDefinition = ToolSpec

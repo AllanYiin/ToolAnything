@@ -12,7 +12,7 @@ class OpenAIAdapter(BaseAdapter):
     """輸出 OpenAI 工具定義並支援工具呼叫包裝。"""
 
     def to_schema(self) -> List[Dict[str, Any]]:
-        return self.registry.to_openai_tools()
+        return self.registry.to_openai_tools(adapter="openai")
 
     def to_invocation(
         self,

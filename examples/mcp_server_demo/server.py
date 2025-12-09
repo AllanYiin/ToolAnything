@@ -5,7 +5,7 @@ from toolanything.adapters.mcp_adapter import export_tools
 registry = ToolRegistry()
 
 
-@tool(path="echo.text", description="回聲輸出", registry=registry)
+@tool(name="echo.text", description="回聲輸出", registry=registry)
 def echo(text: str) -> dict:
     return {"echo": text}
 

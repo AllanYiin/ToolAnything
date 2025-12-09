@@ -6,7 +6,7 @@ registry = ToolRegistry()
 state_manager = StateManager()
 
 
-@tool(path="math.add", description="兩數相加", registry=registry)
+@tool(name="math.add", description="兩數相加", registry=registry)
 def add(a: int, b: int = 1) -> int:
     return a + b
 

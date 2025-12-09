@@ -4,7 +4,7 @@ from toolanything import ToolRegistry, tool
 registry = ToolRegistry()
 
 
-@tool(path="weather.query", description="取得城市目前溫度", registry=registry)
+@tool(name="weather.query", description="取得城市目前溫度", registry=registry)
 def query_weather(city: str, unit: str = "c") -> dict:
     return {"city": city, "unit": unit, "temp": 25}
 

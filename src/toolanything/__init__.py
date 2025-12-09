@@ -3,6 +3,8 @@ from toolanything.core import (
     PipelineDefinition,
     ToolDefinition,
     ToolRegistry,
+    ToolSpec,
+    ToolManager,
     build_parameters_schema,
     python_type_to_schema,
 )
@@ -18,7 +20,9 @@ from toolanything.pipeline import PipelineContext
 __all__ = [
     "PipelineDefinition",
     "ToolDefinition",
+    "ToolSpec",
     "ToolRegistry",
+    "ToolManager",
     "build_parameters_schema",
     "python_type_to_schema",
     "pipeline",

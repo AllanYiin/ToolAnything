@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from toolanything.decorators import tool
 from toolanything.server.mcp_stdio_server import run_stdio_server
 
-@tool(path="calculator_add", description="計算兩個數字的總和")
+@tool(name="calculator_add", description="計算兩個數字的總和")
 def add(a: int, b: int) -> int:
     """
     將兩個整數相加。
@@ -22,7 +22,7 @@ def add(a: int, b: int) -> int:
     """
     return a + b
 
-@tool(path="string_reverse", description="反轉字串")
+@tool(name="string_reverse", description="反轉字串")
 def reverse_string(text: str) -> str:
     """
     將輸入的字串反轉。

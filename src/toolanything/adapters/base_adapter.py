@@ -19,7 +19,7 @@ class BaseAdapter(ABC):
         """輸出符合特定協議的工具/流程列表。"""
 
     @abstractmethod
-    def to_invocation(
+    async def to_invocation(
         self,
         name: str,
         arguments: Optional[Dict[str, Any]] = None,

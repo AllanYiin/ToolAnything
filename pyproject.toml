@@ -8,6 +8,13 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "tenacity>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
 ]
 
 [build-system]
@@ -16,3 +23,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+markers = [
+    "asyncio: 非同步測試用標記",
+]

@@ -1,6 +1,8 @@
 """工具與 pipeline 註冊中心。"""
 from __future__ import annotations
 
+import asyncio
+import inspect
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
@@ -112,6 +114,44 @@ class ToolRegistry:
         entries += [definition.to_mcp() for definition in self._pipelines.values()]
         return entries
 
+    def _build_context(
+        self, *, user_id: str | None, state_manager: StateManager | None
+    ) -> PipelineContext:
+        return PipelineContext(state_manager=state_manager, user_id=user_id)
+
+    async def _execute_callable(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """在 async 環境下執行函數，必要時轉為 thread 以避免阻塞。"""
+
+        if inspect.iscoroutinefunction(func):
+            return await func(*args, **kwargs)
+
+        result = await asyncio.to_thread(func, *args, **kwargs)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+    )
+    async def execute_tool_async(
+        self,
+        name: str,
+        *,
+        arguments: Dict[str, Any] | None = None,
+        user_id: str | None = None,
+        state_manager: StateManager | None = None,
+    ) -> Any:
+        arguments = arguments or {}
+
+        if name in self._pipelines:
+            definition = self.get_pipeline(name)
+            ctx = self._build_context(user_id=user_id, state_manager=state_manager)
+            return await self._execute_callable(definition.func, ctx, **arguments)
+
+        func = self.get(name)
+        return await self._execute_callable(func, **arguments)
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -124,12 +164,20 @@ class ToolRegistry:
         user_id: str | None = None,
         state_manager: StateManager | None = None,
     ) -> Any:
-        arguments = arguments or {}
+        """同步介面：在未啟動事件迴圈時執行，否則要求使用 async 版本。"""
 
-        if name in self._pipelines:
-            definition = self.get_pipeline(name)
-            ctx = PipelineContext(state_manager=state_manager, user_id=user_id)
-            return definition.func(ctx, **arguments)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(
+                self.execute_tool_async(
+                    name,
+                    arguments=arguments,
+                    user_id=user_id,
+                    state_manager=state_manager,
+                )
+            )
 
-        func = self.get(name)
-        return func(**arguments)
+        raise RuntimeError(
+            "事件迴圈運行時請改用 execute_tool_async 以避免阻塞。"
+        )

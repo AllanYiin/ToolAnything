@@ -1,6 +1,7 @@
 """`@tool` decorator 實作。"""
 from __future__ import annotations
 
+import inspect
 from dataclasses import replace
 from functools import wraps
 from typing import Any, Callable, Optional
@@ -45,9 +46,14 @@ def tool(
 
         active_registry.register(spec)
 
-        @wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return fn(*args, **kwargs)
+        if inspect.iscoroutinefunction(fn):
+            @wraps(fn)
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
+                return await fn(*args, **kwargs)
+        else:
+            @wraps(fn)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                return fn(*args, **kwargs)
 
         wrapper.tool_spec = spec  # type: ignore[attr-defined]
         return wrapper

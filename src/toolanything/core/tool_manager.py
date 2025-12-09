@@ -1,8 +1,6 @@
 """ToolManager: 管理工具註冊、Schema 匯出與統一呼叫入口。"""
 from __future__ import annotations
 
-import asyncio
-import inspect
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .models import ToolSpec
@@ -74,7 +72,10 @@ class ToolManager:
         """統一的 async 呼叫入口，兼容同步函數。"""
 
         # context 可作為未來擴充，暫不強制注入。
-        target = self.registry.get(name)
-        if inspect.iscoroutinefunction(target):
-            return await target(**args)
-        return await asyncio.to_thread(target, **args)
+        context = context or {}
+        return await self.registry.execute_tool_async(
+            name,
+            arguments=args,
+            user_id=context.get("user_id"),
+            state_manager=context.get("state_manager"),
+        )

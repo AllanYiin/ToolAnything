@@ -1,10 +1,11 @@
 """ToolManager: 管理工具註冊、Schema 匯出與統一呼叫入口。"""
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from .models import ToolSpec
 from .registry import ToolRegistry
+from ..runtime.concurrency import ParallelOptions, RetryPolicy, parallel_map_async
 
 
 class ToolManager:
@@ -79,3 +80,35 @@ class ToolManager:
             user_id=context.get("user_id"),
             state_manager=context.get("state_manager"),
         )
+
+    async def invoke_many(
+        self,
+        name: str,
+        args_list: Sequence[Dict[str, Any]],
+        *,
+        context: Optional[Dict[str, Any]] = None,
+        concurrency: int = 8,
+        preserve_order: bool = True,
+        max_retries: int = 0,
+        rate_limit_per_minute: Optional[int] = None,
+    ) -> List[Any]:
+        """
+        Batch invoke the same tool with parallel execution.
+
+        v1 strategy:
+        - keep behavior consistent with invoke()
+        - concurrency / retry / rate limit as execution options
+        """
+
+        policy = RetryPolicy(max_retries=max_retries)
+        options = ParallelOptions(
+            concurrency=concurrency,
+            preserve_order=preserve_order,
+            retry_policy=policy,
+            rate_limit_per_minute=rate_limit_per_minute,
+        )
+
+        async def _one(args: Dict[str, Any]) -> Any:
+            return await self.invoke(name, args, context=context)
+
+        return await parallel_map_async(list(args_list), _one, options=options)

@@ -11,6 +11,8 @@ from toolanything.core.registry import ToolRegistry
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: Dict[str, Any]) -> None:
+    """將 payload 序列化成 JSON 並寫入 HTTP 回應。"""
+
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     handler.send_response(status_code)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
@@ -20,6 +22,8 @@ def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: D
 
 
 def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
+    """從 HTTP 請求讀取並解析 JSON body，無法解析時回傳 ``None``。"""
+
     try:
         content_length = int(handler.headers.get("Content-Length", 0))
     except ValueError:
@@ -33,6 +37,8 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
 
 
 def _build_handler(registry: ToolRegistry) -> type[BaseHTTPRequestHandler]:
+    """建立綁定指定 registry 的 ``BaseHTTPRequestHandler`` 子類別。"""
+
     class MCPToolHandler(BaseHTTPRequestHandler):
         server_version = "ToolAnythingMCP/0.1"
 
@@ -62,9 +68,9 @@ def _build_handler(registry: ToolRegistry) -> type[BaseHTTPRequestHandler]:
                 _json_response(self, 400, {"error": "invalid_json"})
                 return
 
-            name = payload.get("name")
-            arguments = payload.get("arguments", {}) or {}
-            user_id = payload.get("user_id")
+            name: str | None = payload.get("name")
+            arguments: Dict[str, Any] = payload.get("arguments", {}) or {}
+            user_id: str | None = payload.get("user_id")
 
             if not isinstance(name, str):
                 _json_response(self, 400, {"error": "missing_name"})
@@ -102,6 +108,8 @@ def run_server(port: int, host: str = "0.0.0.0", registry: ToolRegistry | None =
 
 
 def _parse_args() -> argparse.Namespace:
+    """解析 CLI 參數，取得 host 與 port 設定。"""
+
     parser = argparse.ArgumentParser(description="啟動內建 MCP Tool Server")
     parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
     parser.add_argument("--host", default="0.0.0.0", help="監聽 host，預設 0.0.0.0")
@@ -109,6 +117,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """CLI 入口，解析參數並啟動伺服器。"""
+
     args = _parse_args()
     run_server(port=args.port, host=args.host)
 

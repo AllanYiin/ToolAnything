@@ -14,6 +14,37 @@ def test_python_type_to_schema_basic():
     assert python_type_to_schema(list) == {"type": "array"}
 
 
+def test_python_type_to_schema_complex_types():
+    from typing import Dict, List, Literal, Optional, Union
+
+    assert python_type_to_schema(bool) == {"type": "boolean"}
+    assert python_type_to_schema(float) == {"type": "number"}
+
+    union_schema = python_type_to_schema(Union[int, str])
+    assert union_schema == {"type": "string"}
+
+    optional_schema = python_type_to_schema(Optional[int])
+    assert optional_schema == {"type": "string"}
+
+    nested_list_schema = python_type_to_schema(List[List[int]])
+    assert nested_list_schema == {
+        "type": "array",
+        "items": {"type": "array", "items": {"type": "integer"}},
+    }
+
+    nested_dict_schema = python_type_to_schema(Dict[str, List[int]])
+    assert nested_dict_schema == {
+        "type": "object",
+        "additionalProperties": {
+            "type": "array",
+            "items": {"type": "integer"},
+        },
+    }
+
+    literal_schema = python_type_to_schema(Literal["red", "blue"])
+    assert literal_schema == {"enum": ["red", "blue"]}
+
+
 def test_python_type_to_schema_cache_and_copy():
     schema._python_type_to_schema_cached.cache_clear()
 

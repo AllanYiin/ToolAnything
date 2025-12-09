@@ -9,11 +9,28 @@ def test_export_tools_schema():
     assert add_tool["function"]["parameters"]["properties"]["b"]["default"] == 1
 
 
-def test_openai_adapter_invocation():
+def test_openai_function_call_payload():
     adapter = OpenAIAdapter(registry)
-    invocation = adapter.to_invocation("math.add", {"a": 2, "b": 5})
+    payload = adapter.to_function_call("math.add", {"a": 3})
 
-    assert invocation["type"] == "function"
+    assert payload == {
+        "type": "function",
+        "function": {
+            "name": "math.add",
+            "arguments": "{\"a\": 3}",
+        },
+    }
+
+
+def test_openai_adapter_invocation_from_json_arguments():
+    adapter = OpenAIAdapter(registry)
+    invocation = adapter.to_invocation(
+        "math.add", "{\"a\": 2, \"b\": 5}", tool_call_id="call_123"
+    )
+
+    assert invocation["role"] == "tool"
+    assert invocation["tool_call_id"] == "call_123"
     assert invocation["name"] == "math.add"
     assert invocation["arguments"] == {"a": 2, "b": 5}
+    assert invocation["content"] == "7"
     assert invocation["result"] == 7

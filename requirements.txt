@@ -1,8 +1,7 @@
-# 核心執行時相依
+# 核心執行與測試相依
 tenacity>=8.2.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
 
 # 以下模組 (例如 http.server、urllib、asyncio、dataclasses 等) 均屬於 Python 標準庫，
 # 已隨 CPython 內建提供，無須在 requirements.txt 中安裝。
-# 測試與開發相依
-pytest>=8.0.0
-pytest-asyncio>=0.23.0

@@ -46,7 +46,7 @@ def trip_plan(ctx, city: str):
 
 ## 相依套件說明
 
-- 執行時僅需安裝 `tenacity` (詳見 `requirements.txt` 與 `pyproject.toml`)。
+- 執行與測試時會隨套件一併安裝 `tenacity`、`pytest` 與 `pytest-asyncio`，確保非同步測試所需外掛始終可用（詳見 `requirements.txt` 與 `pyproject.toml`）。
 - `http.server`、`urllib`、`asyncio`、`dataclasses` 等皆為 Python 標準庫模組，隨 CPython 內建提供，無需額外安裝或列入 requirements。
 
 ## 與 Claude Desktop 的自動註冊整合

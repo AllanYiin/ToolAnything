@@ -16,3 +16,15 @@ def test_mcp_adapter_invocation():
     assert invocation["name"] == "math.add"
     assert invocation["arguments"] == {"a": 3}
     assert invocation["result"] == 4
+
+
+def test_mcp_adapter_capabilities():
+    adapter = MCPAdapter(registry)
+    capabilities = adapter.to_capabilities()
+
+    assert capabilities["protocolVersion"] == MCPAdapter.PROTOCOL_VERSION
+    assert capabilities["serverInfo"]["name"] == MCPAdapter.SERVER_NAME
+    assert any(dep["name"] == "python" for dep in capabilities["dependencies"]["runtime"])
+    tool_names = {item["name"] for item in capabilities["dependencies"]["tools"]}
+    assert "math.add" in tool_names
+    assert "math.workflow" in tool_names

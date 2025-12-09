@@ -16,16 +16,16 @@ def _get_default_claude_config_path() -> Path:
     return Path.home() / "Library" / "Application Support" / "Claude" / "config.json"
 
 
-def _init_claude_config(path: Path, port: int, force: bool) -> None:
-    template: Dict[str, Any] = {
-        "mcpServers": {
-            "toolanything": {
-                "command": "python",
-                "args": ["-m", "toolanything.cli", "run-stdio"],
-                "autoStart": True,
-            }
-        }
+def _build_mcp_entry(port: int) -> Dict[str, Any]:
+    return {
+        "command": "python",
+        "args": ["-m", "toolanything.cli", "run-mcp", "--port", str(port)],
+        "autoStart": True,
     }
+
+
+def _init_claude_config(path: Path, port: int, force: bool) -> None:
+    template: Dict[str, Any] = {"mcpServers": {"toolanything": _build_mcp_entry(port)}}
 
     if path.exists() and not force:
         raise FileExistsError(f"{path} 已存在，如要覆寫請加入 --force")
@@ -50,12 +50,6 @@ def _install_claude_config(path: Path, port: int, name: str) -> None:
     path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    mcp_entry = {
-        "command": "python",
-        "args": ["-m", "toolanything.cli", "run-stdio"],
-        "autoStart": True,
-    }
-
     if path.exists():
         content = path.read_text(encoding="utf-8")
         config = json.loads(content) if content.strip() else {}
@@ -63,7 +57,7 @@ def _install_claude_config(path: Path, port: int, name: str) -> None:
         config = {}
 
     mcp_servers = config.setdefault("mcpServers", {})
-    mcp_servers[name] = mcp_entry
+    mcp_servers[name] = _build_mcp_entry(port)
 
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
     print(

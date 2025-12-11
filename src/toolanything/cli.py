@@ -8,6 +8,8 @@ import platform
 from pathlib import Path
 from typing import Any, Dict
 
+from toolanything.core import FailureLogManager, ToolRegistry, ToolSearchTool
+
 
 def _get_default_claude_config_path() -> Path:
     """取得 Claude Desktop 設定檔的預設路徑 (跨平台)。"""
@@ -65,6 +67,40 @@ def _install_claude_config(path: Path, port: int, name: str) -> None:
     )
 
 
+def _run_search(
+    query: str,
+    tags: list[str] | None,
+    prefix: str | None,
+    top_k: int,
+    sort_by_failure: bool,
+) -> None:
+    failure_log = FailureLogManager(Path(".tool_failures.json"))
+    registry = ToolRegistry.global_instance()
+    searcher = ToolSearchTool(registry, failure_log)
+
+    results = searcher.search(
+        query=query,
+        tags=tags,
+        prefix=prefix,
+        top_k=top_k,
+        sort_by_failure=sort_by_failure,
+    )
+
+    for spec in results:
+        score = failure_log.failure_score(spec.name)
+        print(
+            json.dumps(
+                {
+                    "name": spec.name,
+                    "description": spec.description,
+                    "tags": list(spec.tags),
+                    "failure_score": score,
+                },
+                ensure_ascii=False,
+            )
+        )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="toolanything", description="ToolAnything CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -104,6 +140,31 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     install_parser.set_defaults(
         func=lambda args: _install_claude_config(path=args.config, port=args.port, name=args.name)
+    )
+
+    search_parser = subparsers.add_parser("search", help="搜尋已註冊的工具並依失敗分數排序")
+    search_parser.add_argument("--query", default="", help="名稱或描述關鍵字")
+    search_parser.add_argument(
+        "--tags",
+        nargs="*",
+        default=None,
+        help="需要包含的標籤，多個以空白分隔",
+    )
+    search_parser.add_argument("--prefix", default=None, help="工具名稱前綴過濾條件")
+    search_parser.add_argument("--top-k", type=int, default=10, help="回傳前 K 筆結果")
+    search_parser.add_argument(
+        "--disable-failure-sort",
+        action="store_true",
+        help="關閉依近期失敗分數排序的功能",
+    )
+    search_parser.set_defaults(
+        func=lambda args: _run_search(
+            query=args.query,
+            tags=args.tags,
+            prefix=args.prefix,
+            top_k=args.top_k,
+            sort_by_failure=not args.disable_failure_sort,
+        )
     )
 
     return parser

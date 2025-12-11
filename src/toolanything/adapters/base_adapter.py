@@ -5,14 +5,18 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from toolanything.core.registry import ToolRegistry
+from toolanything.core.failure_log import FailureLogManager
 
 
 class BaseAdapter(ABC):
     """定義協議轉換器的共同介面。"""
 
-    def __init__(self, registry: Optional[ToolRegistry] = None) -> None:
+    def __init__(
+        self, registry: Optional[ToolRegistry] = None, *, failure_log: FailureLogManager | None = None
+    ) -> None:
         # 預設使用全域 Registry，亦可注入自訂實例以便測試或隔離。
         self.registry = registry or ToolRegistry.global_instance()
+        self.failure_log = failure_log
 
     @abstractmethod
     def to_schema(self) -> List[Dict[str, Any]]:

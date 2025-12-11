@@ -30,6 +30,7 @@ class MCPAdapter(BaseAdapter):
             arguments=arguments or {},
             user_id=user_id,
             state_manager=None,
+            failure_log=self.failure_log,
         )
         return {
             "name": name,

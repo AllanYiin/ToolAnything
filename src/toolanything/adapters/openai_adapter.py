@@ -71,6 +71,7 @@ class OpenAIAdapter(BaseAdapter):
             arguments=normalized_args,
             user_id=user_id,
             state_manager=None,
+            failure_log=self.failure_log,
         )
 
         return {

@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from .failure_log import FailureLogManager
 from .models import PipelineDefinition, ToolSpec
 from ..pipeline.context import PipelineContext
 from ..state.manager import StateManager
@@ -141,16 +142,27 @@ class ToolRegistry:
         arguments: Dict[str, Any] | None = None,
         user_id: str | None = None,
         state_manager: StateManager | None = None,
+        failure_log: FailureLogManager | None = None,
     ) -> Any:
         arguments = arguments or {}
 
         if name in self._pipelines:
             definition = self.get_pipeline(name)
             ctx = self._build_context(user_id=user_id, state_manager=state_manager)
-            return await self._execute_callable(definition.func, ctx, **arguments)
+            try:
+                return await self._execute_callable(definition.func, ctx, **arguments)
+            except Exception:
+                if failure_log:
+                    failure_log.record_failure(name)
+                raise
 
         func = self.get(name)
-        return await self._execute_callable(func, **arguments)
+        try:
+            return await self._execute_callable(func, **arguments)
+        except Exception:
+            if failure_log:
+                failure_log.record_failure(name)
+            raise
 
     @retry(
         stop=stop_after_attempt(3),
@@ -163,6 +175,7 @@ class ToolRegistry:
         arguments: Dict[str, Any] | None = None,
         user_id: str | None = None,
         state_manager: StateManager | None = None,
+        failure_log: FailureLogManager | None = None,
     ) -> Any:
         """同步介面：在未啟動事件迴圈時執行，否則要求使用 async 版本。"""
 
@@ -175,6 +188,7 @@ class ToolRegistry:
                     arguments=arguments,
                     user_id=user_id,
                     state_manager=state_manager,
+                    failure_log=failure_log,
                 )
             )
 

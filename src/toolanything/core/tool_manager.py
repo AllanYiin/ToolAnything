@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from .models import ToolSpec
 from .registry import ToolRegistry
+from .failure_log import FailureLogManager
 from ..runtime.concurrency import ParallelOptions, RetryPolicy, parallel_map_async
 
 
@@ -17,10 +18,12 @@ class ToolManager:
         *,
         default_adapters: Iterable[str] = ("openai", "mcp"),
         strict: bool = True,
+        failure_log: FailureLogManager | None = None,
     ) -> None:
         self.registry = registry or ToolRegistry.global_instance()
         self.default_adapters = tuple(default_adapters)
         self.strict = strict
+        self.failure_log = failure_log
         # 讓 decorator 有機會讀取預設 adapter 設定。
         self.registry.default_adapters = self.default_adapters  # type: ignore[attr-defined]
 
@@ -79,6 +82,7 @@ class ToolManager:
             arguments=args,
             user_id=context.get("user_id"),
             state_manager=context.get("state_manager"),
+            failure_log=self.failure_log,
         )
 
     async def invoke_many(

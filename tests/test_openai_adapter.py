@@ -37,7 +37,8 @@ async def test_openai_adapter_invocation_from_json_arguments():
     assert invocation["name"] == "math.add"
     assert invocation["arguments"] == {"a": 2, "b": 5}
     assert invocation["content"] == "7"
-    assert invocation["result"] == 7
+    assert invocation["result"] == {"type": "text", "content": "7"}
+    assert invocation["raw_result"] == 7
 
 
 @pytest.mark.asyncio
@@ -47,4 +48,5 @@ async def test_openai_adapter_invocation_supports_async_tool():
 
     assert invocation["name"] == "async.echo"
     assert invocation["content"] == "pong"
-    assert invocation["result"] == "pong"
+    assert invocation["result"] == {"type": "text", "content": "pong"}
+    assert invocation["raw_result"] == "pong"

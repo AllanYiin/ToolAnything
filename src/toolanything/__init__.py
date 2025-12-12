@@ -17,6 +17,7 @@ from toolanything.exceptions import (
     RegistryError,
     SchemaValidationError,
     ToolAnythingError,
+    ToolError,
     ToolNotFoundError,
 )
 from toolanything.state import StateManager
@@ -42,4 +43,5 @@ __all__ = [
     "SchemaValidationError",
     "RegistryError",
     "AdapterError",
+    "ToolError",
 ]

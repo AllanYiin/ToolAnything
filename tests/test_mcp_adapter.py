@@ -19,7 +19,8 @@ async def test_mcp_adapter_invocation():
 
     assert invocation["name"] == "math.add"
     assert invocation["arguments"] == {"a": 3}
-    assert invocation["result"] == 4
+    assert invocation["result"] == {"contentType": "text/plain", "content": "4"}
+    assert invocation["raw_result"] == 4
 
 
 
@@ -28,6 +29,7 @@ async def test_mcp_adapter_supports_async_tool():
     adapter = MCPAdapter(async_registry)
     invocation = await adapter.to_invocation("async.echo", {"message": "mcp"})
 
-    assert invocation["result"] == "mcp"
+    assert invocation["result"] == {"contentType": "text/plain", "content": "mcp"}
+    assert invocation["raw_result"] == "mcp"
 
 

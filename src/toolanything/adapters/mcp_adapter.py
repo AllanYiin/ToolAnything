@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Dict, List, Optional
 
 from toolanything.core.registry import ToolRegistry
+from toolanything.exceptions import ToolError
 
 from .base_adapter import BaseAdapter
 
@@ -25,18 +26,41 @@ class MCPAdapter(BaseAdapter):
         arguments: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        result = await self.registry.execute_tool_async(
-            name,
-            arguments=arguments or {},
-            user_id=user_id,
-            state_manager=None,
-            failure_log=self.failure_log,
-        )
-        return {
-            "name": name,
-            "arguments": arguments or {},
-            "result": result,
-        }
+        normalized_args = arguments or {}
+        audit_log = self.security_manager.audit_call(name, normalized_args, user_id)
+
+        try:
+            result = await self.registry.execute_tool_async(
+                name,
+                arguments=normalized_args,
+                user_id=user_id,
+                state_manager=None,
+                failure_log=self.failure_log,
+            )
+            serialized = self.result_serializer.to_mcp(result)
+            return {
+                "name": name,
+                "arguments": normalized_args,
+                "result": serialized,
+                "raw_result": result,
+                "audit": audit_log,
+            }
+        except ToolError as exc:
+            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
+            return {
+                "name": name,
+                "arguments": safe_args,
+                "error": exc.to_dict(),
+                "audit": audit_log,
+            }
+        except Exception:
+            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
+            return {
+                "name": name,
+                "arguments": safe_args,
+                "error": {"type": "internal_error", "message": "工具執行時發生未預期錯誤"},
+                "audit": audit_log,
+            }
 
     def to_capabilities(self) -> Dict[str, Any]:
         """回傳 MCP capability negotiation 所需資訊。"""

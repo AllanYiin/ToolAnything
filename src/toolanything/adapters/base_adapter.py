@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from toolanything.core.registry import ToolRegistry
+from toolanything.core.result_serializer import ResultSerializer
+from toolanything.core.security_manager import SecurityManager
 from toolanything.core.failure_log import FailureLogManager
 
 
@@ -12,11 +14,18 @@ class BaseAdapter(ABC):
     """定義協議轉換器的共同介面。"""
 
     def __init__(
-        self, registry: Optional[ToolRegistry] = None, *, failure_log: FailureLogManager | None = None
+        self,
+        registry: Optional[ToolRegistry] = None,
+        *,
+        failure_log: FailureLogManager | None = None,
+        result_serializer: ResultSerializer | None = None,
+        security_manager: SecurityManager | None = None,
     ) -> None:
         # 預設使用全域 Registry，亦可注入自訂實例以便測試或隔離。
         self.registry = registry or ToolRegistry.global_instance()
         self.failure_log = failure_log
+        self.result_serializer = result_serializer or ResultSerializer()
+        self.security_manager = security_manager or SecurityManager()
 
     @abstractmethod
     def to_schema(self) -> List[Dict[str, Any]]:

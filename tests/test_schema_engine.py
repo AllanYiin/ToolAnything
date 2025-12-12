@@ -70,3 +70,19 @@ def test_build_parameters_schema():
     assert "b" in schema["required"]
     assert "c" not in schema["required"]
     assert schema["properties"]["c"]["default"] == 1.0
+
+
+def test_build_parameters_schema_skips_self_and_cls():
+    class Demo:
+        def instance_method(self, value: int, flag: bool):
+            return value if flag else 0
+
+        @classmethod
+        def class_method(cls, text: str):
+            return text
+
+    instance_schema = build_parameters_schema(Demo.instance_method)
+    assert set(instance_schema["properties"].keys()) == {"value", "flag"}
+
+    class_schema = build_parameters_schema(Demo.class_method.__func__)
+    assert set(class_schema["properties"].keys()) == {"text"}

@@ -81,7 +81,7 @@ def build_parameters_schema(func: Any) -> Dict[str, Any]:
     required = []
 
     for name, param in signature.parameters.items():
-        if name == "ctx":
+        if name in {"ctx", "self", "cls"}:
             continue
 
         annotation = param.annotation if param.annotation is not inspect._empty else str

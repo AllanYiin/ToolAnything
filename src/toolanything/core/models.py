@@ -9,6 +9,17 @@ from toolanything.utils.docstring_parser import parse_docstring
 from toolanything.core.schema import build_parameters_schema
 
 
+def _derive_default_name(func: Callable[..., Any]) -> str:
+    """推導工具的預設名稱，優先使用類別與方法名稱。"""
+
+    qualname = getattr(func, "__qualname__", "") or ""
+    if "." in qualname:
+        segments = [segment for segment in qualname.split(".") if segment != "<locals>"]
+        if len(segments) >= 2:
+            return ".".join(segments[-2:])
+    return getattr(func, "__name__", "")
+
+
 class DefinitionMixin:
     """工具與 Pipeline 的共用基底類別 (Mixin)。"""
 
@@ -75,14 +86,15 @@ class ToolSpec(DefinitionMixin):
         strict: bool = True,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> "ToolSpec":
-        documentation = parse_docstring(func)
+        normalized_func = getattr(func, "__func__", func)
+        documentation = parse_docstring(normalized_func)
         derived_description = description or (documentation.summary if documentation else None)
         if strict and not derived_description:
             raise ValueError("Tool description is required when strict mode is enabled.")
 
-        params_schema = build_parameters_schema(func)
+        params_schema = build_parameters_schema(normalized_func)
         return cls(
-            name=name or func.__name__,
+            name=name or _derive_default_name(normalized_func),
             func=func,
             description=derived_description or "",
             parameters=params_schema,

@@ -16,15 +16,26 @@ def test_python_type_to_schema_basic():
 
 def test_python_type_to_schema_complex_types():
     from typing import Dict, List, Literal, Optional, Union
+    from enum import Enum
 
     assert python_type_to_schema(bool) == {"type": "boolean"}
     assert python_type_to_schema(float) == {"type": "number"}
 
     union_schema = python_type_to_schema(Union[int, str])
-    assert union_schema == {"type": "string"}
+    assert union_schema == {
+        "oneOf": [
+            {"type": "integer"},
+            {"type": "string"},
+        ]
+    }
 
     optional_schema = python_type_to_schema(Optional[int])
-    assert optional_schema == {"type": "string"}
+    assert optional_schema == {
+        "oneOf": [
+            {"type": "integer"},
+            {"type": "null"},
+        ]
+    }
 
     nested_list_schema = python_type_to_schema(List[List[int]])
     assert nested_list_schema == {
@@ -43,6 +54,13 @@ def test_python_type_to_schema_complex_types():
 
     literal_schema = python_type_to_schema(Literal["red", "blue"])
     assert literal_schema == {"enum": ["red", "blue"]}
+
+    class Status(Enum):
+        READY = "ready"
+        DONE = "done"
+
+    enum_schema = python_type_to_schema(Status)
+    assert enum_schema == {"type": "string", "enum": ["ready", "done"]}
 
 
 def test_python_type_to_schema_cache_and_copy():

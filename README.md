@@ -29,6 +29,17 @@ def trip_plan(ctx, city: str):
 
 預設會使用惰性初始化的全域 Registry，進階使用者仍可手動建立 `ToolRegistry()`，並透過 decorator 的 `registry` 參數覆寫使用的實例。
 
+## 工具介面類型支援與規範
+
+Schema 引擎會依據函數的 type hints 生成 JSON Schema，支援項目如下：
+
+- 基本型別：`str`、`int`、`float`、`bool`、`list`、`dict` 會映射到對應的 JSON Schema `type`。
+- 容器型別：`list[T]`、`tuple[T]` 會產生 `items`，`dict[key, value]` 會以 `additionalProperties` 描述 value 類型。
+- 合併型別：`Union[...]` 或 `Optional[T]` 會轉成 `oneOf`，同時保留 `null` 以表示可選值。
+- 限定值：`Literal[...]` 與 `Enum` 會輸出 `enum` 陣列；若 Enum 值為基本型別，會附帶對應的 `type` 方便驗證。
+
+若使用未支援或自訂類別，Schema 會回退為字串型別。建議在工具內自行序列化複雜物件，或改用基本型別、巢狀 `dict/list` 來描述資料結構，以確保工具在各協議下的可攜性與檢驗一致性。
+
 ## 目錄結構
 
 - `src/toolanything/core/`：核心資料模型與 Schema 生成邏輯。

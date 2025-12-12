@@ -8,6 +8,9 @@ from typing import Any, Dict
 from urllib.parse import urlparse
 
 from toolanything.core.registry import ToolRegistry
+from toolanything.core.result_serializer import ResultSerializer
+from toolanything.core.security_manager import SecurityManager
+from toolanything.exceptions import ToolError
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: Dict[str, Any]) -> None:
@@ -36,8 +39,16 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
         return None
 
 
-def _build_handler(registry: ToolRegistry) -> type[BaseHTTPRequestHandler]:
+def _build_handler(
+    registry: ToolRegistry,
+    *,
+    serializer: ResultSerializer | None = None,
+    security_manager: SecurityManager | None = None,
+) -> type[BaseHTTPRequestHandler]:
     """建立綁定指定 registry 的 ``BaseHTTPRequestHandler`` 子類別。"""
+
+    active_serializer = serializer or ResultSerializer()
+    active_security_manager = security_manager or SecurityManager()
 
     class MCPToolHandler(BaseHTTPRequestHandler):
         server_version = "ToolAnythingMCP/0.1"
@@ -71,6 +82,7 @@ def _build_handler(registry: ToolRegistry) -> type[BaseHTTPRequestHandler]:
             name: str | None = payload.get("name")
             arguments: Dict[str, Any] = payload.get("arguments", {}) or {}
             user_id: str | None = payload.get("user_id")
+            audit_log = active_security_manager.audit_call(name or "", arguments, user_id)
 
             if not isinstance(name, str):
                 _json_response(self, 400, {"error": "missing_name"})
@@ -83,11 +95,38 @@ def _build_handler(registry: ToolRegistry) -> type[BaseHTTPRequestHandler]:
                     user_id=user_id,
                     state_manager=None,
                 )
-            except Exception as exc:  # pragma: no cover - runtime error handling
-                _json_response(self, 500, {"error": str(exc)})
-                return
-
-            _json_response(self, 200, {"name": name, "result": result})
+                serialized = active_serializer.to_mcp(result)
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "name": name,
+                        "arguments": active_security_manager.mask_keys_in_log(arguments),
+                        "result": serialized,
+                        "raw_result": result,
+                        "audit": audit_log,
+                    },
+                )
+            except ToolError as exc:  # pragma: no cover - runtime error handling
+                _json_response(
+                    self,
+                    400,
+                    {
+                        "error": exc.to_dict(),
+                        "arguments": active_security_manager.mask_keys_in_log(arguments),
+                        "audit": audit_log,
+                    },
+                )
+            except Exception:  # pragma: no cover - runtime error handling
+                _json_response(
+                    self,
+                    500,
+                    {
+                        "error": {"type": "internal_error", "message": "工具執行時發生未預期錯誤"},
+                        "arguments": active_security_manager.mask_keys_in_log(arguments),
+                        "audit": audit_log,
+                    },
+                )
 
     return MCPToolHandler
 

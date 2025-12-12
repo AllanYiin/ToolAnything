@@ -5,6 +5,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from toolanything.core.registry import ToolRegistry
+from toolanything.exceptions import ToolError
 
 from .base_adapter import BaseAdapter
 
@@ -32,13 +33,13 @@ class OpenAIAdapter(BaseAdapter):
         raise TypeError("arguments 必須為 dict、JSON 字串或 None")
 
     @staticmethod
-    def _serialize_content(result: Any) -> str:
-        """將執行結果序列化成 tool message 內容。"""
+    def _serialize_content(result: Dict[str, Any]) -> str:
+        """將標準化後的結果轉為 tool message 字串。"""
 
-        if isinstance(result, str):
-            return result
+        if result.get("type") == "text":
+            return str(result.get("content", ""))
 
-        return json.dumps(result, ensure_ascii=False)
+        return json.dumps(result.get("content"), ensure_ascii=False)
 
     def to_schema(self) -> List[Dict[str, Any]]:
         return self.registry.to_openai_tools(adapter="openai")
@@ -66,22 +67,52 @@ class OpenAIAdapter(BaseAdapter):
         """執行工具並回傳符合 OpenAI tool message 的格式。"""
 
         normalized_args = self._normalize_arguments(arguments)
-        result = await self.registry.execute_tool_async(
-            name,
-            arguments=normalized_args,
-            user_id=user_id,
-            state_manager=None,
-            failure_log=self.failure_log,
-        )
+        audit_log = self.security_manager.audit_call(name, normalized_args, user_id)
 
-        return {
-            "role": "tool",
-            "tool_call_id": tool_call_id or name,
-            "name": name,
-            "arguments": normalized_args,
-            "content": self._serialize_content(result),
-            "result": result,
-        }
+        try:
+            result = await self.registry.execute_tool_async(
+                name,
+                arguments=normalized_args,
+                user_id=user_id,
+                state_manager=None,
+                failure_log=self.failure_log,
+            )
+            serialized_result = self.result_serializer.to_openai(result)
+            content = self._serialize_content(serialized_result)
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call_id or name,
+                "name": name,
+                "arguments": normalized_args,
+                "content": content,
+                "result": serialized_result,
+                "raw_result": result,
+                "audit": audit_log,
+            }
+        except ToolError as exc:
+            error_payload = exc.to_dict()
+            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call_id or name,
+                "name": name,
+                "arguments": safe_args,
+                "content": json.dumps(error_payload, ensure_ascii=False),
+                "error": error_payload,
+                "audit": audit_log,
+            }
+        except Exception:
+            error_payload = {"type": "internal_error", "message": "工具執行時發生未預期錯誤"}
+            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call_id or name,
+                "name": name,
+                "arguments": safe_args,
+                "content": json.dumps(error_payload, ensure_ascii=False),
+                "error": error_payload,
+                "audit": audit_log,
+            }
 
 
 def export_tools(registry: ToolRegistry) -> List[dict[str, Any]]:

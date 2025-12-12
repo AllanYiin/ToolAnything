@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import json
 import sys
-import traceback
 from typing import Any, Dict, Optional
 
 from toolanything.adapters.mcp_adapter import MCPAdapter
 from toolanything.core.registry import ToolRegistry
+from toolanything.core.result_serializer import ResultSerializer
+from toolanything.core.security_manager import SecurityManager
+from toolanything.exceptions import ToolError
 
 
 class MCPStdioServer:
@@ -21,6 +23,8 @@ class MCPStdioServer:
 
         self.registry = registry or ToolRegistry.global_instance()
         self.adapter = MCPAdapter(self.registry)
+        self.result_serializer: ResultSerializer = self.adapter.result_serializer
+        self.security_manager: SecurityManager = self.adapter.security_manager
 
     def _read_message(self) -> Dict[str, Any] | None:
         """從 stdin 讀取一行 JSON 訊息並轉為字典。"""
@@ -66,7 +70,9 @@ class MCPStdioServer:
         params = request.get("params", {})
         name = params.get("name")
         arguments: Dict[str, Any] = params.get("arguments", {})
-        
+        masked_args = self.security_manager.mask_keys_in_log(arguments)
+        audit_log = self.security_manager.audit_call(name or "", arguments, "default")
+
         try:
             result = self.registry.execute_tool(
                 name,
@@ -74,7 +80,13 @@ class MCPStdioServer:
                 user_id="default",
                 state_manager=None,
             )
-            
+            serialized = self.result_serializer.to_mcp(result)
+            text_content = (
+                json.dumps(serialized["content"], ensure_ascii=False)
+                if serialized.get("contentType") == "application/json"
+                else str(serialized.get("content"))
+            )
+
             response = {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
@@ -82,22 +94,38 @@ class MCPStdioServer:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps(result, ensure_ascii=False) if not isinstance(result, str) else result
+                            "text": text_content,
                         }
-                    ]
-                }
+                    ],
+                    "meta": {
+                        "contentType": serialized.get("contentType"),
+                    },
+                    "arguments": masked_args,
+                    "audit": audit_log,
+                },
+                "raw_result": result,
             }
-        except Exception as e:
+        except ToolError as exc:
+            response = {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "error": {
+                    "code": -32001,
+                    "message": exc.error_type,
+                    "data": {"message": str(exc), "details": exc.data, "arguments": masked_args, "audit": audit_log},
+                },
+            }
+        except Exception:
             response = {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
                 "error": {
                     "code": -32603,
-                    "message": str(e),
-                    "data": traceback.format_exc()
-                }
+                    "message": "internal_error",
+                    "data": {"arguments": masked_args, "audit": audit_log},
+                },
             }
-        
+
         self._send_message(response)
 
     def run(self) -> None:

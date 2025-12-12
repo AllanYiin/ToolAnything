@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import copy
 import inspect
-from functools import lru_cache
 from dataclasses import dataclass
+from enum import Enum
+from functools import lru_cache
+from types import UnionType
 from typing import Any, Dict, get_args, get_origin
 
 
@@ -30,6 +32,20 @@ def _literal_schema(py_type: Any) -> Dict[str, Any]:
     return {"enum": values}
 
 
+def _enum_schema(py_type: type[Enum]) -> Dict[str, Any]:
+    values = [member.value for member in py_type]
+    schema: Dict[str, Any] = {"enum": values}
+
+    if values and type(values[0]) in _TYPE_MAPPING:
+        schema = {"type": _TYPE_MAPPING[type(values[0])]["type"], **schema}
+
+    return schema
+
+
+def _union_schema(args: tuple[Any, ...]) -> Dict[str, Any]:
+    return {"oneOf": [python_type_to_schema(arg) for arg in args]}
+
+
 def _container_schema(origin: Any, args: tuple[Any, ...]) -> Dict[str, Any]:
     if origin in (list, tuple):
         item_type = args[0] if args else Any
@@ -49,6 +65,12 @@ def _python_type_to_schema_cached(py_type: Any) -> Dict[str, Any]:
     if py_type in _TYPE_MAPPING:
         return dict(_TYPE_MAPPING[py_type])
 
+    if isinstance(py_type, type) and issubclass(py_type, Enum):
+        return _enum_schema(py_type)
+
+    if py_type is type(None):  # pragma: no cover
+        return {"type": "null"}
+
     origin = get_origin(py_type)
     args = get_args(py_type)
 
@@ -58,11 +80,14 @@ def _python_type_to_schema_cached(py_type: Any) -> Dict[str, Any]:
     if origin is inspect._empty:  # pragma: no cover - 兼容 inspect 特殊值
         return {"type": "string"}
 
-    if origin is type(None):  # pragma: no cover
-        return {"type": "null"}
-
     if str(origin).endswith("Literal"):
         return _literal_schema(py_type)
+
+    if origin in (inspect._empty, None):  # pragma: no cover
+        return {"type": "string"}
+
+    if origin in (getattr(__import__("typing"), "Union", None), UnionType):
+        return _union_schema(args)
 
     return _container_schema(origin, args)
 

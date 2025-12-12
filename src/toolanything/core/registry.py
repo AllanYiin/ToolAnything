@@ -120,6 +120,32 @@ class ToolRegistry:
     ) -> PipelineContext:
         return PipelineContext(state_manager=state_manager, user_id=user_id)
 
+    def _inject_context_argument(
+        self,
+        func: Callable[..., Any],
+        arguments: Dict[str, Any],
+        *,
+        user_id: str | None,
+        state_manager: StateManager | None,
+    ) -> Dict[str, Any]:
+        """自動注入 PipelineContext 以供工具或 pipeline 存取狀態。"""
+
+        signature = inspect.signature(func)
+        for param in signature.parameters.values():
+            if not PipelineContext.matches_parameter(param):
+                continue
+
+            if param.name in arguments:
+                return arguments
+
+            updated_args = dict(arguments)
+            updated_args[param.name] = self._build_context(
+                user_id=user_id, state_manager=state_manager
+            )
+            return updated_args
+
+        return arguments
+
     async def _execute_callable(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """在 async 環境下執行函數，必要時轉為 thread 以避免阻塞。"""
 
@@ -148,15 +174,26 @@ class ToolRegistry:
 
         if name in self._pipelines:
             definition = self.get_pipeline(name)
-            ctx = self._build_context(user_id=user_id, state_manager=state_manager)
+            arguments = self._inject_context_argument(
+                definition.func,
+                arguments,
+                user_id=user_id,
+                state_manager=state_manager,
+            )
             try:
-                return await self._execute_callable(definition.func, ctx, **arguments)
+                return await self._execute_callable(definition.func, **arguments)
             except Exception:
                 if failure_log:
                     failure_log.record_failure(name)
                 raise
 
         func = self.get(name)
+        arguments = self._inject_context_argument(
+            func,
+            arguments,
+            user_id=user_id,
+            state_manager=state_manager,
+        )
         try:
             return await self._execute_callable(func, **arguments)
         except Exception:

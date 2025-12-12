@@ -13,6 +13,27 @@ class PipelineContext:
         self.state_manager = state_manager
         self.user_id = user_id or "anonymous"
 
+    @classmethod
+    def matches_parameter(cls, parameter: inspect.Parameter) -> bool:
+        """判斷函數參數是否應注入 PipelineContext。
+
+        目前同時支援名稱為 ``ctx`` 的慣用命名，或型別標註為
+        :class:`PipelineContext`（含子類別）的參數，方便工具/pipeline 在需要
+        狀態時自行定義參數名稱。
+        """
+
+        if parameter.name == "ctx":
+            return True
+
+        annotation = parameter.annotation
+        if annotation is inspect._empty:
+            return False
+
+        try:
+            return issubclass(annotation, cls)
+        except TypeError:
+            return False
+
     def _resolve_awaitable(self, maybe_awaitable: Any, *, op: str) -> Any:
         """在同步情境下將 awaitable 轉為結果，避免直接回傳 coroutine。"""
 

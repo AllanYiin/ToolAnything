@@ -26,7 +26,7 @@ def test_registry_lookup_cache_and_invalidation():
 
     assert first_lookup is sample_tool
     assert second_lookup is sample_tool
-    assert registry._lookup_cache["demo.tool"] is sample_tool
+    assert registry._lookup_cache[("tool", "demo.tool")] is sample_tool
 
     registry.register_pipeline(
         PipelineDefinition(

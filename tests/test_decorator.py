@@ -1,5 +1,4 @@
 from toolanything import ToolRegistry
-from toolanything import ToolRegistry
 from toolanything.pipeline import PipelineContext
 from toolanything.decorators import pipeline, tool
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -18,10 +18,20 @@ class ToolRegistry:
     _global_instance: "ToolRegistry | None" = None
     _lock = Lock()
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        tool_prefix: str = "tool:",
+        pipeline_prefix: str = "pipeline:",
+        enable_type_prefix: bool = True,
+    ) -> None:
         self._tools: Dict[str, ToolSpec] = {}
         self._pipelines: Dict[str, PipelineDefinition] = {}
-        self._lookup_cache: Dict[str, Callable[..., Any]] = {}
+        self._lookup_cache: Dict[Tuple[str | None, str], Callable[..., Any]] = {}
+
+        self.tool_prefix = tool_prefix
+        self.pipeline_prefix = pipeline_prefix
+        self.enable_type_prefix = enable_type_prefix
 
     @classmethod
     def global_instance(cls) -> "ToolRegistry":
@@ -35,9 +45,14 @@ class ToolRegistry:
 
     # 工具
     def register(self, spec: ToolSpec) -> None:
-        if spec.name in self._tools:
-            raise ValueError(f"工具 {spec.name} 已存在")
-        self._tools[spec.name] = spec
+        kind, normalized_name = self._parse_lookup_name(spec.name)
+        if kind == "pipeline":
+            raise ValueError(
+                f"名稱 {spec.name} 使用了 pipeline 前綴，請改用 register_pipeline 註冊"
+            )
+
+        self._assert_not_duplicated(normalized_name, current_kind="tool")
+        self._tools[normalized_name] = spec
         self._lookup_cache.clear()
 
     # 舊介面的相容別名
@@ -51,9 +66,10 @@ class ToolRegistry:
         self._lookup_cache.clear()
 
     def get_tool(self, name: str) -> ToolSpec:
-        if name not in self._tools:
+        target, normalized_name = self._normalize_lookup_target(name)
+        if target not in (None, "tool") or normalized_name not in self._tools:
             raise KeyError(f"找不到工具 {name}")
-        return self._tools[name]
+        return self._tools[normalized_name]
 
     def list(self, *, tags: Optional[List[str]] = None) -> List[ToolSpec]:
         specs = list(self._tools.values())
@@ -65,32 +81,41 @@ class ToolRegistry:
 
     # pipeline
     def register_pipeline(self, definition: PipelineDefinition) -> None:
-        if definition.name in self._pipelines:
-            raise ValueError(f"Pipeline {definition.name} 已存在")
-        self._pipelines[definition.name] = definition
+        kind, normalized_name = self._parse_lookup_name(definition.name)
+        if kind == "tool":
+            raise ValueError(
+                f"名稱 {definition.name} 使用了 tool 前綴，請改用 register 註冊"
+            )
+
+        self._assert_not_duplicated(normalized_name, current_kind="pipeline")
+        self._pipelines[normalized_name] = definition
         self._lookup_cache.clear()
 
     def get_pipeline(self, name: str) -> PipelineDefinition:
-        if name not in self._pipelines:
+        target, normalized_name = self._normalize_lookup_target(name)
+        if target not in (None, "pipeline") or normalized_name not in self._pipelines:
             raise KeyError(f"找不到 pipeline {name}")
-        return self._pipelines[name]
+        return self._pipelines[normalized_name]
 
     def list_pipelines(self) -> Dict[str, PipelineDefinition]:
         return dict(self._pipelines)
 
     # Common API
     def get(self, name: str) -> Callable[..., Any]:
-        if name in self._lookup_cache:
-            return self._lookup_cache[name]
+        target, normalized_name = self._normalize_lookup_target(name)
+        cache_key = (target, normalized_name)
+        if cache_key in self._lookup_cache:
+            return self._lookup_cache[cache_key]
 
-        if name in self._tools:
-            func = self._tools[name].func
-            self._lookup_cache[name] = func
+        if target in (None, "tool") and normalized_name in self._tools:
+            func = self._tools[normalized_name].func
+            self._lookup_cache[cache_key] = func
             return func
-        if name in self._pipelines:
-            func = self._pipelines[name].func
-            self._lookup_cache[name] = func
+        if target in (None, "pipeline") and normalized_name in self._pipelines:
+            func = self._pipelines[normalized_name].func
+            self._lookup_cache[cache_key] = func
             return func
+
         raise KeyError(f"找不到 {name}")
 
     def to_openai_tools(self, *, adapter: str | None = None) -> list[dict[str, Any]]:
@@ -120,6 +145,56 @@ class ToolRegistry:
     ) -> PipelineContext:
         return PipelineContext(state_manager=state_manager, user_id=user_id)
 
+    def _parse_lookup_name(self, name: str) -> Tuple[str | None, str]:
+        if not self.enable_type_prefix:
+            return None, name
+
+        if name.startswith(self.tool_prefix):
+            return "tool", name[len(self.tool_prefix) :]
+        if name.startswith(self.pipeline_prefix):
+            return "pipeline", name[len(self.pipeline_prefix) :]
+        return None, name
+
+    def _normalize_lookup_target(self, name: str) -> Tuple[str | None, str]:
+        target, normalized_name = self._parse_lookup_name(name)
+
+        if target is not None:
+            return target, normalized_name
+
+        in_tool = normalized_name in self._tools
+        in_pipeline = normalized_name in self._pipelines
+        if in_tool and in_pipeline:
+            raise KeyError(
+                f"{normalized_name} 同時存在於工具與 pipeline 中，"\
+                f"請使用 {self.tool_prefix}{normalized_name} 或 {self.pipeline_prefix}{normalized_name} 指定目標。"
+            )
+
+        if in_tool:
+            return "tool", normalized_name
+        if in_pipeline:
+            return "pipeline", normalized_name
+
+        return None, normalized_name
+
+    def _assert_not_duplicated(self, name: str, *, current_kind: str) -> None:
+        if current_kind == "tool" and name in self._tools:
+            raise ValueError(f"工具 {name} 已存在")
+        if current_kind == "tool" and name in self._pipelines:
+            raise ValueError(
+                f"名稱 {name} 已被 pipeline 使用，請改用 {self.tool_prefix}{name} 或更換工具名稱。"
+            )
+        if current_kind == "pipeline" and name in self._pipelines:
+            raise ValueError(f"Pipeline {name} 已存在")
+        if current_kind == "pipeline" and name in self._tools:
+            raise ValueError(
+                f"名稱 {name} 已被工具使用，請改用 {self.pipeline_prefix}{name} 或更換 pipeline 名稱。"
+            )
+
+        if name in self._tools and name in self._pipelines:
+            raise ValueError(
+                f"名稱 {name} 已同時註冊為工具與 pipeline，請調整名稱或使用型別前綴分開管理。"
+            )
+
     async def _execute_callable(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """在 async 環境下執行函數，必要時轉為 thread 以避免阻塞。"""
 
@@ -143,25 +218,34 @@ class ToolRegistry:
         user_id: str | None = None,
         state_manager: StateManager | None = None,
         failure_log: FailureLogManager | None = None,
+        inject_context: bool = False,
+        context_arg: str = "context",
     ) -> Any:
         arguments = arguments or {}
 
-        if name in self._pipelines:
-            definition = self.get_pipeline(name)
+        target, normalized_name = self._normalize_lookup_target(name)
+
+        if target == "pipeline" or (
+            target is None and normalized_name in self._pipelines
+        ):
+            definition = self.get_pipeline(normalized_name)
             ctx = self._build_context(user_id=user_id, state_manager=state_manager)
             try:
                 return await self._execute_callable(definition.func, ctx, **arguments)
             except Exception:
                 if failure_log:
-                    failure_log.record_failure(name)
+                    failure_log.record_failure(definition.name)
                 raise
 
         func = self.get(name)
         try:
+            if inject_context:
+                ctx = self._build_context(user_id=user_id, state_manager=state_manager)
+                arguments = {context_arg: ctx, **arguments}
             return await self._execute_callable(func, **arguments)
         except Exception:
             if failure_log:
-                failure_log.record_failure(name)
+                failure_log.record_failure(normalized_name)
             raise
 
     @retry(
@@ -176,6 +260,8 @@ class ToolRegistry:
         user_id: str | None = None,
         state_manager: StateManager | None = None,
         failure_log: FailureLogManager | None = None,
+        inject_context: bool = False,
+        context_arg: str = "context",
     ) -> Any:
         """同步介面：在未啟動事件迴圈時執行，否則要求使用 async 版本。"""
 
@@ -189,6 +275,8 @@ class ToolRegistry:
                     user_id=user_id,
                     state_manager=state_manager,
                     failure_log=failure_log,
+                    inject_context=inject_context,
+                    context_arg=context_arg,
                 )
             )
 

@@ -68,6 +68,7 @@ class OpenAIAdapter(BaseAdapter):
 
         normalized_args = self._normalize_arguments(arguments)
         audit_log = self.security_manager.audit_call(name, normalized_args, user_id)
+        masked_args = self.security_manager.mask_keys_in_log(normalized_args)
 
         try:
             result = await self.registry.execute_tool_async(
@@ -83,7 +84,7 @@ class OpenAIAdapter(BaseAdapter):
                 "role": "tool",
                 "tool_call_id": tool_call_id or name,
                 "name": name,
-                "arguments": normalized_args,
+                "arguments": masked_args,
                 "content": content,
                 "result": serialized_result,
                 "raw_result": result,
@@ -91,24 +92,22 @@ class OpenAIAdapter(BaseAdapter):
             }
         except ToolError as exc:
             error_payload = exc.to_dict()
-            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
             return {
                 "role": "tool",
                 "tool_call_id": tool_call_id or name,
                 "name": name,
-                "arguments": safe_args,
+                "arguments": masked_args,
                 "content": json.dumps(error_payload, ensure_ascii=False),
                 "error": error_payload,
                 "audit": audit_log,
             }
         except Exception:
             error_payload = {"type": "internal_error", "message": "工具執行時發生未預期錯誤"}
-            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
             return {
                 "role": "tool",
                 "tool_call_id": tool_call_id or name,
                 "name": name,
-                "arguments": safe_args,
+                "arguments": masked_args,
                 "content": json.dumps(error_payload, ensure_ascii=False),
                 "error": error_payload,
                 "audit": audit_log,

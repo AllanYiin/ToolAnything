@@ -33,3 +33,13 @@ async def test_mcp_adapter_supports_async_tool():
     assert invocation["raw_result"] == "mcp"
 
 
+@pytest.mark.asyncio
+async def test_mcp_adapter_masks_sensitive_arguments():
+    adapter = MCPAdapter(registry)
+    invocation = await adapter.to_invocation(
+        "math.add", {"a": 1, "api_key": "secret-token"}
+    )
+
+    assert invocation["arguments"] == {"a": 1, "api_key": "***MASKED***"}
+
+

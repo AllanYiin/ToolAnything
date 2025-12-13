@@ -60,3 +60,25 @@ class PipelineContext:
         result = self.state_manager.set(self.user_id, key, value)
         if inspect.isawaitable(result):
             await result
+
+
+def is_context_parameter(param: inspect.Parameter) -> bool:
+    """判斷參數是否代表 PipelineContext，供 schema 生成與注入判斷使用。"""
+
+    annotation = param.annotation
+
+    if annotation is PipelineContext:
+        return True
+
+    try:
+        if inspect.isclass(annotation) and issubclass(annotation, PipelineContext):
+            return True
+    except TypeError:
+        # 無法判斷 annotation 時忽略型別判定
+        pass
+
+    if isinstance(annotation, str) and annotation.endswith("PipelineContext"):
+        return True
+
+    # 仍保留對舊有 ctx 命名的相容性
+    return param.name == "ctx"

@@ -50,3 +50,14 @@ async def test_openai_adapter_invocation_supports_async_tool():
     assert invocation["content"] == "pong"
     assert invocation["result"] == {"type": "text", "content": "pong"}
     assert invocation["raw_result"] == "pong"
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_masks_sensitive_arguments():
+    adapter = OpenAIAdapter(registry)
+    invocation = await adapter.to_invocation(
+        "math.add", {"a": 1, "secret_key": "should-hide"}, tool_call_id="call_mask"
+    )
+
+    assert invocation["arguments"] == {"a": 1, "secret_key": "***MASKED***"}
+    assert invocation["tool_call_id"] == "call_mask"

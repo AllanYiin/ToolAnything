@@ -28,6 +28,7 @@ class MCPAdapter(BaseAdapter):
     ) -> Dict[str, Any]:
         normalized_args = arguments or {}
         audit_log = self.security_manager.audit_call(name, normalized_args, user_id)
+        masked_args = self.security_manager.mask_keys_in_log(normalized_args)
 
         try:
             result = await self.registry.execute_tool_async(
@@ -40,24 +41,22 @@ class MCPAdapter(BaseAdapter):
             serialized = self.result_serializer.to_mcp(result)
             return {
                 "name": name,
-                "arguments": normalized_args,
+                "arguments": masked_args,
                 "result": serialized,
                 "raw_result": result,
                 "audit": audit_log,
             }
         except ToolError as exc:
-            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
             return {
                 "name": name,
-                "arguments": safe_args,
+                "arguments": masked_args,
                 "error": exc.to_dict(),
                 "audit": audit_log,
             }
         except Exception:
-            safe_args = self.security_manager.mask_keys_in_log(normalized_args)
             return {
                 "name": name,
-                "arguments": safe_args,
+                "arguments": masked_args,
                 "error": {"type": "internal_error", "message": "工具執行時發生未預期錯誤"},
                 "audit": audit_log,
             }

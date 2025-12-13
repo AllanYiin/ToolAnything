@@ -9,6 +9,8 @@ from functools import lru_cache
 from types import UnionType
 from typing import Any, Dict, get_args, get_origin
 
+from toolanything.pipeline.context import is_context_parameter
+
 
 @dataclass
 class ParameterSpec:
@@ -106,7 +108,10 @@ def build_parameters_schema(func: Any) -> Dict[str, Any]:
     required = []
 
     for name, param in signature.parameters.items():
-        if name in {"ctx", "self", "cls"}:
+        if name in {"self", "cls"}:
+            continue
+
+        if is_context_parameter(param):
             continue
 
         annotation = param.annotation if param.annotation is not inspect._empty else str

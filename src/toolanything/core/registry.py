@@ -10,7 +10,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from .failure_log import FailureLogManager
 from .models import PipelineDefinition, ToolSpec
-from ..pipeline.context import PipelineContext
+from ..pipeline.context import PipelineContext, is_context_parameter
 from ..state.manager import StateManager
 
 
@@ -146,6 +146,15 @@ class ToolRegistry:
     ) -> PipelineContext:
         return PipelineContext(state_manager=state_manager, user_id=user_id)
 
+    def _detect_context_argument(self, func: Callable[..., Any]) -> str | None:
+        """檢查函式是否需要 PipelineContext 並回傳對應參數名稱。"""
+
+        signature = inspect.signature(func)
+        for name, param in signature.parameters.items():
+            if is_context_parameter(param):
+                return name
+        return None
+
     def _parse_lookup_name(self, name: str) -> Tuple[str | None, str]:
         if not self.enable_type_prefix:
             return None, name
@@ -240,9 +249,11 @@ class ToolRegistry:
 
         func = self.get(name)
         try:
-            if inject_context:
+            context_param = context_arg if inject_context else self._detect_context_argument(func)
+
+            if context_param and context_param not in arguments:
                 ctx = self._build_context(user_id=user_id, state_manager=state_manager)
-                arguments = {context_arg: ctx, **arguments}
+                arguments = {context_param: ctx, **arguments}
             return await self._execute_callable(func, **arguments)
         except Exception:
             if failure_log:

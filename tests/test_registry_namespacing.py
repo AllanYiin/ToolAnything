@@ -64,3 +64,22 @@ def test_plain_lookup_errors_when_names_clash():
 
     # 確認即使使用前綴，實際查詢仍需指定正確的型別。
     assert registry.get("tool:alpha")() == {}
+
+
+def test_unregister_normalizes_namespaced_names():
+    registry = ToolRegistry()
+
+    @tool(name="tool:echo", description="echo", registry=registry)
+    def echo() -> dict:
+        return {}
+
+    # 先進行查詢以驗證快取機制，並確認註冊成功。
+    assert registry.get("tool:echo")() == {}
+    assert ("tool", "echo") in registry._lookup_cache
+
+    registry.unregister("tool:echo")
+
+    assert "echo" not in registry._tools
+    assert registry._lookup_cache == {}
+    with pytest.raises(KeyError):
+        registry.get("tool:echo")

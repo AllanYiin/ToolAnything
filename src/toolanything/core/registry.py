@@ -60,9 +60,10 @@ class ToolRegistry:
         self.register(definition)
 
     def unregister(self, name: str) -> None:
-        if name not in self._tools:
+        target, normalized_name = self._normalize_lookup_target(name)
+        if target not in (None, "tool") or normalized_name not in self._tools:
             raise KeyError(f"找不到工具 {name}")
-        del self._tools[name]
+        del self._tools[normalized_name]
         self._lookup_cache.clear()
 
     def get_tool(self, name: str) -> ToolSpec:

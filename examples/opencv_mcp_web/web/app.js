@@ -68,6 +68,69 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+function parseSseChunk(chunk) {
+  const lines = chunk.split("\n");
+  let eventName = "message";
+  const dataLines = [];
+  lines.forEach((line) => {
+    if (line.startsWith("event:")) {
+      eventName = line.replace("event:", "").trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.replace("data:", "").trim());
+    }
+  });
+  return {
+    event: eventName,
+    data: dataLines.join("\n"),
+  };
+}
+
+async function invokeToolSse(baseUrl, payload, handlers) {
+  const response = await fetch(`${baseUrl}/invoke-sse`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const errorMessage = data?.error?.message || "連線失敗，請稍後再試";
+    throw new Error(errorMessage);
+  }
+
+  if (!response.body) {
+    throw new Error("無法取得串流回應");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() || "";
+
+    chunks.forEach((chunk) => {
+      const { event, data } = parseSseChunk(chunk);
+      if (!data) {
+        return;
+      }
+      const parsedData = JSON.parse(data);
+      if (handlers[event]) {
+        handlers[event](parsedData);
+      }
+    });
+  }
+}
+
 async function checkConnection() {
   const baseUrl = getServerUrl();
   if (!baseUrl) {
@@ -154,27 +217,46 @@ async function runTool() {
   }
 
   try {
-    startProgress();
+    setProgress(5);
     runToolButton.disabled = true;
-    const result = await fetchJson(`${baseUrl}/invoke`, {
-      method: "POST",
-      body: JSON.stringify({
+    await invokeToolSse(
+      baseUrl,
+      {
         name: toolName,
         arguments: argumentsPayload,
-      }),
-    });
-
-    resultOutput.textContent = JSON.stringify(result.raw_result || result.result, null, 2);
-
-    if (result.raw_result?.image_base64) {
-      resultImage.src = result.raw_result.image_base64;
-    } else {
-      resultImage.src = "";
-    }
+      },
+      {
+        progress: (payload) => {
+          const progressValue = Math.min(100, Math.max(0, payload.progress || 0));
+          setProgress(progressValue);
+        },
+        result: (payload) => {
+          resultOutput.textContent = JSON.stringify(
+            payload.raw_result || payload.result,
+            null,
+            2,
+          );
+          if (payload.raw_result?.image_base64) {
+            resultImage.src = payload.raw_result.image_base64;
+          } else {
+            resultImage.src = "";
+          }
+        },
+        error: (payload) => {
+          const errorMessage = payload?.error?.message || "工具執行失敗";
+          showToast(errorMessage);
+        },
+        done: () => {
+          setProgress(100);
+          setTimeout(() => setProgress(0), 500);
+        },
+      },
+    );
   } catch (error) {
+    startProgress();
+    stopProgress();
     showToast(error.message);
   } finally {
-    stopProgress();
     runToolButton.disabled = false;
   }
 }

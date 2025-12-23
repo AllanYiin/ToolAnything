@@ -11,6 +11,7 @@ from toolanything.core.registry import ToolRegistry
 from toolanything.core.result_serializer import ResultSerializer
 from toolanything.core.security_manager import SecurityManager
 from toolanything.exceptions import ToolError
+from toolanything.utils.logger import configure_logging, logger
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: Dict[str, Any]) -> None:
@@ -37,6 +38,28 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
         return json.loads(raw_body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
         return None
+
+
+def _send_sse_headers(handler: BaseHTTPRequestHandler, status_code: int = 200) -> None:
+    """送出 SSE 回應標頭。"""
+
+    handler.send_response(status_code)
+    handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("Connection", "keep-alive")
+    handler.send_header("X-Accel-Buffering", "no")
+    handler.end_headers()
+
+
+def _write_sse_event(handler: BaseHTTPRequestHandler, event: str, data: Dict[str, Any]) -> None:
+    """寫入單筆 SSE event。"""
+
+    payload = json.dumps(data, ensure_ascii=False)
+    handler.wfile.write(f"event: {event}\n".encode("utf-8"))
+    for line in payload.splitlines():
+        handler.wfile.write(f"data: {line}\n".encode("utf-8"))
+    handler.wfile.write(b"\n")
+    handler.wfile.flush()
 
 
 def _build_handler(
@@ -68,16 +91,10 @@ def _build_handler(
 
             _json_response(self, 404, {"error": "not_found"})
 
-        def do_POST(self) -> None:  # noqa: N802 - 標準庫接口
-            parsed = urlparse(self.path)
-            if parsed.path != "/invoke":
-                _json_response(self, 404, {"error": "not_found"})
-                return
-
+        def _handle_invoke(self) -> tuple[int, Dict[str, Any]]:
             payload = _read_json(self)
             if payload is None:
-                _json_response(self, 400, {"error": "invalid_json"})
-                return
+                return 400, {"error": "invalid_json"}
 
             name: str | None = payload.get("name")
             arguments: Dict[str, Any] = payload.get("arguments", {}) or {}
@@ -85,8 +102,7 @@ def _build_handler(
             audit_log = active_security_manager.audit_call(name or "", arguments, user_id)
 
             if not isinstance(name, str):
-                _json_response(self, 400, {"error": "missing_name"})
-                return
+                return 400, {"error": "missing_name"}
 
             try:
                 result = registry.execute_tool(
@@ -96,8 +112,7 @@ def _build_handler(
                     state_manager=None,
                 )
                 serialized = active_serializer.to_mcp(result)
-                _json_response(
-                    self,
+                return (
                     200,
                     {
                         "name": name,
@@ -108,8 +123,7 @@ def _build_handler(
                     },
                 )
             except ToolError as exc:  # pragma: no cover - runtime error handling
-                _json_response(
-                    self,
+                return (
                     400,
                     {
                         "error": exc.to_dict(),
@@ -118,8 +132,8 @@ def _build_handler(
                     },
                 )
             except Exception:  # pragma: no cover - runtime error handling
-                _json_response(
-                    self,
+                logger.exception("工具執行時發生未預期錯誤: %s", name)
+                return (
                     500,
                     {
                         "error": {"type": "internal_error", "message": "工具執行時發生未預期錯誤"},
@@ -127,6 +141,35 @@ def _build_handler(
                         "audit": audit_log,
                     },
                 )
+
+        def _handle_invoke_stream(self) -> None:
+            status_code, payload = self._handle_invoke()
+            _send_sse_headers(self, 200)
+            if status_code == 200:
+                _write_sse_event(self, "result", payload)
+            else:
+                _write_sse_event(
+                    self,
+                    "error",
+                    {
+                        "status_code": status_code,
+                        "payload": payload,
+                    },
+                )
+            _write_sse_event(self, "done", {"status": "done"})
+
+        def do_POST(self) -> None:  # noqa: N802 - 標準庫接口
+            parsed = urlparse(self.path)
+            if parsed.path == "/invoke":
+                status_code, payload = self._handle_invoke()
+                _json_response(self, status_code, payload)
+                return
+
+            if parsed.path == "/invoke/stream":
+                self._handle_invoke_stream()
+                return
+
+            _json_response(self, 404, {"error": "not_found"})
 
     return MCPToolHandler
 
@@ -139,6 +182,7 @@ def run_server(port: int, host: str = "0.0.0.0", registry: ToolRegistry | None =
     server = ThreadingHTTPServer((host, port), handler_cls)
     print(f"[ToolAnything] MCP Tool Server 已啟動：http://{host}:{port}")
     print("健康檢查：/health，工具列表：/tools，呼叫工具：POST /invoke")
+    print("SSE 呼叫工具：POST /invoke/stream（text/event-stream）")
 
     try:
         server.serve_forever()
@@ -158,8 +202,13 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """CLI 入口，解析參數並啟動伺服器。"""
 
-    args = _parse_args()
-    run_server(port=args.port, host=args.host)
+    configure_logging()
+    try:
+        args = _parse_args()
+        run_server(port=args.port, host=args.host)
+    except Exception:  # pragma: no cover - runtime error handling
+        logger.exception("MCP Tool Server 啟動失敗")
+        print("[ToolAnything] MCP Tool Server 啟動失敗，請查看 logs/toolanything.log")
 
 
 if __name__ == "__main__":

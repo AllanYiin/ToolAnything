@@ -123,6 +123,7 @@ async function invokeToolSse(baseUrl, payload, handlers) {
       if (!data) {
         return;
       }
+
       try {
         const parsedData = JSON.parse(data);
         if (handlers[event]) {
@@ -130,6 +131,7 @@ async function invokeToolSse(baseUrl, payload, handlers) {
         }
       } catch (error) {
         console.warn("無法解析 SSE 資料", error);
+
       }
     });
   }
@@ -223,6 +225,7 @@ async function runTool() {
   try {
     setProgress(5);
     runToolButton.disabled = true;
+
     try {
       await invokeToolSse(
         baseUrl,
@@ -274,6 +277,7 @@ async function runTool() {
       setProgress(100);
       setTimeout(() => setProgress(0), 500);
     }
+
   } catch (error) {
     startProgress();
     stopProgress();

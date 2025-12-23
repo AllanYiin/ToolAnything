@@ -143,17 +143,33 @@ def _build_handler(
                 )
 
         def _handle_invoke_stream(self) -> None:
-            status_code, payload = self._handle_invoke()
             _send_sse_headers(self, 200)
-            if status_code == 200:
-                _write_sse_event(self, "result", payload)
-            else:
+            try:
+                status_code, payload = self._handle_invoke()
+                if status_code == 200:
+                    _write_sse_event(self, "result", payload)
+                else:
+                    _write_sse_event(
+                        self,
+                        "error",
+                        {
+                            "status_code": status_code,
+                            "payload": payload,
+                        },
+                    )
+            except Exception:  # pragma: no cover - runtime error handling
+                logger.exception("SSE 工具呼叫時發生未預期錯誤")
                 _write_sse_event(
                     self,
                     "error",
                     {
-                        "status_code": status_code,
-                        "payload": payload,
+                        "status_code": 500,
+                        "payload": {
+                            "error": {
+                                "type": "internal_error",
+                                "message": "SSE 工具呼叫時發生未預期錯誤",
+                            }
+                        },
                     },
                 )
             _write_sse_event(self, "done", {"status": "done"})

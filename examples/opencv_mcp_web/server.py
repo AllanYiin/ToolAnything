@@ -177,11 +177,13 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
 
 def _send_sse_event(handler: BaseHTTPRequestHandler, event: str, payload: Dict[str, Any]) -> None:
     message = f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
     try:
         handler.wfile.write(message.encode("utf-8"))
         handler.wfile.flush()
     except BrokenPipeError:
         logging.warning("SSE client disconnected")
+
 
 
 def _read_static(path: Path) -> bytes | None:
@@ -283,7 +285,9 @@ def _build_handler(
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("Connection", "keep-alive")
+
                 self.send_header("X-Accel-Buffering", "no")
+
                 self._set_cors()
                 self.end_headers()
 
@@ -334,7 +338,9 @@ def _build_handler(
                         },
                     )
                     _send_sse_event(self, "done", {"status": "error"})
+
                 self.close_connection = True
+
                 return
 
             if parsed.path != "/invoke":

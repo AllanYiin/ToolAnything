@@ -175,6 +175,15 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
         return None
 
 
+def _send_sse_event(handler: BaseHTTPRequestHandler, event: str, payload: Dict[str, Any]) -> None:
+    message = f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    try:
+        handler.wfile.write(message.encode("utf-8"))
+        handler.wfile.flush()
+    except BrokenPipeError:
+        logging.warning("SSE client disconnected")
+
+
 def _read_static(path: Path) -> bytes | None:
     try:
         return path.read_bytes()
@@ -204,6 +213,7 @@ def _build_handler(
 
     class MCPWebHandler(BaseHTTPRequestHandler):
         server_version = "ToolAnythingMCPWeb/0.1"
+        protocol_version = "HTTP/1.1"
 
         def _set_cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -254,6 +264,79 @@ def _build_handler(
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path == "/invoke-sse":
+                payload = _read_json(self)
+                if payload is None:
+                    _json_response(self, 400, {"error": "invalid_json"})
+                    return
+
+                name: str | None = payload.get("name")
+                arguments: Dict[str, Any] = payload.get("arguments", {}) or {}
+                user_id: str | None = payload.get("user_id")
+                audit_log = active_security_manager.audit_call(name or "", arguments, user_id)
+
+                if not isinstance(name, str):
+                    _json_response(self, 400, {"error": "missing_name"})
+                    return
+
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.send_header("X-Accel-Buffering", "no")
+                self._set_cors()
+                self.end_headers()
+
+                try:
+                    _send_sse_event(self, "progress", {"progress": 10, "message": "開始處理"})
+                    result = registry.execute_tool(
+                        name,
+                        arguments=arguments,
+                        user_id=user_id,
+                        state_manager=None,
+                    )
+                    _send_sse_event(self, "progress", {"progress": 70, "message": "完成工具運算"})
+                    serialized = active_serializer.to_mcp(result)
+                    _send_sse_event(
+                        self,
+                        "result",
+                        {
+                            "name": name,
+                            "arguments": active_security_manager.mask_keys_in_log(arguments),
+                            "result": serialized,
+                            "raw_result": result,
+                            "audit": audit_log,
+                        },
+                    )
+                    _send_sse_event(self, "progress", {"progress": 100, "message": "輸出完成"})
+                    _send_sse_event(self, "done", {"status": "ok"})
+                except ToolError as exc:
+                    logging.warning("Tool error: %s", exc, exc_info=True)
+                    _send_sse_event(
+                        self,
+                        "error",
+                        {
+                            "error": exc.to_dict(),
+                            "arguments": active_security_manager.mask_keys_in_log(arguments),
+                            "audit": audit_log,
+                        },
+                    )
+                    _send_sse_event(self, "done", {"status": "error"})
+                except Exception as exc:
+                    logging.error("Unhandled tool error: %s", exc, exc_info=True)
+                    _send_sse_event(
+                        self,
+                        "error",
+                        {
+                            "error": {"type": "internal_error", "message": "工具執行時發生未預期錯誤"},
+                            "arguments": active_security_manager.mask_keys_in_log(arguments),
+                            "audit": audit_log,
+                        },
+                    )
+                    _send_sse_event(self, "done", {"status": "error"})
+                self.close_connection = True
+                return
+
             if parsed.path != "/invoke":
                 _json_response(self, 404, {"error": "not_found"})
                 return

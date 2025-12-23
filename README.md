@@ -103,3 +103,11 @@ ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 
   ```
 
   指令會讀取（或建立）指定的 Claude Desktop 設定檔，將 `mcpServers.toolanything` 自動寫入，重新啟動 Claude Desktop 後即可套用，無需手動複製貼上。
+
+- 直接安裝 OpenCV MCP Web 範例到 Claude Desktop：
+
+  ```bash
+  toolanything install-claude-opencv --config "~/Library/Application Support/Claude/config.json" --port 9091
+  ```
+
+  指令會讀取（或建立）指定的 Claude Desktop 設定檔，將 `mcpServers.opencv_mcp_web` 自動寫入，重新啟動 Claude Desktop 後即可套用。

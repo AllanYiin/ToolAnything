@@ -70,7 +70,9 @@ ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 
   toolanything run-mcp --port 9090
   ```
 
-  伺服器提供 `/health`、`/tools` 與 `POST /invoke` 三個端點，預設監聽 `0.0.0.0`，可透過 `--host` 覆寫。
+  伺服器提供 `/health`、`/tools`、`POST /invoke` 與 `POST /invoke/stream`（SSE）四個端點，預設監聽 `0.0.0.0`，可透過 `--host` 覆寫。
+
+  其中 `/invoke/stream` 會以 `text/event-stream` 回傳工具結果，可用於需要 SSE 的連線器。
 
 - 產生 Claude Desktop 設定片段：
 

@@ -19,9 +19,16 @@ def _get_default_claude_config_path() -> Path:
 
 
 def _build_mcp_entry(port: int) -> Dict[str, Any]:
+    return _build_custom_entry(
+        command="python",
+        args=["-m", "toolanything.cli", "run-mcp", "--port", str(port)],
+    )
+
+
+def _build_custom_entry(command: str, args: list[str]) -> Dict[str, Any]:
     return {
-        "command": "python",
-        "args": ["-m", "toolanything.cli", "run-mcp", "--port", str(port)],
+        "command": command,
+        "args": args,
         "autoStart": True,
     }
 
@@ -64,6 +71,34 @@ def _install_claude_config(path: Path, port: int, name: str) -> None:
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
         f"已更新 {path}，新增 {name} MCP 伺服器設定，重新啟動 Claude Desktop 後即可自動載入。"
+    )
+
+
+def _install_claude_opencv_config(path: Path, port: int, name: str) -> None:
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.exists():
+        content = path.read_text(encoding="utf-8")
+        config = json.loads(content) if content.strip() else {}
+    else:
+        config = {}
+
+    mcp_servers = config.setdefault("mcpServers", {})
+    mcp_servers[name] = _build_custom_entry(
+        command="python",
+        args=[
+            "examples/opencv_mcp_web/server.py",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            str(port),
+        ],
+    )
+
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(
+        f"已更新 {path}，新增 {name} OpenCV MCP Web 設定，重新啟動 Claude Desktop 後即可自動載入。"
     )
 
 
@@ -140,6 +175,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     install_parser.set_defaults(
         func=lambda args: _install_claude_config(path=args.config, port=args.port, name=args.name)
+    )
+
+    install_opencv_parser = subparsers.add_parser(
+        "install-claude-opencv",
+        help="直接寫入 Claude Desktop 設定檔（OpenCV MCP Web 範例）",
+    )
+    install_opencv_parser.add_argument(
+        "--config",
+        default=_get_default_claude_config_path(),
+        type=Path,
+        help="Claude Desktop 設定檔路徑",
+    )
+    install_opencv_parser.add_argument("--port", type=int, default=9091, help="監聽 port，預設 9091")
+    install_opencv_parser.add_argument(
+        "--name",
+        default="opencv_mcp_web",
+        help="在 Claude Desktop 中顯示的 mcpServers 名稱，預設 opencv_mcp_web",
+    )
+    install_opencv_parser.set_defaults(
+        func=lambda args: _install_claude_opencv_config(
+            path=args.config, port=args.port, name=args.name
+        )
     )
 
     search_parser = subparsers.add_parser("search", help="搜尋已註冊的工具並依失敗分數排序")

@@ -411,7 +411,7 @@ def start_server(port: int, host: str = "0.0.0.0") -> None:
     server = ThreadingHTTPServer((host, port), handler_cls)
     logging.info("MCP Web Server 啟動：http://%s:%s", host, port)
     print(f"[opencv_mcp_web] 伺服器已啟動：http://{host}:{port}")
-    print("健康檢查：/health，工具列表：/tools，呼叫工具：POST /invoke")
+    print("健康檢查：/health，工具列表：/tools，呼叫工具：POST /invoke-sse（SSE）")
 
     try:
         server.serve_forever()

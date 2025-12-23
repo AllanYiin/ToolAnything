@@ -6,6 +6,23 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 - 語法糖簡潔：依據 type hints 生成 JSON Schema，降低心智負擔。
 - 支援 pipeline 與多使用者 state：透過 `@pipeline` decorator 組裝跨工具流程並維持使用者上下文。
 
+## 協議對應方式（MCP STDIO / SSE / OpenAI Tool Calling）
+
+專案內同時支援 MCP STDIO、MCP HTTP（含 SSE）與 OpenAI Tool Calling，其對應方式如下：
+
+- **MCP STDIO**
+  - 走 `MCPStdioServer`，透過 stdin/stdout 的 JSON-RPC 2.0 傳輸。
+  - 與 URL 無關，屬於非 HTTP 通道。
+  - 實作位置：`src/toolanything/server/mcp_stdio_server.py`
+- **MCP SSE / HTTP**
+  - 走 HTTP 伺服器，SSE 端點為 `POST /invoke/stream`。
+  - 以 URL 路徑區分 SSE 與非串流（`POST /invoke`）。
+  - 實作位置：`src/toolanything/server/mcp_tool_server.py`
+- **OpenAI Tool Calling**
+  - 走 schema 轉換（`OpenAIAdapter`），由程式產出工具定義給 OpenAI API。
+  - 不依賴 URL，屬於資料格式與呼叫封裝的對接。
+  - 實作位置：`src/toolanything/adapters/openai_adapter.py`
+
 ## 快速範例
 
 ```python

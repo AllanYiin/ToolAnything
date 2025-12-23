@@ -123,9 +123,15 @@ async function invokeToolSse(baseUrl, payload, handlers) {
       if (!data) {
         return;
       }
-      const parsedData = JSON.parse(data);
-      if (handlers[event]) {
-        handlers[event](parsedData);
+
+      try {
+        const parsedData = JSON.parse(data);
+        if (handlers[event]) {
+          handlers[event](parsedData);
+        }
+      } catch (error) {
+        console.warn("無法解析 SSE 資料", error);
+
       }
     });
   }
@@ -219,39 +225,59 @@ async function runTool() {
   try {
     setProgress(5);
     runToolButton.disabled = true;
-    await invokeToolSse(
-      baseUrl,
-      {
-        name: toolName,
-        arguments: argumentsPayload,
-      },
-      {
-        progress: (payload) => {
-          const progressValue = Math.min(100, Math.max(0, payload.progress || 0));
-          setProgress(progressValue);
+
+    try {
+      await invokeToolSse(
+        baseUrl,
+        {
+          name: toolName,
+          arguments: argumentsPayload,
         },
-        result: (payload) => {
-          resultOutput.textContent = JSON.stringify(
-            payload.raw_result || payload.result,
-            null,
-            2,
-          );
-          if (payload.raw_result?.image_base64) {
-            resultImage.src = payload.raw_result.image_base64;
-          } else {
-            resultImage.src = "";
-          }
+        {
+          progress: (payload) => {
+            const progressValue = Math.min(100, Math.max(0, payload.progress || 0));
+            setProgress(progressValue);
+          },
+          result: (payload) => {
+            resultOutput.textContent = JSON.stringify(
+              payload.raw_result || payload.result,
+              null,
+              2,
+            );
+            if (payload.raw_result?.image_base64) {
+              resultImage.src = payload.raw_result.image_base64;
+            } else {
+              resultImage.src = "";
+            }
+          },
+          error: (payload) => {
+            const errorMessage = payload?.error?.message || "工具執行失敗";
+            showToast(errorMessage);
+          },
+          done: () => {
+            setProgress(100);
+            setTimeout(() => setProgress(0), 500);
+          },
         },
-        error: (payload) => {
-          const errorMessage = payload?.error?.message || "工具執行失敗";
-          showToast(errorMessage);
-        },
-        done: () => {
-          setProgress(100);
-          setTimeout(() => setProgress(0), 500);
-        },
-      },
-    );
+      );
+    } catch (error) {
+      const result = await fetchJson(`${baseUrl}/invoke`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: toolName,
+          arguments: argumentsPayload,
+        }),
+      });
+      resultOutput.textContent = JSON.stringify(result.raw_result || result.result, null, 2);
+      if (result.raw_result?.image_base64) {
+        resultImage.src = result.raw_result.image_base64;
+      } else {
+        resultImage.src = "";
+      }
+      setProgress(100);
+      setTimeout(() => setProgress(0), 500);
+    }
+
   } catch (error) {
     startProgress();
     stopProgress();

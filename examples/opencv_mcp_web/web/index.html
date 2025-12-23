@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenCV MCP Web Demo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>OpenCV MCP 影像工具示範</h1>
+      <p class="subtitle">上傳圖片後，透過 MCP Server 呼叫 OpenCV 工具進行處理。</p>
+    </header>
+
+    <main class="page-content">
+      <section class="card">
+        <h2>連線狀態</h2>
+        <div class="connection-row">
+          <label for="serverUrl">MCP Server URL</label>
+          <input id="serverUrl" type="text" value="" />
+          <button id="checkConnection" type="button">檢查連線</button>
+        </div>
+        <p id="connectionStatus" class="status">尚未檢查</p>
+        <div class="tool-list">
+          <h3>工具列表</h3>
+          <ul id="tools"></ul>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>圖片上傳</h2>
+        <div class="upload-row">
+          <input id="fileInput" type="file" accept="image/*" />
+        </div>
+        <div class="preview-grid">
+          <div>
+            <p class="label">原始預覽</p>
+            <img id="previewImage" alt="原始圖片預覽" />
+          </div>
+          <div>
+            <p class="label">處理結果</p>
+            <img id="resultImage" alt="處理結果預覽" />
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>工具設定</h2>
+        <div class="tool-controls">
+          <label for="toolSelect">選擇工具</label>
+          <select id="toolSelect">
+            <option value="opencv.info">取得圖片資訊</option>
+            <option value="opencv.resize">縮放圖片</option>
+            <option value="opencv.canny">邊緣偵測</option>
+          </select>
+        </div>
+
+        <div id="resizeSettings" class="settings-group">
+          <h3>縮放設定</h3>
+          <div class="input-row">
+            <label for="resizeWidth">目標寬度</label>
+            <input id="resizeWidth" type="number" placeholder="例如 800" />
+          </div>
+          <div class="input-row">
+            <label for="resizeHeight">目標高度</label>
+            <input id="resizeHeight" type="number" placeholder="例如 600" />
+          </div>
+          <p class="hint">縮放會自動保持原始寬高比。</p>
+        </div>
+
+        <div id="cannySettings" class="settings-group">
+          <h3>邊緣偵測設定</h3>
+          <div class="input-row">
+            <label for="threshold1">閾值 1</label>
+            <input id="threshold1" type="number" value="50" />
+          </div>
+          <div class="input-row">
+            <label for="threshold2">閾值 2</label>
+            <input id="threshold2" type="number" value="150" />
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="runTool" type="button">執行工具</button>
+        </div>
+        <div class="progress-row">
+          <label for="progressBar">執行進度</label>
+          <progress id="progressBar" value="0" max="100"></progress>
+        </div>
+        <pre id="resultOutput" class="result-output"></pre>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="alert"></div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

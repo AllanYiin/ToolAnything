@@ -1,6 +1,6 @@
 # OpenCV MCP Web Demo
 
-這個範例示範如何把 OpenCV 工具包裝成 MCP Server，並提供網頁端 MCP Client 進行測試。
+這個範例示範如何把 OpenCV 工具包裝成 MCP Server，並提供網頁端 MCP Client 進行測試，且支援 MCP SSE 連線給 ChatGPT App 之類的 Connector 使用。
 
 ## 功能摘要
 
@@ -8,6 +8,7 @@
 - **opencv.resize**：依照指定尺寸縮放圖片（可保持比例）
 - **opencv.canny**：Canny 邊緣偵測
 - **Web UI**：上傳圖片、預覽結果、顯示執行進度與工具輸出（SSE 串流）
+- **MCP SSE**：`GET /sse` 建立 SSE 連線，`POST /messages/{session_id}` 發送 JSON-RPC 訊息
 
 ## 本機啟動
 
@@ -17,6 +18,11 @@ python examples/opencv_mcp_web/server.py --host 0.0.0.0 --port 9091
 ```
 
 開啟瀏覽器：`http://localhost:9091`
+
+若要透過 MCP SSE 連線（例如 ChatGPT App 的 MCP Connector）：
+
+- SSE 入口：`http://localhost:9091/sse`
+- 伺服器會回傳 `event: endpoint`，其中 `uri` 會帶回對應的 `/messages/{session_id}` 端點。
 
 ## 部署到 Zeabur
 

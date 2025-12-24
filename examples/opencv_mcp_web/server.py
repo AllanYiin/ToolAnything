@@ -7,11 +7,14 @@ import binascii
 import json
 import logging
 import sys
+import threading
+import time
 import traceback
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import cv2
 import numpy as np
@@ -22,6 +25,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from toolanything import ToolRegistry, tool
+from toolanything.adapters.mcp_adapter import MCPAdapter
 from toolanything.core.result_serializer import ResultSerializer
 from toolanything.core.security_manager import SecurityManager
 from toolanything.exceptions import ToolError
@@ -38,6 +42,16 @@ logging.basicConfig(
 )
 
 registry = ToolRegistry()
+mcp_adapter = MCPAdapter(registry)
+_SSE_SESSIONS: dict[str, "SSESession"] = {}
+_SSE_SESSIONS_LOCK = threading.Lock()
+
+
+class SSESession:
+    def __init__(self, handler: BaseHTTPRequestHandler) -> None:
+        self.handler = handler
+        self.lock = threading.Lock()
+        self.active = True
 
 
 def _decode_image(image_base64: str) -> np.ndarray:
@@ -185,6 +199,143 @@ def _send_sse_event(handler: BaseHTTPRequestHandler, event: str, payload: Dict[s
         logging.warning("SSE client disconnected")
 
 
+def _send_sse_event_locked(session: SSESession, event: str, payload: Dict[str, Any]) -> bool:
+    message = f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    try:
+        with session.lock:
+            session.handler.wfile.write(message.encode("utf-8"))
+            session.handler.wfile.flush()
+        return True
+    except BrokenPipeError:
+        logging.warning("MCP SSE client disconnected")
+        return False
+    except Exception as exc:
+        logging.error("MCP SSE 寫入失敗: %s", exc, exc_info=True)
+        return False
+
+
+def _send_sse_headers(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("Connection", "keep-alive")
+    handler.send_header("X-Accel-Buffering", "no")
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
+    handler.end_headers()
+
+
+def _register_sse_session(session_id: str, session: SSESession) -> None:
+    with _SSE_SESSIONS_LOCK:
+        _SSE_SESSIONS[session_id] = session
+
+
+def _get_sse_session(session_id: str) -> SSESession | None:
+    with _SSE_SESSIONS_LOCK:
+        return _SSE_SESSIONS.get(session_id)
+
+
+def _remove_sse_session(session_id: str) -> None:
+    with _SSE_SESSIONS_LOCK:
+        _SSE_SESSIONS.pop(session_id, None)
+
+
+def _build_mcp_response(
+    request: Dict[str, Any],
+    *,
+    registry: ToolRegistry,
+    serializer: ResultSerializer,
+    security_manager: SecurityManager,
+) -> Dict[str, Any] | None:
+    method = request.get("method")
+    request_id = request.get("id")
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": mcp_adapter.to_capabilities(),
+        }
+
+    if method == "notifications/initialized":
+        return None
+
+    if method == "tools/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {"tools": registry.to_mcp_tools()},
+        }
+
+    if method == "tools/call":
+        params = request.get("params", {}) or {}
+        name = params.get("name")
+        arguments: Dict[str, Any] = params.get("arguments", {}) or {}
+        masked_args = security_manager.mask_keys_in_log(arguments)
+        audit_log = security_manager.audit_call(name or "", arguments, "default")
+
+        try:
+            result = registry.execute_tool(
+                name,
+                arguments=arguments,
+                user_id="default",
+                state_manager=None,
+            )
+            serialized = serializer.to_mcp(result)
+            text_content = (
+                json.dumps(serialized["content"], ensure_ascii=False)
+                if serialized.get("contentType") == "application/json"
+                else str(serialized.get("content"))
+            )
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "content": [{"type": "text", "text": text_content}],
+                    "meta": {"contentType": serialized.get("contentType")},
+                    "arguments": masked_args,
+                    "audit": audit_log,
+                },
+                "raw_result": result,
+            }
+        except ToolError as exc:
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32001,
+                    "message": exc.error_type,
+                    "data": {
+                        "message": str(exc),
+                        "details": exc.data,
+                        "arguments": masked_args,
+                        "audit": audit_log,
+                    },
+                },
+            }
+        except Exception:
+            logging.error("MCP tools/call 發生未預期錯誤", exc_info=True)
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32603,
+                    "message": "internal_error",
+                    "data": {"arguments": masked_args, "audit": audit_log},
+                },
+            }
+
+    if request_id is None:
+        return None
+
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {"code": -32601, "message": "method_not_found"},
+    }
+
+
 
 def _read_static(path: Path) -> bytes | None:
     try:
@@ -232,6 +383,30 @@ def _build_handler(
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path == "/sse":
+                session_id = uuid.uuid4().hex
+                session = SSESession(self)
+                _register_sse_session(session_id, session)
+                _send_sse_headers(self)
+                _send_sse_event(self, "endpoint", {"uri": f"/messages/{session_id}"})
+
+                last_ping = time.monotonic()
+                try:
+                    while session.active:
+                        time.sleep(1)
+                        if time.monotonic() - last_ping >= 15:
+                            alive = _send_sse_event_locked(session, "ping", {"ts": time.time()})
+                            if not alive:
+                                session.active = False
+                                break
+                            last_ping = time.monotonic()
+                except Exception as exc:
+                    logging.error("MCP SSE 連線中斷: %s", exc, exc_info=True)
+                finally:
+                    session.active = False
+                    _remove_sse_session(session_id)
+                return
+
             if parsed.path in {"/", "/index.html"}:
                 file_path = WEB_DIR / "index.html"
                 return self._serve_static(file_path)
@@ -266,6 +441,42 @@ def _build_handler(
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path.startswith("/messages"):
+                session_id = None
+                if parsed.path == "/messages":
+                    session_id = parse_qs(parsed.query).get("session_id", [None])[0]
+                elif parsed.path.startswith("/messages/"):
+                    session_id = parsed.path.split("/", 2)[2]
+
+                if not session_id:
+                    _json_response(self, 400, {"error": "missing_session"})
+                    return
+
+                session = _get_sse_session(session_id)
+                if session is None or not session.active:
+                    _json_response(self, 404, {"error": "session_not_found"})
+                    return
+
+                payload = _read_json(self)
+                if payload is None:
+                    _json_response(self, 400, {"error": "invalid_json"})
+                    return
+
+                response = _build_mcp_response(
+                    payload,
+                    registry=registry,
+                    serializer=active_serializer,
+                    security_manager=active_security_manager,
+                )
+                if response is not None:
+                    sent = _send_sse_event_locked(session, "message", response)
+                    if not sent:
+                        session.active = False
+                        _remove_sse_session(session_id)
+
+                _json_response(self, 200, {"status": "accepted"})
+                return
+
             if parsed.path == "/invoke-sse":
                 payload = _read_json(self)
                 if payload is None:
@@ -412,6 +623,7 @@ def start_server(port: int, host: str = "0.0.0.0") -> None:
     logging.info("MCP Web Server 啟動：http://%s:%s", host, port)
     print(f"[opencv_mcp_web] 伺服器已啟動：http://{host}:{port}")
     print("健康檢查：/health，工具列表：/tools，呼叫工具：POST /invoke-sse（SSE）")
+    print("MCP SSE：GET /sse（回傳 endpoint 供 POST /messages/{session_id} 使用）")
 
     try:
         server.serve_forever()

@@ -15,8 +15,8 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
   - 與 URL 無關，屬於非 HTTP 通道。
   - 實作位置：`src/toolanything/server/mcp_stdio_server.py`
 - **MCP SSE / HTTP**
-  - 走 HTTP 伺服器，SSE 端點為 `POST /invoke/stream`。
-  - 以 URL 路徑區分 SSE 與非串流（`POST /invoke`）。
+  - 走 HTTP 伺服器，MCP SSE 入口為 `GET /sse`，並透過 `POST /messages/{session_id}` 傳送 JSON-RPC。
+  - 另提供簡化的 `POST /invoke/stream`（SSE）與 `POST /invoke` 介面，方便開發測試。
   - 實作位置：`src/toolanything/server/mcp_tool_server.py`
 - **OpenAI Tool Calling**
   - 走 schema 轉換（`OpenAIAdapter`），由程式產出工具定義給 OpenAI API。
@@ -87,9 +87,9 @@ ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 
   toolanything run-mcp --port 9090
   ```
 
-  伺服器提供 `/health`、`/tools`、`POST /invoke` 與 `POST /invoke/stream`（SSE）四個端點，預設監聽 `0.0.0.0`，可透過 `--host` 覆寫。
+  伺服器提供 `/health`、`/tools`、`GET /sse`（MCP SSE）、`POST /messages/{session_id}`（MCP JSON-RPC）、`POST /invoke` 與 `POST /invoke/stream`（SSE）端點，預設監聽 `0.0.0.0`，可透過 `--host` 覆寫。
 
-  其中 `/invoke/stream` 會以 `text/event-stream` 回傳工具結果，可用於需要 SSE 的連線器。
+  其中 `/sse` 會回傳 MCP 所需的 SSE stream，並在第一個 event 提供 message endpoint。
 
 - 產生 Claude Desktop 設定片段：
 

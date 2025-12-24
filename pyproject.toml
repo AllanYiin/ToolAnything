@@ -8,8 +8,6 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "tenacity>=8.2.0",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
 ]
 
 [project.optional-dependencies]

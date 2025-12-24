@@ -235,7 +235,20 @@ def _build_handler(
                 session = SSESession(self)
                 _register_sse_session(session_id, session)
                 _send_sse_headers(self, 200)
-                _write_sse_event(self, "endpoint", {"uri": f"/messages/{session_id}"})
+                _write_sse_event(
+                    self,
+                    "message",
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "transport/ready",
+                        "params": {
+                            "transport": {
+                                "type": "sse",
+                                "messageEndpoint": f"/messages/{session_id}",
+                            }
+                        },
+                    },
+                )
 
                 last_ping = time.monotonic()
                 try:

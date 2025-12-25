@@ -25,7 +25,14 @@ serializer = ResultSerializer()
 security_manager = SecurityManager()
 
 _sessions: Dict[str, asyncio.Queue] = {}
-_sessions_lock = asyncio.Lock()
+_sessions_lock: asyncio.Lock | None = None
+
+
+def _get_sessions_lock() -> asyncio.Lock:
+    global _sessions_lock
+    if _sessions_lock is None:
+        _sessions_lock = asyncio.Lock()
+    return _sessions_lock
 
 
 def _sse(data: Dict[str, Any]) -> str:
@@ -34,17 +41,17 @@ def _sse(data: Dict[str, Any]) -> str:
 
 
 async def _register_session(session_id: str, queue: asyncio.Queue) -> None:
-    async with _sessions_lock:
+    async with _get_sessions_lock():
         _sessions[session_id] = queue
 
 
 async def _get_session(session_id: str) -> asyncio.Queue | None:
-    async with _sessions_lock:
+    async with _get_sessions_lock():
         return _sessions.get(session_id)
 
 
 async def _remove_session(session_id: str) -> None:
-    async with _sessions_lock:
+    async with _get_sessions_lock():
         _sessions.pop(session_id, None)
 
 

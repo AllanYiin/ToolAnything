@@ -20,10 +20,10 @@ from toolanything.utils.logger import configure_logging, logger
 
 app = FastAPI(title="ToolAnything MCP SSE (ASGI)")
 
-registry = ToolRegistry.global_instance()
-adapter = MCPAdapter(registry)
-serializer = ResultSerializer()
-security_manager = SecurityManager()
+registry: ToolRegistry | None = None
+adapter: MCPAdapter | None = None
+serializer: ResultSerializer | None = None
+security_manager: SecurityManager | None = None
 
 _sessions: Dict[str, asyncio.Queue] = {}
 _sessions_lock: asyncio.Lock | None = None
@@ -48,6 +48,20 @@ def _sse(data: Dict[str, Any]) -> str:
     return f"data: {payload}\n\n"
 
 
+@app.on_event("startup")
+async def startup() -> None:
+    global registry, adapter, serializer, security_manager
+    configure_logging()
+    try:
+        registry = ToolRegistry.global_instance()
+        adapter = MCPAdapter(registry)
+        serializer = ResultSerializer()
+        security_manager = SecurityManager()
+    except Exception:
+        logger.exception("ASGI MCP SSE Server 初始化失敗")
+        raise
+
+
 async def _register_session(session_id: str, queue: asyncio.Queue) -> None:
     async with _get_sessions_lock():
         _sessions[session_id] = queue
@@ -63,7 +77,13 @@ async def _remove_session(session_id: str) -> None:
         _sessions.pop(session_id, None)
 
 
-def _build_mcp_response(request_payload: Dict[str, Any]) -> Dict[str, Any] | None:
+def _build_mcp_response(
+    request_payload: Dict[str, Any],
+    registry: ToolRegistry,
+    adapter: MCPAdapter,
+    serializer: ResultSerializer,
+    security_manager: SecurityManager,
+) -> Dict[str, Any] | None:
     method = request_payload.get("method")
     request_id = request_payload.get("id")
 
@@ -201,6 +221,9 @@ async def sse(_: Request) -> StreamingResponse:
 
 @app.post("/messages/{session_id}")
 async def handle_message(session_id: str, request: Request) -> JSONResponse | Dict[str, Any]:
+    if registry is None or adapter is None or serializer is None or security_manager is None:
+        return JSONResponse({"error": "server_not_ready"}, status_code=503)
+
     queue = await _get_session(session_id)
     if queue is None:
         return JSONResponse({"error": "session_not_found"}, status_code=404)
@@ -211,7 +234,7 @@ async def handle_message(session_id: str, request: Request) -> JSONResponse | Di
         logger.exception("MCP SSE 解析 JSON 失敗")
         return JSONResponse({"error": "invalid_json"}, status_code=400)
 
-    response = _build_mcp_response(payload)
+    response = _build_mcp_response(payload, registry, adapter, serializer, security_manager)
     if response is not None:
         await queue.put(response)
 

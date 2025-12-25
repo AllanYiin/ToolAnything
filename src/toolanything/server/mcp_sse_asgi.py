@@ -27,15 +27,19 @@ security_manager = SecurityManager()
 
 _sessions: Dict[str, asyncio.Queue] = {}
 _sessions_lock: asyncio.Lock | None = None
+
 _sessions_lock_guard = Lock()
+
 
 
 def _get_sessions_lock() -> asyncio.Lock:
     global _sessions_lock
     if _sessions_lock is None:
+
         with _sessions_lock_guard:
             if _sessions_lock is None:
                 _sessions_lock = asyncio.Lock()
+
     return _sessions_lock
 
 

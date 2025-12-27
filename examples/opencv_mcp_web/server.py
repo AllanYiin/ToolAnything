@@ -29,6 +29,7 @@ from toolanything.adapters.mcp_adapter import MCPAdapter
 from toolanything.core.result_serializer import ResultSerializer
 from toolanything.core.security_manager import SecurityManager
 from toolanything.exceptions import ToolError
+from toolanything.host_adapters import Transport, ZeaburHostAdapter
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
@@ -45,6 +46,42 @@ registry = ToolRegistry()
 mcp_adapter = MCPAdapter(registry)
 _SSE_SESSIONS: dict[str, "SSESession"] = {}
 _SSE_SESSIONS_LOCK = threading.Lock()
+
+
+class HostRuntimeConfig:
+    def __init__(
+        self,
+        *,
+        name: str | None = None,
+        allow_inbound_sse: bool = True,
+        sse_block_reason: str | None = None,
+        sse_block_warning: str | None = None,
+    ) -> None:
+        self.name = name
+        self.allow_inbound_sse = allow_inbound_sse
+        self.sse_block_reason = sse_block_reason
+        self.sse_block_warning = sse_block_warning
+
+
+def _resolve_host_runtime() -> HostRuntimeConfig:
+    if ZeaburHostAdapter.detect():
+        adapter = ZeaburHostAdapter()
+        decision = adapter.choose_transport(Transport.SSE)
+        allow_inbound_sse = decision.transport == Transport.SSE
+        if not allow_inbound_sse:
+            logging.warning(
+                "Host adapter 偵測到 %s，停用 inbound SSE：%s",
+                adapter.name,
+                decision.reason,
+            )
+        return HostRuntimeConfig(
+            name=adapter.name,
+            allow_inbound_sse=allow_inbound_sse,
+            sse_block_reason=decision.reason,
+            sse_block_warning=decision.warning,
+        )
+
+    return HostRuntimeConfig()
 
 
 class SSESession:
@@ -360,9 +397,11 @@ def _build_handler(
     *,
     serializer: ResultSerializer | None = None,
     security_manager: SecurityManager | None = None,
+    host_runtime: HostRuntimeConfig | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     active_serializer = serializer or ResultSerializer()
     active_security_manager = security_manager or SecurityManager()
+    active_host_runtime = host_runtime or HostRuntimeConfig()
 
     class MCPWebHandler(BaseHTTPRequestHandler):
         server_version = "ToolAnythingMCPWeb/0.1"
@@ -384,6 +423,17 @@ def _build_handler(
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             if parsed.path == "/sse":
+                if not active_host_runtime.allow_inbound_sse:
+                    _json_response(
+                        self,
+                        503,
+                        {
+                            "error": "sse_not_supported",
+                            "reason": active_host_runtime.sse_block_reason,
+                            "warning": active_host_runtime.sse_block_warning,
+                        },
+                    )
+                    return
                 session_id = uuid.uuid4().hex
                 session = SSESession(self)
                 _register_sse_session(session_id, session)
@@ -478,6 +528,17 @@ def _build_handler(
                 return
 
             if parsed.path == "/invoke-sse":
+                if not active_host_runtime.allow_inbound_sse:
+                    _json_response(
+                        self,
+                        503,
+                        {
+                            "error": "sse_not_supported",
+                            "reason": active_host_runtime.sse_block_reason,
+                            "warning": active_host_runtime.sse_block_warning,
+                        },
+                    )
+                    return
                 payload = _read_json(self)
                 if payload is None:
                     _json_response(self, 400, {"error": "invalid_json"})
@@ -618,12 +679,21 @@ def _build_handler(
 
 
 def start_server(port: int, host: str = "0.0.0.0") -> None:
-    handler_cls = _build_handler(registry)
+    host_runtime = _resolve_host_runtime()
+    handler_cls = _build_handler(registry, host_runtime=host_runtime)
     server = ThreadingHTTPServer((host, port), handler_cls)
     logging.info("MCP Web Server 啟動：http://%s:%s", host, port)
     print(f"[opencv_mcp_web] 伺服器已啟動：http://{host}:{port}")
     print("健康檢查：/health，工具列表：/tools，呼叫工具：POST /invoke-sse（SSE）")
     print("MCP SSE：GET /sse（回傳 endpoint 供 POST /messages/{session_id} 使用）")
+    if not host_runtime.allow_inbound_sse:
+        print(
+            "[opencv_mcp_web] 偵測到不支援 inbound SSE 的環境，已停用 /sse 與 /invoke-sse"
+        )
+        if host_runtime.sse_block_reason:
+            print(f"[opencv_mcp_web] 原因：{host_runtime.sse_block_reason}")
+        if host_runtime.sse_block_warning:
+            print(f"[opencv_mcp_web] 提醒：{host_runtime.sse_block_warning}")
 
     try:
         server.serve_forever()

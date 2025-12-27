@@ -24,6 +24,7 @@ def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: D
 
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     handler.send_response(status_code)
+    _send_cors_headers(handler)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
@@ -49,6 +50,7 @@ def _send_sse_headers(handler: BaseHTTPRequestHandler, status_code: int = 200) -
     """送出 SSE 回應標頭。"""
 
     handler.send_response(status_code)
+    _send_cors_headers(handler)
     handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
     handler.send_header("Cache-Control", "no-cache")
     handler.send_header("Connection", "keep-alive")
@@ -111,6 +113,13 @@ def _write_sse_event_locked(session: SSESession, event: str, data: Dict[str, Any
     except Exception:
         logger.exception("MCP SSE 寫入失敗")
         return False
+
+
+def _send_cors_headers(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    handler.send_header("Access-Control-Max-Age", "600")
 
 
 def _build_mcp_response(
@@ -227,6 +236,19 @@ def _build_handler(
 
         def log_message(self, format: str, *args: Any) -> None:  # pragma: no cover - 使用預設 logging 行為
             super().log_message(format, *args)
+
+        def do_OPTIONS(self) -> None:  # noqa: N802 - 標準庫接口
+            parsed = urlparse(self.path)
+            if (
+                parsed.path in {"/", "/health", "/tools", "/sse", "/invoke", "/invoke/stream"}
+                or parsed.path.startswith("/messages/")
+            ):
+                self.send_response(204)
+                _send_cors_headers(self)
+                self.end_headers()
+                return
+
+            _json_response(self, 404, {"error": "not_found"})
 
         def do_GET(self) -> None:  # noqa: N802 - 標準庫接口
             parsed = urlparse(self.path)

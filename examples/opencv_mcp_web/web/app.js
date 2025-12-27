@@ -19,6 +19,11 @@ const toast = document.getElementById("toast");
 
 let currentImageBase64 = "";
 let progressTimer = null;
+let serverCapabilities = {
+  inboundSse: true,
+  transport: "sse",
+  hostAdapter: null,
+};
 
 function showToast(message) {
   toast.textContent = message;
@@ -142,6 +147,23 @@ async function invokeToolSse(baseUrl, payload, handlers) {
   }
 }
 
+async function invokeToolJson(baseUrl, payload) {
+  const response = await fetch(`${baseUrl}/invoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage = data?.error?.message || "工具執行失敗";
+    throw new Error(errorMessage);
+  }
+  return data;
+}
+
 async function checkConnection() {
   const baseUrl = getServerUrl();
   if (!baseUrl) {
@@ -152,7 +174,15 @@ async function checkConnection() {
   connectionStatus.textContent = "連線中...";
   try {
     const health = await fetchJson(`${baseUrl}/health`);
-    connectionStatus.textContent = `連線成功：${health.status}`;
+    serverCapabilities = {
+      inboundSse: health.inbound_sse !== false,
+      transport: health.transport || "sse",
+      hostAdapter: health.host_adapter || null,
+    };
+    const transportLabel = serverCapabilities.inboundSse
+      ? "SSE"
+      : "HTTP";
+    connectionStatus.textContent = `連線成功：${health.status}（${transportLabel}）`;
     const tools = await fetchJson(`${baseUrl}/tools`);
     renderTools(tools.tools || []);
   } catch (error) {
@@ -231,39 +261,58 @@ async function runTool() {
     setProgress(5);
     runToolButton.disabled = true;
 
-    await invokeToolSse(
-      baseUrl,
-      {
+    if (serverCapabilities.inboundSse) {
+      await invokeToolSse(
+        baseUrl,
+        {
+          name: toolName,
+          arguments: argumentsPayload,
+        },
+        {
+          progress: (payload) => {
+            const progressValue = Math.min(100, Math.max(0, payload.progress || 0));
+            setProgress(progressValue);
+          },
+          result: (payload) => {
+            resultOutput.textContent = JSON.stringify(
+              payload.raw_result || payload.result,
+              null,
+              2,
+            );
+            if (payload.raw_result?.image_base64) {
+              resultImage.src = payload.raw_result.image_base64;
+            } else {
+              resultImage.src = "";
+            }
+          },
+          error: (payload) => {
+            const errorMessage = payload?.error?.message || "工具執行失敗";
+            showToast(errorMessage);
+          },
+          done: () => {
+            setProgress(100);
+            setTimeout(() => setProgress(0), 500);
+          },
+        },
+      );
+    } else {
+      startProgress();
+      const response = await invokeToolJson(baseUrl, {
         name: toolName,
         arguments: argumentsPayload,
-      },
-      {
-        progress: (payload) => {
-          const progressValue = Math.min(100, Math.max(0, payload.progress || 0));
-          setProgress(progressValue);
-        },
-        result: (payload) => {
-          resultOutput.textContent = JSON.stringify(
-            payload.raw_result || payload.result,
-            null,
-            2,
-          );
-          if (payload.raw_result?.image_base64) {
-            resultImage.src = payload.raw_result.image_base64;
-          } else {
-            resultImage.src = "";
-          }
-        },
-        error: (payload) => {
-          const errorMessage = payload?.error?.message || "工具執行失敗";
-          showToast(errorMessage);
-        },
-        done: () => {
-          setProgress(100);
-          setTimeout(() => setProgress(0), 500);
-        },
-      },
-    );
+      });
+      resultOutput.textContent = JSON.stringify(
+        response.raw_result || response.result,
+        null,
+        2,
+      );
+      if (response.raw_result?.image_base64) {
+        resultImage.src = response.raw_result.image_base64;
+      } else {
+        resultImage.src = "";
+      }
+      stopProgress();
+    }
   } catch (error) {
     startProgress();
     stopProgress();

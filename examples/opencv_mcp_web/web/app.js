@@ -20,6 +20,14 @@ const toast = document.getElementById("toast");
 let currentImageBase64 = "";
 let progressTimer = null;
 
+class SseNotSupportedError extends Error {
+  constructor(payload) {
+    super(payload?.reason || "SSE 不支援，已改用替代方案");
+    this.name = "SseNotSupportedError";
+    this.payload = payload;
+  }
+}
+
 function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
@@ -96,6 +104,9 @@ async function invokeToolSse(baseUrl, payload, handlers) {
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
+    if (data?.error === "sse_not_supported") {
+      throw new SseNotSupportedError(data);
+    }
     const errorMessage = data?.error?.message || "連線失敗，請稍後再試";
     throw new Error(errorMessage);
   }
@@ -140,6 +151,24 @@ async function invokeToolSse(baseUrl, payload, handlers) {
       }
     });
   }
+}
+
+async function invokeToolJson(baseUrl, payload) {
+  const response = await fetch(`${baseUrl}/invoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage = data?.error?.message || "連線失敗，請稍後再試";
+    throw new Error(errorMessage);
+  }
+
+  return data;
 }
 
 async function checkConnection() {
@@ -200,6 +229,19 @@ function toggleSettings() {
   cannySettings.style.display = toolName === "opencv.canny" ? "block" : "none";
 }
 
+function applyResult(payload) {
+  resultOutput.textContent = JSON.stringify(
+    payload.raw_result || payload.result,
+    null,
+    2,
+  );
+  if (payload.raw_result?.image_base64) {
+    resultImage.src = payload.raw_result.image_base64;
+  } else {
+    resultImage.src = "";
+  }
+}
+
 async function runTool() {
   if (!currentImageBase64) {
     showToast("請先上傳圖片");
@@ -243,16 +285,7 @@ async function runTool() {
           setProgress(progressValue);
         },
         result: (payload) => {
-          resultOutput.textContent = JSON.stringify(
-            payload.raw_result || payload.result,
-            null,
-            2,
-          );
-          if (payload.raw_result?.image_base64) {
-            resultImage.src = payload.raw_result.image_base64;
-          } else {
-            resultImage.src = "";
-          }
+          applyResult(payload);
         },
         error: (payload) => {
           const errorMessage = payload?.error?.message || "工具執行失敗";
@@ -265,6 +298,25 @@ async function runTool() {
       },
     );
   } catch (error) {
+    if (error instanceof SseNotSupportedError) {
+      const warning = error.payload?.warning
+        ? `提醒：${error.payload.warning}`
+        : "已切換 Zeabur Host Adapter 模式";
+      showToast(`偵測到 Zeabur 不支援 inbound SSE，${warning}`);
+      try {
+        startProgress();
+        const response = await invokeToolJson(baseUrl, {
+          name: toolName,
+          arguments: argumentsPayload,
+        });
+        applyResult(response);
+      } catch (fallbackError) {
+        showToast(fallbackError.message);
+      } finally {
+        stopProgress();
+      }
+      return;
+    }
     startProgress();
     stopProgress();
     showToast(error.message);

@@ -57,12 +57,14 @@ class HostRuntimeConfig:
         transport: Transport = Transport.SSE,
         sse_block_reason: str | None = None,
         sse_block_warning: str | None = None,
+        active: bool = False,
     ) -> None:
         self.name = name
         self.allow_inbound_sse = allow_inbound_sse
         self.transport = transport
         self.sse_block_reason = sse_block_reason
         self.sse_block_warning = sse_block_warning
+        self.active = active
 
 
 def _resolve_host_runtime() -> HostRuntimeConfig:
@@ -70,6 +72,7 @@ def _resolve_host_runtime() -> HostRuntimeConfig:
         adapter = ZeaburHostAdapter()
         decision = adapter.choose_transport(Transport.SSE)
         allow_inbound_sse = decision.transport == Transport.SSE
+        logging.info("Host adapter 已啟用：%s", adapter.name)
         if not allow_inbound_sse:
             logging.warning(
                 "Host adapter 偵測到 %s，停用 inbound SSE：%s",
@@ -82,6 +85,7 @@ def _resolve_host_runtime() -> HostRuntimeConfig:
             transport=decision.transport,
             sse_block_reason=decision.reason,
             sse_block_warning=decision.warning,
+            active=True,
         )
 
     return HostRuntimeConfig()
@@ -471,6 +475,7 @@ def _build_handler(
                     {
                         "status": "ok",
                         "host_adapter": active_host_runtime.name,
+                        "host_adapter_active": active_host_runtime.active,
                         "transport": active_host_runtime.transport.value,
                         "inbound_sse": active_host_runtime.allow_inbound_sse,
                     },
@@ -698,6 +703,8 @@ def start_server(port: int, host: str = "0.0.0.0") -> None:
     print(f"[opencv_mcp_web] 伺服器已啟動：http://{host}:{port}")
     print("健康檢查：/health，工具列表：/tools，呼叫工具：POST /invoke-sse（SSE）")
     print("MCP SSE：GET /sse（回傳 endpoint 供 POST /messages/{session_id} 使用）")
+    if host_runtime.active:
+        print(f"[opencv_mcp_web] 已啟用 host adapter：{host_runtime.name}")
     if not host_runtime.allow_inbound_sse:
         print(
             "[opencv_mcp_web] 偵測到不支援 inbound SSE 的環境，已停用 /sse 與 /invoke-sse"

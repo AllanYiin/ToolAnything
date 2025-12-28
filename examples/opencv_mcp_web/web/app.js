@@ -23,7 +23,9 @@ let serverCapabilities = {
   inboundSse: true,
   transport: "sse",
   hostAdapter: null,
+  hostAdapterActive: false,
 };
+let hasShownAdapterNotice = false;
 
 function showToast(message) {
   toast.textContent = message;
@@ -178,11 +180,20 @@ async function checkConnection() {
       inboundSse: health.inbound_sse !== false,
       transport: health.transport || "sse",
       hostAdapter: health.host_adapter || null,
+      hostAdapterActive: Boolean(health.host_adapter_active),
     };
     const transportLabel = serverCapabilities.inboundSse
       ? "SSE"
       : "HTTP";
     connectionStatus.textContent = `連線成功：${health.status}（${transportLabel}）`;
+    if (
+      serverCapabilities.hostAdapterActive &&
+      !serverCapabilities.inboundSse &&
+      !hasShownAdapterNotice
+    ) {
+      hasShownAdapterNotice = true;
+      showToast("已啟用 Zeabur host adapter，改用 /invoke 進行呼叫");
+    }
     const tools = await fetchJson(`${baseUrl}/tools`);
     renderTools(tools.tools || []);
   } catch (error) {

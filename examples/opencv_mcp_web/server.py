@@ -381,6 +381,16 @@ def _read_static(path: Path) -> bytes | None:
         return None
 
 
+def _discard_request_body(handler: BaseHTTPRequestHandler) -> None:
+    try:
+        content_length = int(handler.headers.get("Content-Length", 0))
+    except (TypeError, ValueError):
+        content_length = 0
+
+    if content_length > 0:
+        handler.rfile.read(content_length)
+
+
 def _guess_content_type(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".css":
@@ -423,6 +433,7 @@ def _build_handler(
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             if parsed.path == "/sse":
+                _discard_request_body(self)
                 if not active_host_runtime.allow_inbound_sse:
                     _json_response(
                         self,
@@ -458,21 +469,26 @@ def _build_handler(
                 return
 
             if parsed.path in {"/", "/index.html"}:
+                _discard_request_body(self)
                 file_path = WEB_DIR / "index.html"
                 return self._serve_static(file_path)
 
             if parsed.path == "/health":
+                _discard_request_body(self)
                 _json_response(self, 200, {"status": "ok"})
                 return
 
             if parsed.path == "/tools":
+                _discard_request_body(self)
                 _json_response(self, 200, {"tools": registry.to_mcp_tools()})
                 return
 
             candidate = (WEB_DIR / parsed.path.lstrip("/")).resolve()
             if WEB_DIR in candidate.parents and candidate.is_file():
+                _discard_request_body(self)
                 return self._serve_static(candidate)
 
+            _discard_request_body(self)
             _json_response(self, 404, {"error": "not_found"})
 
         def _serve_static(self, file_path: Path) -> None:
@@ -491,6 +507,20 @@ def _build_handler(
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path == "/sse":
+                if not active_host_runtime.allow_inbound_sse:
+                    _json_response(
+                        self,
+                        503,
+                        {
+                            "error": "sse_not_supported",
+                            "reason": active_host_runtime.sse_block_reason,
+                            "warning": active_host_runtime.sse_block_warning,
+                        },
+                    )
+                    return
+                _json_response(self, 405, {"error": "method_not_allowed"})
+                return
             if parsed.path.startswith("/messages"):
                 session_id = None
                 if parsed.path == "/messages":

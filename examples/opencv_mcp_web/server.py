@@ -29,7 +29,6 @@ from toolanything.adapters.mcp_adapter import MCPAdapter
 from toolanything.core.result_serializer import ResultSerializer
 from toolanything.core.security_manager import SecurityManager
 from toolanything.exceptions import ToolError
-from toolanything.host_adapters import Transport, ZeaburHostAdapter
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
@@ -64,23 +63,6 @@ class HostRuntimeConfig:
 
 
 def _resolve_host_runtime() -> HostRuntimeConfig:
-    if ZeaburHostAdapter.detect():
-        adapter = ZeaburHostAdapter()
-        decision = adapter.choose_transport(Transport.SSE)
-        allow_inbound_sse = decision.transport == Transport.SSE
-        if not allow_inbound_sse:
-            logging.warning(
-                "Host adapter 偵測到 %s，停用 inbound SSE：%s",
-                adapter.name,
-                decision.reason,
-            )
-        return HostRuntimeConfig(
-            name=adapter.name,
-            allow_inbound_sse=allow_inbound_sse,
-            sse_block_reason=decision.reason,
-            sse_block_warning=decision.warning,
-        )
-
     return HostRuntimeConfig()
 
 

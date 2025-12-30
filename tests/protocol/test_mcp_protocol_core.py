@@ -197,3 +197,67 @@ def test_unknown_method_returns_method_not_found() -> None:
         "id": "req-404",
         "error": {"code": -32601, "message": "method_not_found"},
     }
+
+
+def test_golden_initialize_response() -> None:
+    core = MCPJSONRPCProtocolCore()
+    deps = _make_deps(
+        capabilities={
+            "protocolVersion": "2024-02-01",
+            "serverInfo": {"name": "golden", "version": "1.0.0"},
+            "dependencies": [{"name": "toolanything", "version": "0.1.0"}],
+        }
+    )
+    request = {
+        "jsonrpc": "2.0",
+        "id": "golden-init",
+        "method": "initialize",
+        "params": {"clientInfo": {"name": "tester", "version": "0.0.1"}},
+    }
+
+    response = core.handle(request, context=MCPRequestContext(user_id="golden-user"), deps=deps)
+
+    assert response == {
+        "jsonrpc": "2.0",
+        "id": "golden-init",
+        "result": {
+            "protocolVersion": "2024-02-01",
+            "serverInfo": {"name": "golden", "version": "1.0.0"},
+            "dependencies": [{"name": "toolanything", "version": "0.1.0"}],
+        },
+    }
+
+
+def test_golden_tools_call_response() -> None:
+    core = MCPJSONRPCProtocolCore()
+    invoker = FakeToolInvoker(
+        result={
+            "content": [{"type": "text", "text": "golden"}],
+            "meta": {"latency_ms": 12},
+            "arguments": {"query": "hello"},
+            "audit": {"trace_id": "trace-1"},
+            "raw_result": {"status": "ok"},
+        }
+    )
+    deps = _make_deps(invoker=invoker)
+    request = {
+        "jsonrpc": "2.0",
+        "id": 99,
+        "method": "tools/call",
+        "params": {"name": "golden_tool", "arguments": {"query": "hello"}},
+    }
+
+    response = core.handle(request, context=MCPRequestContext(user_id="golden-user"), deps=deps)
+
+    assert response == {
+        "jsonrpc": "2.0",
+        "id": 99,
+        "result": {
+            "content": [{"type": "text", "text": "golden"}],
+            "meta": {"latency_ms": 12},
+            "arguments": {"query": "hello"},
+            "audit": {"trace_id": "trace-1"},
+        },
+        "raw_result": {"status": "ok"},
+    }
+

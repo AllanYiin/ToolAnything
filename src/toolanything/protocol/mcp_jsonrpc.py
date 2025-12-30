@@ -21,6 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Literal, Mapping, Optional, Protocol, Sequence, TypedDict
 
+from toolanything.exceptions import ToolError
+
 
 MCPMethod = Literal[
     "initialize",
@@ -157,3 +159,119 @@ class MCPProtocolCore(Protocol):
 
         Returns None for notification-style requests that require no response.
         """
+
+
+class MCPJSONRPCProtocolCore(MCPProtocolCore):
+    """Concrete MCP JSON-RPC protocol core implementation."""
+
+    _JSONRPC_VERSION = "2.0"
+
+    def handle(
+        self,
+        request: MCPRequest,
+        *,
+        context: MCPRequestContext,
+        deps: MCPProtocolDependencies,
+    ) -> Optional[MCPResponse]:
+        method = request.get("method")
+        request_id = request.get("id")
+
+        if method == "initialize":
+            return self._build_result(request_id, deps.capabilities.get_capabilities())
+
+        if method == "notifications/initialized":
+            return None
+
+        if method == "tools/list":
+            return self._build_result(request_id, {"tools": list(deps.tools.list_tools())})
+
+        if method == "tools/call":
+            return self._handle_tool_call(request, context=context, deps=deps)
+
+        return self._handle_method_not_found(request_id)
+
+    def _handle_tool_call(
+        self,
+        request: MCPRequest,
+        *,
+        context: MCPRequestContext,
+        deps: MCPProtocolDependencies,
+    ) -> Optional[MCPResponse]:
+        request_id = request.get("id")
+        params = request.get("params", {}) or {}
+        name = params.get("name")
+        arguments: Dict[str, Any] = params.get("arguments", {}) or {}
+
+        try:
+            invocation = deps.invoker.call_tool(name, arguments, context=context)
+            return self._build_result(
+                request_id,
+                {
+                    "content": invocation["content"],
+                    "meta": invocation["meta"],
+                    "arguments": invocation.get("arguments", {}),
+                    "audit": invocation.get("audit", {}),
+                },
+                extra={"raw_result": invocation.get("raw_result")},
+            )
+        except ToolError as exc:
+            return self._build_error(
+                request_id,
+                -32001,
+                exc.error_type,
+                data={
+                    "message": str(exc),
+                    "details": exc.data,
+                    "arguments": invocation.get("arguments", arguments)
+                    if "invocation" in locals()
+                    else arguments,
+                    "audit": invocation.get("audit", {}) if "invocation" in locals() else {},
+                },
+            )
+        except Exception:
+            return self._build_error(
+                request_id,
+                -32603,
+                "internal_error",
+                data={
+                    "arguments": arguments,
+                },
+            )
+
+    def _handle_method_not_found(self, request_id: str | int | None) -> Optional[MCPResponse]:
+        if request_id is None:
+            return None
+        return self._build_error(request_id, -32601, "method_not_found")
+
+    def _build_result(
+        self,
+        request_id: str | int | None,
+        result: Dict[str, Any],
+        *,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> MCPResponse:
+        payload: MCPResponse = {
+            "jsonrpc": self._JSONRPC_VERSION,
+            "id": request_id,
+            "result": result,
+        }
+        if extra:
+            payload.update(extra)
+        return payload
+
+    def _build_error(
+        self,
+        request_id: str | int | None,
+        code: int,
+        message: str,
+        *,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> MCPResponse:
+        payload: MCPResponse = {
+            "jsonrpc": self._JSONRPC_VERSION,
+            "id": request_id,
+            "error": {"code": code, "message": message},
+        }
+        if data is not None:
+            payload["error"]["data"] = data
+        return payload

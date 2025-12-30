@@ -166,6 +166,11 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
 
     _JSONRPC_VERSION = "2.0"
 
+    _ERROR_METHOD_NOT_FOUND = -32601
+    _ERROR_INTERNAL = -32603
+    _ERROR_TOOL = -32001
+
+
     def handle(
         self,
         request: MCPRequest,
@@ -204,6 +209,10 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
 
         try:
             invocation = deps.invoker.call_tool(name, arguments, context=context)
+
+            if request_id is None:
+                return None
+
             return self._build_result(
                 request_id,
                 {
@@ -215,33 +224,46 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
                 extra={"raw_result": invocation.get("raw_result")},
             )
         except ToolError as exc:
+
+            if request_id is None:
+                return None
+            masked_args = self._mask_arguments(arguments, deps=deps)
+            audit_log = self._audit_call(name, arguments, context=context, deps=deps)
             return self._build_error(
                 request_id,
-                -32001,
+                self._ERROR_TOOL,
+
                 exc.error_type,
                 data={
                     "message": str(exc),
                     "details": exc.data,
-                    "arguments": invocation.get("arguments", arguments)
-                    if "invocation" in locals()
-                    else arguments,
-                    "audit": invocation.get("audit", {}) if "invocation" in locals() else {},
+
+                    "arguments": masked_args,
+                    "audit": audit_log,
                 },
             )
         except Exception:
+            if request_id is None:
+                return None
+            masked_args = self._mask_arguments(arguments, deps=deps)
+            audit_log = self._audit_call(name, arguments, context=context, deps=deps)
             return self._build_error(
                 request_id,
-                -32603,
+                self._ERROR_INTERNAL,
                 "internal_error",
                 data={
-                    "arguments": arguments,
+                    "arguments": masked_args,
+                    "audit": audit_log,
+
                 },
             )
 
     def _handle_method_not_found(self, request_id: str | int | None) -> Optional[MCPResponse]:
         if request_id is None:
             return None
-        return self._build_error(request_id, -32601, "method_not_found")
+
+        return self._build_error(request_id, self._ERROR_METHOD_NOT_FOUND, "method_not_found")
+
 
     def _build_result(
         self,
@@ -275,3 +297,29 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
         if data is not None:
             payload["error"]["data"] = data
         return payload
+
+
+    def _mask_arguments(
+        self,
+        arguments: Dict[str, Any],
+        *,
+        deps: MCPProtocolDependencies,
+    ) -> Dict[str, Any]:
+        masker = getattr(deps.invoker, "_mask", None)
+        if callable(masker):
+            return masker(arguments)
+        return dict(arguments)
+
+    def _audit_call(
+        self,
+        name: Optional[str],
+        arguments: Dict[str, Any],
+        *,
+        context: MCPRequestContext,
+        deps: MCPProtocolDependencies,
+    ) -> Dict[str, Any]:
+        auditor = getattr(deps.invoker, "_audit", None)
+        if callable(auditor):
+            return auditor(name or "", arguments, context.user_id or "default")
+        return {}
+

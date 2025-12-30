@@ -21,6 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Literal, Mapping, Optional, Protocol, Sequence, TypedDict
 
+from toolanything.exceptions import ToolError
+
 
 MCPMethod = Literal[
     "initialize",
@@ -157,3 +159,155 @@ class MCPProtocolCore(Protocol):
 
         Returns None for notification-style requests that require no response.
         """
+
+
+class MCPJSONRPCProtocolCore(MCPProtocolCore):
+    """Concrete MCP JSON-RPC protocol core implementation."""
+
+    _JSONRPC_VERSION = "2.0"
+    _ERROR_METHOD_NOT_FOUND = -32601
+    _ERROR_INTERNAL = -32603
+    _ERROR_TOOL = -32001
+
+    def handle(
+        self,
+        request: MCPRequest,
+        *,
+        context: MCPRequestContext,
+        deps: MCPProtocolDependencies,
+    ) -> Optional[MCPResponse]:
+        method = request.get("method")
+        request_id = request.get("id")
+
+        if method == "initialize":
+            return self._build_result(request_id, deps.capabilities.get_capabilities())
+
+        if method == "notifications/initialized":
+            return None
+
+        if method == "tools/list":
+            return self._build_result(request_id, {"tools": list(deps.tools.list_tools())})
+
+        if method == "tools/call":
+            return self._handle_tool_call(request, context=context, deps=deps)
+
+        return self._handle_method_not_found(request_id)
+
+    def _handle_tool_call(
+        self,
+        request: MCPRequest,
+        *,
+        context: MCPRequestContext,
+        deps: MCPProtocolDependencies,
+    ) -> Optional[MCPResponse]:
+        request_id = request.get("id")
+        params = request.get("params", {}) or {}
+        name = params.get("name")
+        arguments: Dict[str, Any] = params.get("arguments", {}) or {}
+
+        try:
+            invocation = deps.invoker.call_tool(name, arguments, context=context)
+            if request_id is None:
+                return None
+            return self._build_result(
+                request_id,
+                {
+                    "content": invocation["content"],
+                    "meta": invocation["meta"],
+                    "arguments": invocation.get("arguments", {}),
+                    "audit": invocation.get("audit", {}),
+                },
+                extra={"raw_result": invocation.get("raw_result")},
+            )
+        except ToolError as exc:
+            if request_id is None:
+                return None
+            masked_args = self._mask_arguments(arguments, deps=deps)
+            audit_log = self._audit_call(name, arguments, context=context, deps=deps)
+            return self._build_error(
+                request_id,
+                self._ERROR_TOOL,
+                exc.error_type,
+                data={
+                    "message": str(exc),
+                    "details": exc.data,
+                    "arguments": masked_args,
+                    "audit": audit_log,
+                },
+            )
+        except Exception:
+            if request_id is None:
+                return None
+            masked_args = self._mask_arguments(arguments, deps=deps)
+            audit_log = self._audit_call(name, arguments, context=context, deps=deps)
+            return self._build_error(
+                request_id,
+                self._ERROR_INTERNAL,
+                "internal_error",
+                data={
+                    "arguments": masked_args,
+                    "audit": audit_log,
+                },
+            )
+
+    def _handle_method_not_found(self, request_id: str | int | None) -> Optional[MCPResponse]:
+        if request_id is None:
+            return None
+        return self._build_error(request_id, self._ERROR_METHOD_NOT_FOUND, "method_not_found")
+
+    def _build_result(
+        self,
+        request_id: str | int | None,
+        result: Dict[str, Any],
+        *,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> MCPResponse:
+        payload: MCPResponse = {
+            "jsonrpc": self._JSONRPC_VERSION,
+            "id": request_id,
+            "result": result,
+        }
+        if extra:
+            payload.update(extra)
+        return payload
+
+    def _build_error(
+        self,
+        request_id: str | int | None,
+        code: int,
+        message: str,
+        *,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> MCPResponse:
+        payload: MCPResponse = {
+            "jsonrpc": self._JSONRPC_VERSION,
+            "id": request_id,
+            "error": {"code": code, "message": message},
+        }
+        if data is not None:
+            payload["error"]["data"] = data
+        return payload
+
+    def _mask_arguments(
+        self,
+        arguments: Dict[str, Any],
+        *,
+        deps: MCPProtocolDependencies,
+    ) -> Dict[str, Any]:
+        masker = getattr(deps.invoker, "_mask", None)
+        if callable(masker):
+            return masker(arguments)
+        return dict(arguments)
+
+    def _audit_call(
+        self,
+        name: Optional[str],
+        arguments: Dict[str, Any],
+        *,
+        context: MCPRequestContext,
+        deps: MCPProtocolDependencies,
+    ) -> Dict[str, Any]:
+        auditor = getattr(deps.invoker, "_audit", None)
+        if callable(auditor):
+            return auditor(name or "", arguments, context.user_id or "default")
+        return {}

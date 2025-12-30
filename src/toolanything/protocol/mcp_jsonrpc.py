@@ -165,9 +165,11 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
     """Concrete MCP JSON-RPC protocol core implementation."""
 
     _JSONRPC_VERSION = "2.0"
+
     _ERROR_METHOD_NOT_FOUND = -32601
     _ERROR_INTERNAL = -32603
     _ERROR_TOOL = -32001
+
 
     def handle(
         self,
@@ -207,8 +209,10 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
 
         try:
             invocation = deps.invoker.call_tool(name, arguments, context=context)
+
             if request_id is None:
                 return None
+
             return self._build_result(
                 request_id,
                 {
@@ -220,6 +224,7 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
                 extra={"raw_result": invocation.get("raw_result")},
             )
         except ToolError as exc:
+
             if request_id is None:
                 return None
             masked_args = self._mask_arguments(arguments, deps=deps)
@@ -227,10 +232,12 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
             return self._build_error(
                 request_id,
                 self._ERROR_TOOL,
+
                 exc.error_type,
                 data={
                     "message": str(exc),
                     "details": exc.data,
+
                     "arguments": masked_args,
                     "audit": audit_log,
                 },
@@ -247,13 +254,16 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
                 data={
                     "arguments": masked_args,
                     "audit": audit_log,
+
                 },
             )
 
     def _handle_method_not_found(self, request_id: str | int | None) -> Optional[MCPResponse]:
         if request_id is None:
             return None
+
         return self._build_error(request_id, self._ERROR_METHOD_NOT_FOUND, "method_not_found")
+
 
     def _build_result(
         self,
@@ -288,6 +298,7 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
             payload["error"]["data"] = data
         return payload
 
+
     def _mask_arguments(
         self,
         arguments: Dict[str, Any],
@@ -311,3 +322,4 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
         if callable(auditor):
             return auditor(name or "", arguments, context.user_id or "default")
         return {}
+

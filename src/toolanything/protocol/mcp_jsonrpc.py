@@ -24,11 +24,19 @@ from typing import Any, Dict, Iterable, Literal, Mapping, Optional, Protocol, Se
 from toolanything.exceptions import ToolError
 
 
+MCP_JSONRPC_VERSION = "2.0"
+
+MCP_METHOD_INITIALIZE = "initialize"
+MCP_METHOD_NOTIFICATIONS_INITIALIZED = "notifications/initialized"
+MCP_METHOD_TOOLS_LIST = "tools/list"
+MCP_METHOD_TOOLS_CALL = "tools/call"
+MCP_METHOD_TRANSPORT_READY = "transport/ready"
+
 MCPMethod = Literal[
-    "initialize",
-    "notifications/initialized",
-    "tools/list",
-    "tools/call",
+    MCP_METHOD_INITIALIZE,
+    MCP_METHOD_NOTIFICATIONS_INITIALIZED,
+    MCP_METHOD_TOOLS_LIST,
+    MCP_METHOD_TOOLS_CALL,
 ]
 
 
@@ -161,10 +169,47 @@ class MCPProtocolCore(Protocol):
         """
 
 
+def build_request(
+    method: str,
+    request_id: str | int | None,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+) -> MCPRequest:
+    payload: MCPRequest = {
+        "jsonrpc": MCP_JSONRPC_VERSION,
+        "id": request_id,
+        "method": method,
+    }
+    if params is not None:
+        payload["params"] = params
+    return payload
+
+
+def build_notification(method: str, params: Dict[str, Any]) -> MCPRequest:
+    payload: MCPRequest = {
+        "jsonrpc": MCP_JSONRPC_VERSION,
+        "method": method,
+        "params": params,
+    }
+    return payload
+
+
+def build_transport_ready_message(session_id: str) -> MCPRequest:
+    return build_notification(
+        MCP_METHOD_TRANSPORT_READY,
+        {
+            "transport": {
+                "type": "sse",
+                "messageEndpoint": f"/messages/{session_id}",
+            }
+        },
+    )
+
+
 class MCPJSONRPCProtocolCore(MCPProtocolCore):
     """Concrete MCP JSON-RPC protocol core implementation."""
 
-    _JSONRPC_VERSION = "2.0"
+    _JSONRPC_VERSION = MCP_JSONRPC_VERSION
 
     _ERROR_METHOD_NOT_FOUND = -32601
     _ERROR_INTERNAL = -32603
@@ -181,16 +226,16 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
         method = request.get("method")
         request_id = request.get("id")
 
-        if method == "initialize":
+        if method == MCP_METHOD_INITIALIZE:
             return self._build_result(request_id, deps.capabilities.get_capabilities())
 
-        if method == "notifications/initialized":
+        if method == MCP_METHOD_NOTIFICATIONS_INITIALIZED:
             return None
 
-        if method == "tools/list":
+        if method == MCP_METHOD_TOOLS_LIST:
             return self._build_result(request_id, {"tools": list(deps.tools.list_tools())})
 
-        if method == "tools/call":
+        if method == MCP_METHOD_TOOLS_CALL:
             return self._handle_tool_call(request, context=context, deps=deps)
 
         return self._handle_method_not_found(request_id)
@@ -323,3 +368,5 @@ class MCPJSONRPCProtocolCore(MCPProtocolCore):
             return auditor(name or "", arguments, context.user_id or "default")
         return {}
 
+
+MCPProtocolCoreImpl = MCPJSONRPCProtocolCore

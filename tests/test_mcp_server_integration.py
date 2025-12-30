@@ -11,6 +11,12 @@ import pytest
 from toolanything import tool
 from toolanything.core.registry import ToolRegistry
 from toolanything.exceptions import ToolError
+from toolanything.protocol.mcp_jsonrpc import (
+    MCP_METHOD_INITIALIZE,
+    MCP_METHOD_TOOLS_CALL,
+    MCP_METHOD_TOOLS_LIST,
+    build_request,
+)
 from toolanything.server.mcp_stdio_server import MCPStdioServer
 from toolanything.server.mcp_tool_server import _build_handler
 
@@ -120,20 +126,18 @@ def test_mcp_stdio_server_flow(monkeypatch, registry_with_tools):
     server = MCPStdioServer(registry_with_tools)
 
     requests = [
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-        {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {"name": "echo", "arguments": {"message": "world"}},
-        },
-        {
-            "jsonrpc": "2.0",
-            "id": 4,
-            "method": "tools/call",
-            "params": {"name": "fail", "arguments": {"api_key": "top-secret"}},
-        },
+        build_request(MCP_METHOD_INITIALIZE, 1),
+        build_request(MCP_METHOD_TOOLS_LIST, 2),
+        build_request(
+            MCP_METHOD_TOOLS_CALL,
+            3,
+            params={"name": "echo", "arguments": {"message": "world"}},
+        ),
+        build_request(
+            MCP_METHOD_TOOLS_CALL,
+            4,
+            params={"name": "fail", "arguments": {"api_key": "top-secret"}},
+        ),
     ]
 
     input_data = "\n".join(json.dumps(r, ensure_ascii=False) for r in requests) + "\n"

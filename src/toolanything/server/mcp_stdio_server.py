@@ -13,8 +13,7 @@ from toolanything.adapters.mcp_adapter import MCPAdapter
 from toolanything.core.registry import ToolRegistry
 from toolanything.core.result_serializer import ResultSerializer
 from toolanything.core.security_manager import SecurityManager
-from toolanything.exceptions import ToolError
-from toolanything.protocol.mcp_jsonrpc import MCPProtocolCore, MCPRequest, MCPRequestContext
+from toolanything.protocol.mcp_jsonrpc import MCPProtocolCoreImpl, MCPRequestContext
 
 
 class _CapabilitiesProvider:
@@ -89,87 +88,6 @@ class _ProtocolDependencies:
     invoker: _ToolInvoker
 
 
-class _MCPProtocolCore(MCPProtocolCore):
-    def handle(
-        self,
-        request: MCPRequest,
-        *,
-        context: MCPRequestContext,
-        deps: _ProtocolDependencies,
-    ) -> Dict[str, Any] | None:
-        method = request.get("method")
-        request_id = request.get("id")
-
-        if method == "initialize":
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": deps.capabilities.get_capabilities(),
-            }
-
-        if method == "notifications/initialized":
-            return None
-
-        if method == "tools/list":
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {"tools": deps.tools.list_tools()},
-            }
-
-        if method == "tools/call":
-            params = request.get("params", {}) or {}
-            name = params.get("name")
-            arguments: Dict[str, Any] = params.get("arguments", {}) or {}
-
-            try:
-                invocation = deps.invoker.call_tool(name, arguments, context=context)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": invocation["content"],
-                        "meta": invocation["meta"],
-                        "arguments": invocation["arguments"],
-                        "audit": invocation["audit"],
-                    },
-                    "raw_result": invocation["raw_result"],
-                }
-            except ToolError as exc:
-                user_id = context.user_id or "default"
-                masked_args = deps.invoker._mask(arguments)
-                audit_log = deps.invoker._audit(name or "", arguments, user_id)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32001,
-                        "message": exc.error_type,
-                        "data": {
-                            "message": str(exc),
-                            "details": exc.data,
-                            "arguments": masked_args,
-                            "audit": audit_log,
-                        },
-                    },
-                }
-            except Exception:
-                user_id = context.user_id or "default"
-                masked_args = deps.invoker._mask(arguments)
-                audit_log = deps.invoker._audit(name or "", arguments, user_id)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32603,
-                        "message": "internal_error",
-                        "data": {"arguments": masked_args, "audit": audit_log},
-                    },
-                }
-
-        return None
-
-
 class MCPStdioServer:
     """透過標準輸入輸出的 MCP 伺服器實作。"""
 
@@ -180,7 +98,7 @@ class MCPStdioServer:
         self.adapter = MCPAdapter(self.registry)
         self.result_serializer: ResultSerializer = self.adapter.result_serializer
         self.security_manager: SecurityManager = self.adapter.security_manager
-        self._protocol_core = _MCPProtocolCore()
+        self._protocol_core = MCPProtocolCoreImpl()
         self._deps = _ProtocolDependencies(
             capabilities=_CapabilitiesProvider(self.adapter),
             tools=_ToolSchemaProvider(self.registry),

@@ -16,7 +16,11 @@ from toolanything.core.registry import ToolRegistry
 from toolanything.core.result_serializer import ResultSerializer
 from toolanything.core.security_manager import SecurityManager
 from toolanything.exceptions import ToolError
-from toolanything.protocol.mcp_jsonrpc import MCPProtocolCore, MCPRequest, MCPRequestContext
+from toolanything.protocol.mcp_jsonrpc import (
+    MCPProtocolCoreImpl,
+    MCPRequestContext,
+    build_transport_ready_message,
+)
 from toolanything.utils.logger import configure_logging, logger
 
 
@@ -195,95 +199,6 @@ class _ProtocolDependencies:
     invoker: _ToolInvoker
 
 
-class _MCPProtocolCore(MCPProtocolCore):
-    def handle(
-        self,
-        request: MCPRequest,
-        *,
-        context: MCPRequestContext,
-        deps: _ProtocolDependencies,
-    ) -> Dict[str, Any] | None:
-        method = request.get("method")
-        request_id = request.get("id")
-
-        if method == "initialize":
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": deps.capabilities.get_capabilities(),
-            }
-
-        if method == "notifications/initialized":
-            return None
-
-        if method == "tools/list":
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {"tools": deps.tools.list_tools()},
-            }
-
-        if method == "tools/call":
-            params = request.get("params", {}) or {}
-            name = params.get("name")
-            arguments: Dict[str, Any] = params.get("arguments", {}) or {}
-
-            try:
-                invocation = deps.invoker.call_tool(name, arguments, context=context)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": invocation["content"],
-                        "meta": invocation["meta"],
-                        "arguments": invocation["arguments"],
-                        "audit": invocation["audit"],
-                    },
-                    "raw_result": invocation["raw_result"],
-                }
-            except ToolError as exc:
-                user_id = context.user_id or "default"
-                masked_args = deps.invoker._mask(arguments)
-                audit_log = deps.invoker._audit(name or "", arguments, user_id)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32001,
-                        "message": exc.error_type,
-                        "data": {
-                            "message": str(exc),
-                            "details": exc.data,
-                            "arguments": masked_args,
-                            "audit": audit_log,
-                        },
-                    },
-                }
-            except Exception:
-                logger.exception("MCP tools/call 發生未預期錯誤")
-                user_id = context.user_id or "default"
-                masked_args = deps.invoker._mask(arguments)
-                audit_log = deps.invoker._audit(name or "", arguments, user_id)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32603,
-                        "message": "internal_error",
-                        "data": {"arguments": masked_args, "audit": audit_log},
-                    },
-                }
-
-        if request_id is None:
-            return None
-
-        return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "error": {"code": -32601, "message": "method_not_found"},
-        }
-
-
 def _build_handler(
     registry: ToolRegistry,
     *,
@@ -295,7 +210,7 @@ def _build_handler(
     active_serializer = serializer or ResultSerializer()
     active_security_manager = security_manager or SecurityManager()
     mcp_adapter = MCPAdapter(registry)
-    protocol_core = _MCPProtocolCore()
+    protocol_core = MCPProtocolCoreImpl()
     protocol_deps = _ProtocolDependencies(
         capabilities=_CapabilitiesProvider(mcp_adapter),
         tools=_ToolSchemaProvider(registry),
@@ -332,16 +247,7 @@ def _build_handler(
                 _write_sse_event(
                     self,
                     "message",
-                    {
-                        "jsonrpc": "2.0",
-                        "method": "transport/ready",
-                        "params": {
-                            "transport": {
-                                "type": "sse",
-                                "messageEndpoint": f"/messages/{session_id}",
-                            }
-                        },
-                    },
+                    build_transport_ready_message(session_id),
                 )
 
                 last_ping = time.monotonic()

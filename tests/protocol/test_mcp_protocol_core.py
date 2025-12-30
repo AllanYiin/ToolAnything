@@ -260,3 +260,4 @@ def test_golden_tools_call_response() -> None:
         },
         "raw_result": {"status": "ok"},
     }
+

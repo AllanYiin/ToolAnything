@@ -24,15 +24,21 @@ python examples/opencv_mcp_web/server.py --host 0.0.0.0 --port 9091
 - SSE 入口：`http://localhost:9091/sse`
 - 伺服器會回傳 `event: endpoint`，其中 `uri` 會帶回對應的 `/messages/{session_id}` 端點。
 
-## 部署到 Zeabur
+## 部署到 Replit
 
-1. 建立 Zeabur 專案並連結此 repo。
-2. 設定啟動指令：
+1. 在 Replit 建立新專案，選擇 **Import from GitHub**，貼上此 repo 的網址。
+2. 在 Replit 的 Shell 執行安裝：
 
 ```bash
-python examples/opencv_mcp_web/server.py --host 0.0.0.0 --port $PORT
+pip install -r requirements.txt
 ```
 
-3. Zeabur 會自動提供對外網址，打開後即可使用 Web UI。
+3. 設定 Replit 的 **Run command**：
+
+```bash
+python examples/opencv_mcp_web/server.py --host 0.0.0.0 --port 3000
+```
+
+4. Replit 會提供對外網址，打開後即可使用 Web UI。
 
 > 若需切換 Port，請確保 Web UI 的 MCP Server URL 與服務位址一致。

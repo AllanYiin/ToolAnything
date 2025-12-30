@@ -301,8 +301,8 @@ async function runTool() {
     if (error instanceof SseNotSupportedError) {
       const warning = error.payload?.warning
         ? `提醒：${error.payload.warning}`
-        : "已切換 Zeabur Host Adapter 模式";
-      showToast(`偵測到 Zeabur 不支援 inbound SSE，${warning}`);
+        : "已切換相容模式";
+      showToast(`偵測到部署環境不支援 inbound SSE，${warning}`);
       try {
         startProgress();
         const response = await invokeToolJson(baseUrl, {

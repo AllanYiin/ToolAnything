@@ -16,6 +16,7 @@ from toolanything.core.registry import ToolRegistry
 from toolanything.core.result_serializer import ResultSerializer
 from toolanything.core.security_manager import SecurityManager
 from toolanything.exceptions import ToolError
+from toolanything.protocol.mcp_jsonrpc import MCPProtocolCore, MCPRequest, MCPRequestContext
 from toolanything.utils.logger import configure_logging, logger
 
 
@@ -122,100 +123,165 @@ def _send_cors_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("Access-Control-Max-Age", "600")
 
 
-def _build_mcp_response(
-    request: Dict[str, Any],
-    *,
-    adapter: MCPAdapter,
-    serializer: ResultSerializer,
-    security_manager: SecurityManager,
-    registry: ToolRegistry,
-) -> Dict[str, Any] | None:
-    method = request.get("method")
-    request_id = request.get("id")
+class _CapabilitiesProvider:
+    def __init__(self, adapter: MCPAdapter):
+        self._adapter = adapter
 
-    if method == "initialize":
+    def get_capabilities(self) -> Dict[str, Any]:
+        return self._adapter.to_capabilities()
+
+
+class _ToolSchemaProvider:
+    def __init__(self, registry: ToolRegistry):
+        self._registry = registry
+
+    def list_tools(self) -> list[Dict[str, Any]]:
+        return self._registry.to_mcp_tools()
+
+
+class _ToolInvoker:
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        serializer: ResultSerializer,
+        security_manager: SecurityManager,
+    ):
+        self._registry = registry
+        self._serializer = serializer
+        self._security_manager = security_manager
+
+    def _audit(self, name: str, arguments: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+        return self._security_manager.audit_call(name or "", arguments, user_id)
+
+    def _mask(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        return self._security_manager.mask_keys_in_log(arguments)
+
+    def call_tool(
+        self,
+        name: str,
+        arguments: Dict[str, Any],
+        *,
+        context: MCPRequestContext,
+    ) -> Dict[str, Any]:
+        user_id = context.user_id or "default"
+        masked_args = self._mask(arguments)
+        audit_log = self._audit(name or "", arguments, user_id)
+
+        result = self._registry.execute_tool(
+            name,
+            arguments=arguments,
+            user_id=user_id,
+            state_manager=None,
+        )
+        serialized = self._serializer.to_mcp(result)
+        text_content = (
+            json.dumps(serialized["content"], ensure_ascii=False)
+            if serialized.get("contentType") == "application/json"
+            else str(serialized.get("content"))
+        )
         return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": adapter.to_capabilities(),
+            "content": [{"type": "text", "text": text_content}],
+            "meta": {"contentType": serialized.get("contentType")},
+            "arguments": masked_args,
+            "audit": audit_log,
+            "raw_result": result,
         }
 
-    if method == "notifications/initialized":
-        return None
 
-    if method == "tools/list":
-        return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": {"tools": registry.to_mcp_tools()},
-        }
+@dataclass(frozen=True)
+class _ProtocolDependencies:
+    capabilities: _CapabilitiesProvider
+    tools: _ToolSchemaProvider
+    invoker: _ToolInvoker
 
-    if method == "tools/call":
-        params = request.get("params", {}) or {}
-        name = params.get("name")
-        arguments: Dict[str, Any] = params.get("arguments", {}) or {}
-        masked_args = security_manager.mask_keys_in_log(arguments)
-        audit_log = security_manager.audit_call(name or "", arguments, "default")
 
-        try:
-            result = registry.execute_tool(
-                name,
-                arguments=arguments,
-                user_id="default",
-                state_manager=None,
-            )
-            serialized = serializer.to_mcp(result)
-            text_content = (
-                json.dumps(serialized["content"], ensure_ascii=False)
-                if serialized.get("contentType") == "application/json"
-                else str(serialized.get("content"))
-            )
+class _MCPProtocolCore(MCPProtocolCore):
+    def handle(
+        self,
+        request: MCPRequest,
+        *,
+        context: MCPRequestContext,
+        deps: _ProtocolDependencies,
+    ) -> Dict[str, Any] | None:
+        method = request.get("method")
+        request_id = request.get("id")
+
+        if method == "initialize":
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": {
-                    "content": [{"type": "text", "text": text_content}],
-                    "meta": {"contentType": serialized.get("contentType")},
-                    "arguments": masked_args,
-                    "audit": audit_log,
-                },
-                "raw_result": result,
+                "result": deps.capabilities.get_capabilities(),
             }
-        except ToolError as exc:
+
+        if method == "notifications/initialized":
+            return None
+
+        if method == "tools/list":
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "error": {
-                    "code": -32001,
-                    "message": exc.error_type,
-                    "data": {
-                        "message": str(exc),
-                        "details": exc.data,
-                        "arguments": masked_args,
-                        "audit": audit_log,
+                "result": {"tools": deps.tools.list_tools()},
+            }
+
+        if method == "tools/call":
+            params = request.get("params", {}) or {}
+            name = params.get("name")
+            arguments: Dict[str, Any] = params.get("arguments", {}) or {}
+
+            try:
+                invocation = deps.invoker.call_tool(name, arguments, context=context)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": invocation["content"],
+                        "meta": invocation["meta"],
+                        "arguments": invocation["arguments"],
+                        "audit": invocation["audit"],
                     },
-                },
-            }
-        except Exception:
-            logger.exception("MCP tools/call 發生未預期錯誤")
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": -32603,
-                    "message": "internal_error",
-                    "data": {"arguments": masked_args, "audit": audit_log},
-                },
-            }
+                    "raw_result": invocation["raw_result"],
+                }
+            except ToolError as exc:
+                user_id = context.user_id or "default"
+                masked_args = deps.invoker._mask(arguments)
+                audit_log = deps.invoker._audit(name or "", arguments, user_id)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32001,
+                        "message": exc.error_type,
+                        "data": {
+                            "message": str(exc),
+                            "details": exc.data,
+                            "arguments": masked_args,
+                            "audit": audit_log,
+                        },
+                    },
+                }
+            except Exception:
+                logger.exception("MCP tools/call 發生未預期錯誤")
+                user_id = context.user_id or "default"
+                masked_args = deps.invoker._mask(arguments)
+                audit_log = deps.invoker._audit(name or "", arguments, user_id)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32603,
+                        "message": "internal_error",
+                        "data": {"arguments": masked_args, "audit": audit_log},
+                    },
+                }
 
-    if request_id is None:
-        return None
+        if request_id is None:
+            return None
 
-    return {
-        "jsonrpc": "2.0",
-        "id": request_id,
-        "error": {"code": -32601, "message": "method_not_found"},
-    }
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {"code": -32601, "message": "method_not_found"},
+        }
 
 
 def _build_handler(
@@ -229,6 +295,12 @@ def _build_handler(
     active_serializer = serializer or ResultSerializer()
     active_security_manager = security_manager or SecurityManager()
     mcp_adapter = MCPAdapter(registry)
+    protocol_core = _MCPProtocolCore()
+    protocol_deps = _ProtocolDependencies(
+        capabilities=_CapabilitiesProvider(mcp_adapter),
+        tools=_ToolSchemaProvider(registry),
+        invoker=_ToolInvoker(registry, active_serializer, active_security_manager),
+    )
 
     class MCPToolHandler(BaseHTTPRequestHandler):
         server_version = "ToolAnythingMCP/0.1"
@@ -414,12 +486,15 @@ def _build_handler(
                     _json_response(self, 400, {"error": "invalid_json"})
                     return
 
-                response = _build_mcp_response(
+                context = MCPRequestContext(
+                    user_id="default",
+                    session_id=session_id,
+                    transport="sse",
+                )
+                response = protocol_core.handle(
                     payload,
-                    adapter=mcp_adapter,
-                    serializer=active_serializer,
-                    security_manager=active_security_manager,
-                    registry=registry,
+                    context=context,
+                    deps=protocol_deps,
                 )
                 if response is not None:
                     sent = _write_sse_event_locked(session, "message", response)

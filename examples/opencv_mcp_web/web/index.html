@@ -7,89 +7,155 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <header class="page-header">
-      <h1>OpenCV MCP 影像工具示範</h1>
-      <p class="subtitle">上傳圖片後，透過 MCP Server 呼叫 OpenCV 工具進行處理。</p>
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">⚡</div>
+        <div>
+          <h1>OpenCV MCP Tester</h1>
+          <p class="subtitle">影像處理工具測試介面</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="connectionBadge" class="badge badge-offline">未連線</span>
+        <button id="checkConnection" type="button" class="ghost-button">
+          <span aria-hidden="true">⟳</span>
+          檢查連線
+        </button>
+      </div>
     </header>
 
-    <main class="page-content">
-      <section class="card">
-        <h2>連線狀態</h2>
-        <div class="connection-row">
-          <label for="serverUrl">MCP Server URL</label>
-          <input id="serverUrl" type="text" value="" />
-          <button id="checkConnection" type="button">檢查連線</button>
-        </div>
-        <p id="connectionStatus" class="status">尚未檢查</p>
-        <div class="tool-list">
-          <h3>工具列表</h3>
-          <ul id="tools"></ul>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>圖片上傳</h2>
-        <div class="upload-row">
-          <input id="fileInput" type="file" accept="image/*" />
-        </div>
-        <div class="preview-grid">
+    <main class="app-layout">
+      <section class="side-panel">
+        <div class="panel-card status-card">
+          <div class="status-icon" aria-hidden="true">📡</div>
           <div>
-            <p class="label">原始預覽</p>
+            <p id="connectionStatus" class="status-title">尚未連線</p>
+            <p class="status-subtitle">請點擊右上角「檢查連線」按鈕</p>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <h2>連線設定</h2>
+          <div class="input-stack">
+            <label for="serverUrl">MCP Server URL</label>
+            <input id="serverUrl" type="text" value="" />
+          </div>
+          <div class="tool-list">
+            <div class="tool-list-header">
+              <h3>工具列表</h3>
+              <span id="toolCount" class="tool-count">0</span>
+            </div>
+            <ul id="tools"></ul>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <h2>選擇工具</h2>
+          <div class="input-stack">
+            <label for="toolSelect">工具類型</label>
+            <select id="toolSelect">
+              <option value="opencv.info">取得圖片資訊</option>
+              <option value="opencv.resize">縮放圖片</option>
+              <option value="opencv.canny">邊緣偵測</option>
+            </select>
+          </div>
+
+          <div id="resizeSettings" class="settings-group">
+            <h3>縮放設定</h3>
+            <div class="input-row">
+              <label for="resizeWidth">目標寬度</label>
+              <input id="resizeWidth" type="number" placeholder="例如 800" />
+            </div>
+            <div class="input-row">
+              <label for="resizeHeight">目標高度</label>
+              <input id="resizeHeight" type="number" placeholder="例如 600" />
+            </div>
+            <p class="hint">縮放會自動保持原始寬高比。</p>
+          </div>
+
+          <div id="cannySettings" class="settings-group">
+            <h3>邊緣偵測設定</h3>
+            <div class="input-row">
+              <label for="threshold1">閾值 1</label>
+              <input id="threshold1" type="number" value="50" />
+            </div>
+            <div class="input-row">
+              <label for="threshold2">閾值 2</label>
+              <input id="threshold2" type="number" value="150" />
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <h2>上傳圖片</h2>
+          <label id="uploadDrop" class="upload-drop" for="fileInput">
+            <input id="fileInput" type="file" accept="image/*" />
+            <div class="upload-inner">
+              <span class="upload-icon" aria-hidden="true">⬆</span>
+              <p>點擊或拖曳圖片到此處</p>
+              <span class="upload-hint">支援 JPG、PNG、GIF 等格式</span>
+            </div>
+          </label>
+          <div class="preview-block">
+            <p class="label">原圖預覽</p>
             <img id="previewImage" alt="原始圖片預覽" />
           </div>
-          <div>
-            <p class="label">處理結果</p>
-            <img id="resultImage" alt="處理結果預覽" />
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>工具設定</h2>
-        <div class="tool-controls">
-          <label for="toolSelect">選擇工具</label>
-          <select id="toolSelect">
-            <option value="opencv.info">取得圖片資訊</option>
-            <option value="opencv.resize">縮放圖片</option>
-            <option value="opencv.canny">邊緣偵測</option>
-          </select>
         </div>
 
-        <div id="resizeSettings" class="settings-group">
-          <h3>縮放設定</h3>
-          <div class="input-row">
-            <label for="resizeWidth">目標寬度</label>
-            <input id="resizeWidth" type="number" placeholder="例如 800" />
-          </div>
-          <div class="input-row">
-            <label for="resizeHeight">目標高度</label>
-            <input id="resizeHeight" type="number" placeholder="例如 600" />
-          </div>
-          <p class="hint">縮放會自動保持原始寬高比。</p>
-        </div>
-
-        <div id="cannySettings" class="settings-group">
-          <h3>邊緣偵測設定</h3>
-          <div class="input-row">
-            <label for="threshold1">閾值 1</label>
-            <input id="threshold1" type="number" value="50" />
-          </div>
-          <div class="input-row">
-            <label for="threshold2">閾值 2</label>
-            <input id="threshold2" type="number" value="150" />
-          </div>
-        </div>
-
-        <div class="action-row">
-          <button id="runTool" type="button">執行工具</button>
-        </div>
+        <button id="runTool" type="button" class="primary-button">
+          <span aria-hidden="true">▶</span>
+          執行工具
+        </button>
         <div class="progress-row">
           <label for="progressBar">執行進度</label>
           <progress id="progressBar" value="0" max="100"></progress>
         </div>
-        <pre id="resultOutput" class="result-output"></pre>
+      </section>
+
+      <section class="result-panel">
+        <div class="panel-card result-card">
+          <div class="result-header">
+            <div class="tabs">
+              <button class="tab-button active" type="button" data-tab="result">結果</button>
+              <button class="tab-button" type="button" data-tab="json">JSON</button>
+              <button class="tab-button" type="button" data-tab="records">紀錄</button>
+            </div>
+            <div class="result-actions">
+              <button id="zoomOut" class="icon-button" type="button" aria-label="縮小">－</button>
+              <span id="zoomLevel" class="zoom-label">100%</span>
+              <button id="zoomIn" class="icon-button" type="button" aria-label="放大">＋</button>
+              <button id="zoomReset" class="icon-button" type="button" aria-label="重設">⤾</button>
+              <button id="downloadResult" class="icon-button" type="button" aria-label="下載">⤓</button>
+            </div>
+          </div>
+
+          <div class="tab-panels">
+            <div class="tab-panel active" data-panel="result">
+              <div class="result-canvas">
+                <div id="resultPlaceholder" class="placeholder">
+                  <span class="placeholder-icon" aria-hidden="true">🖼</span>
+                  <p>尚無處理結果</p>
+                  <span>執行工具後，結果將顯示在此處</span>
+                </div>
+                <img id="resultImage" alt="處理結果預覽" />
+              </div>
+            </div>
+            <div class="tab-panel" data-panel="json">
+              <pre id="resultOutput" class="result-output"></pre>
+            </div>
+            <div class="tab-panel" data-panel="records">
+              <ul id="resultRecords" class="records-list"></ul>
+              <p id="recordsEmpty" class="records-empty">尚無處理紀錄</p>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
+
+    <footer class="app-footer">
+      <span>ToolAnything OpenCV MCP Demo</span>
+      <span>工具數量：<strong id="footerToolCount">0</strong></span>
+    </footer>
 
     <div id="toast" class="toast" role="alert"></div>
 

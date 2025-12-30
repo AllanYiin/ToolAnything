@@ -1,10 +1,15 @@
 const serverUrlInput = document.getElementById("serverUrl");
 const connectionStatus = document.getElementById("connectionStatus");
+const connectionBadge = document.getElementById("connectionBadge");
 const toolsList = document.getElementById("tools");
+const toolCount = document.getElementById("toolCount");
+const footerToolCount = document.getElementById("footerToolCount");
 const checkConnectionButton = document.getElementById("checkConnection");
+const uploadDrop = document.getElementById("uploadDrop");
 const fileInput = document.getElementById("fileInput");
 const previewImage = document.getElementById("previewImage");
 const resultImage = document.getElementById("resultImage");
+const resultPlaceholder = document.getElementById("resultPlaceholder");
 const toolSelect = document.getElementById("toolSelect");
 const resizeSettings = document.getElementById("resizeSettings");
 const cannySettings = document.getElementById("cannySettings");
@@ -15,10 +20,21 @@ const threshold2Input = document.getElementById("threshold2");
 const runToolButton = document.getElementById("runTool");
 const progressBar = document.getElementById("progressBar");
 const resultOutput = document.getElementById("resultOutput");
+const resultRecords = document.getElementById("resultRecords");
+const recordsEmpty = document.getElementById("recordsEmpty");
+const tabButtons = document.querySelectorAll(".tab-button");
+const tabPanels = document.querySelectorAll(".tab-panel");
+const zoomOutButton = document.getElementById("zoomOut");
+const zoomInButton = document.getElementById("zoomIn");
+const zoomResetButton = document.getElementById("zoomReset");
+const zoomLevelLabel = document.getElementById("zoomLevel");
+const downloadResultButton = document.getElementById("downloadResult");
 const toast = document.getElementById("toast");
 
 let currentImageBase64 = "";
 let progressTimer = null;
+let zoomLevel = 1;
+const recordEntries = [];
 
 class SseNotSupportedError extends Error {
   constructor(payload) {
@@ -33,7 +49,7 @@ function showToast(message) {
   toast.classList.add("show");
   setTimeout(() => {
     toast.classList.remove("show");
-  }, 8000);
+  }, 9000);
 }
 
 function setProgress(value) {
@@ -58,6 +74,18 @@ function stopProgress() {
 
 function getServerUrl() {
   return serverUrlInput.value.trim();
+}
+
+function setConnectionBadge(state, label) {
+  connectionBadge.textContent = label;
+  connectionBadge.classList.remove("badge-offline", "badge-online", "badge-checking");
+  if (state === "online") {
+    connectionBadge.classList.add("badge-online");
+  } else if (state === "checking") {
+    connectionBadge.classList.add("badge-checking");
+  } else {
+    connectionBadge.classList.add("badge-offline");
+  }
 }
 
 async function fetchJson(url, options = {}) {
@@ -147,7 +175,6 @@ async function invokeToolSse(baseUrl, payload, handlers) {
         }
       } catch (error) {
         console.warn("無法解析 SSE 資料", error);
-
       }
     });
   }
@@ -179,14 +206,17 @@ async function checkConnection() {
   }
 
   connectionStatus.textContent = "連線中...";
+  setConnectionBadge("checking", "連線中");
   try {
     const health = await fetchJson(`${baseUrl}/health`);
     connectionStatus.textContent = `連線成功：${health.status}`;
     const tools = await fetchJson(`${baseUrl}/tools`);
     renderTools(tools.tools || []);
+    setConnectionBadge("online", "已連線");
   } catch (error) {
     connectionStatus.textContent = "連線失敗";
     showToast(error.message);
+    setConnectionBadge("offline", "未連線");
   }
 }
 
@@ -194,9 +224,13 @@ function renderTools(tools) {
   toolsList.innerHTML = "";
   if (!tools.length) {
     toolsList.innerHTML = "<li>尚未取得工具</li>";
+    toolCount.textContent = "0";
+    footerToolCount.textContent = "0";
     return;
   }
 
+  toolCount.textContent = tools.length;
+  footerToolCount.textContent = tools.length;
   tools.forEach((tool) => {
     const li = document.createElement("li");
     li.textContent = `${tool.name} - ${tool.description}`;
@@ -215,6 +249,7 @@ function handleFileChange(event) {
     currentImageBase64 = reader.result;
     previewImage.src = currentImageBase64;
     resultImage.src = "";
+    resultPlaceholder.style.display = "grid";
     resultOutput.textContent = "";
   };
   reader.onerror = () => {
@@ -237,9 +272,56 @@ function applyResult(payload) {
   );
   if (payload.raw_result?.image_base64) {
     resultImage.src = payload.raw_result.image_base64;
+    resultPlaceholder.style.display = "none";
   } else {
     resultImage.src = "";
+    resultPlaceholder.style.display = "grid";
   }
+}
+
+function appendRecord({ toolName, status, message }) {
+  const timestamp = new Date().toLocaleTimeString("zh-Hant", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const record = {
+    toolName,
+    status,
+    message,
+    timestamp,
+  };
+  recordEntries.unshift(record);
+  if (recordEntries.length > 6) {
+    recordEntries.pop();
+  }
+
+  resultRecords.innerHTML = "";
+  recordEntries.forEach((entry) => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <strong>${entry.toolName}</strong>
+      <div>狀態：${entry.status}</div>
+      <div>${entry.message}</div>
+      <div class="record-time">${entry.timestamp}</div>
+    `;
+    resultRecords.appendChild(li);
+  });
+  recordsEmpty.style.display = recordEntries.length ? "none" : "block";
+}
+
+function updateZoom(level) {
+  zoomLevel = Math.min(2, Math.max(0.5, level));
+  resultImage.style.transform = `scale(${zoomLevel})`;
+  zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+}
+
+function switchTab(tabName) {
+  tabButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === tabName);
+  });
+  tabPanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.panel === tabName);
+  });
 }
 
 async function runTool() {
@@ -286,6 +368,11 @@ async function runTool() {
         },
         result: (payload) => {
           applyResult(payload);
+          appendRecord({
+            toolName,
+            status: "完成",
+            message: "工具處理完成",
+          });
         },
         error: (payload) => {
           const errorMessage =
@@ -293,6 +380,11 @@ async function runTool() {
             payload?.payload?.error?.type ||
             "工具執行失敗";
           showToast(errorMessage);
+          appendRecord({
+            toolName,
+            status: "失敗",
+            message: errorMessage,
+          });
         },
         done: () => {
           setProgress(100);
@@ -313,8 +405,18 @@ async function runTool() {
           arguments: argumentsPayload,
         });
         applyResult(response);
+        appendRecord({
+          toolName,
+          status: "完成",
+          message: "工具處理完成",
+        });
       } catch (fallbackError) {
         showToast(fallbackError.message);
+        appendRecord({
+          toolName,
+          status: "失敗",
+          message: fallbackError.message,
+        });
       } finally {
         stopProgress();
       }
@@ -323,6 +425,11 @@ async function runTool() {
     startProgress();
     stopProgress();
     showToast(error.message);
+    appendRecord({
+      toolName,
+      status: "失敗",
+      message: error.message,
+    });
   } finally {
     runToolButton.disabled = false;
   }
@@ -331,10 +438,50 @@ async function runTool() {
 function init() {
   serverUrlInput.value = window.location.origin;
   toggleSettings();
+  setConnectionBadge("offline", "未連線");
   checkConnectionButton.addEventListener("click", checkConnection);
   fileInput.addEventListener("change", handleFileChange);
   toolSelect.addEventListener("change", toggleSettings);
   runToolButton.addEventListener("click", runTool);
+  tabButtons.forEach((button) => {
+    button.addEventListener("click", () => switchTab(button.dataset.tab));
+  });
+  zoomOutButton.addEventListener("click", () => updateZoom(zoomLevel - 0.1));
+  zoomInButton.addEventListener("click", () => updateZoom(zoomLevel + 0.1));
+  zoomResetButton.addEventListener("click", () => updateZoom(1));
+  downloadResultButton.addEventListener("click", () => {
+    if (!resultImage.src) {
+      showToast("目前沒有可下載的結果圖片");
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = resultImage.src;
+    link.download = "opencv-result.png";
+    link.click();
+  });
+
+  ["dragenter", "dragover"].forEach((eventName) => {
+    uploadDrop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      uploadDrop.classList.add("dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach((eventName) => {
+    uploadDrop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      uploadDrop.classList.remove("dragover");
+    });
+  });
+  uploadDrop.addEventListener("drop", (event) => {
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) {
+      return;
+    }
+    fileInput.files = event.dataTransfer.files;
+    handleFileChange({ target: { files: [file] } });
+  });
+
+  updateZoom(1);
 }
 
 init();

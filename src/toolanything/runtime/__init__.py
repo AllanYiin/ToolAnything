@@ -8,6 +8,7 @@ from .concurrency import (
     parallel_run,
     retry_async,
 )
+from .serve import run, serve
 
 __all__ = [
     "ParallelOptions",
@@ -18,4 +19,6 @@ __all__ = [
     "parallel_map_async",
     "parallel_run",
     "retry_async",
+    "run",
+    "serve",
 ]

@@ -79,22 +79,20 @@ Schema 引擎會依據函數的 type hints 生成 JSON Schema，支援項目如�
 
 ## 與 Claude Desktop 的自動註冊整合
 
-ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 Claude Desktop 設定：
+ToolAnything 內建輕量伺服器，可透過 CLI 載入 `@tool` 模組並生成 Claude Desktop 設定：
 
-- 啟動 MCP Server：
+- 啟動工具伺服器（載入工具模組）：
 
   ```bash
-  toolanything run-mcp --port 9090
+  toolanything serve your_module --port 9090
   ```
 
-  伺服器提供 `/health`、`/tools`、`GET /sse`（MCP SSE）、`POST /messages/{session_id}`（MCP JSON-RPC）、`POST /invoke` 與 `POST /invoke/stream`（SSE）端點，預設監聽 `0.0.0.0`，可透過 `--host` 覆寫。
-
-  其中 `/sse` 會回傳 MCP 所需的 SSE stream，並在第一個 event 提供 message endpoint。
+  伺服器提供 `/health`、`/tools`、`GET /sse`、`POST /messages/{session_id}`、`POST /invoke` 與 `POST /invoke/stream` 等端點，預設監聽 `0.0.0.0`，可透過 `--host` 覆寫。
 
 - 產生 Claude Desktop 設定片段：
 
   ```bash
-  toolanything init-claude
+  toolanything init-claude --module your_module
   ```
 
   指令會在當前路徑生成 `claude_desktop_config.json`（如需覆寫可加上 `--force`），內容如下：
@@ -104,7 +102,7 @@ ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 
     "mcpServers": {
       "toolanything": {
         "command": "python",
-        "args": ["-m", "toolanything.cli", "run-mcp", "--port", "9090"],
+        "args": ["-m", "toolanything.cli", "serve", "your_module", "--stdio", "--port", "9090"],
         "autoStart": true
       }
     }
@@ -116,7 +114,7 @@ ToolAnything 內建輕量 MCP Tool Server，可透過 CLI 一鍵啟動並生成 
 - 直接安裝 MCP 設定到 Claude Desktop：
 
   ```bash
-  toolanything install-claude --config "~/Library/Application Support/Claude/config.json" --port 9090
+  toolanything install-claude --config "~/Library/Application Support/Claude/config.json" --port 9090 --module your_module
   ```
 
   指令會讀取（或建立）指定的 Claude Desktop 設定檔，將 `mcpServers.toolanything` 自動寫入，重新啟動 Claude Desktop 後即可套用，無需手動複製貼上。

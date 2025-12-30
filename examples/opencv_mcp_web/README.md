@@ -1,6 +1,6 @@
-# OpenCV MCP Web Demo
+# OpenCV ToolAnything Demo
 
-這個範例示範如何把 OpenCV 工具包裝成 MCP Server，並提供網頁端 MCP Client 進行測試，且支援 MCP SSE 連線給 ChatGPT App 之類的 Connector 使用。
+這個範例示範**只需撰寫 `@tool` 函式**即可啟動 ToolAnything 伺服器，所有 MCP/傳輸層都由 ToolAnything 內部處理。
 
 ## 功能摘要
 
@@ -8,21 +8,31 @@
 - **opencv.resize**：依照指定尺寸縮放圖片（可保持比例）
 - **opencv.canny**：Canny 邊緣偵測
 - **Web UI**：上傳圖片、預覽結果、顯示執行進度與工具輸出（SSE 串流）
-- **MCP SSE**：`GET /sse` 建立 SSE 連線，`POST /messages/{session_id}` 發送 JSON-RPC 訊息
 
 ## 本機啟動
 
+1. 安裝相依套件：
+
 ```bash
 pip install -r requirements.txt
-python examples/opencv_mcp_web/server.py --host 0.0.0.0 --port 9091
 ```
 
-開啟瀏覽器：`http://localhost:9091`
+2. 啟動 ToolAnything 伺服器（載入工具模組）：
 
-若要透過 MCP SSE 連線（例如 ChatGPT App 的 MCP Connector）：
+```bash
+toolanything serve examples.opencv_mcp_web.server --host 0.0.0.0 --port 9091
+```
 
-- SSE 入口：`http://localhost:9091/sse`
-- 伺服器會回傳 `event: endpoint`，其中 `uri` 會帶回對應的 `/messages/{session_id}` 端點。
+伺服器提供 `/health`、`/tools`、`POST /invoke`、`POST /invoke/stream` 等端點。
+
+3. （可選）啟動靜態 Web UI：
+
+```bash
+cd examples/opencv_mcp_web/web
+python -m http.server 5173
+```
+
+開啟瀏覽器：`http://localhost:5173`，並在頁面上輸入 MCP Server URL（例如 `http://localhost:9091`）。
 
 ## 部署到 Replit
 
@@ -36,9 +46,7 @@ pip install -r requirements.txt
 3. 設定 Replit 的 **Run command**：
 
 ```bash
-python examples/opencv_mcp_web/server.py --host 0.0.0.0 --port 3000
+toolanything serve examples.opencv_mcp_web.server --host 0.0.0.0 --port 3000
 ```
 
-4. Replit 會提供對外網址，打開後即可使用 Web UI。
-
-> 若需切換 Port，請確保 Web UI 的 MCP Server URL 與服務位址一致。
+4. 若需 Web UI，請另外用靜態伺服器提供 `examples/opencv_mcp_web/web`，並在 UI 中填入 MCP Server URL。

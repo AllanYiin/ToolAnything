@@ -18,7 +18,14 @@ def _get_default_claude_config_path() -> Path:
     return Path.home() / "Library" / "Application Support" / "Claude" / "config.json"
 
 
-def _build_mcp_entry(port: int) -> Dict[str, Any]:
+def _build_mcp_entry(port: int, module: str | None = None, *, stdio: bool = False) -> Dict[str, Any]:
+    if module:
+        args = ["-m", "toolanything.cli", "serve", module]
+        if stdio:
+            args.append("--stdio")
+        args.extend(["--port", str(port)])
+        return _build_custom_entry(command="python", args=args)
+
     return _build_custom_entry(
         command="python",
         args=["-m", "toolanything.cli", "run-mcp", "--port", str(port)],
@@ -33,8 +40,10 @@ def _build_custom_entry(command: str, args: list[str]) -> Dict[str, Any]:
     }
 
 
-def _init_claude_config(path: Path, port: int, force: bool) -> None:
-    template: Dict[str, Any] = {"mcpServers": {"toolanything": _build_mcp_entry(port)}}
+def _init_claude_config(path: Path, port: int, force: bool, module: str | None) -> None:
+    template: Dict[str, Any] = {
+        "mcpServers": {"toolanything": _build_mcp_entry(port, module, stdio=True)}
+    }
 
     if path.exists() and not force:
         raise FileExistsError(f"{path} 已存在，如要覆寫請加入 --force")
@@ -55,7 +64,13 @@ def _run_stdio_server() -> None:
     run_stdio_server()
 
 
-def _install_claude_config(path: Path, port: int, name: str) -> None:
+def _serve_module(module: str, host: str, port: int, stdio: bool) -> None:
+    from toolanything.runtime import run
+
+    run(module=module, host=host, port=port, stdio=stdio)
+
+
+def _install_claude_config(path: Path, port: int, name: str, module: str | None) -> None:
     path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -66,7 +81,7 @@ def _install_claude_config(path: Path, port: int, name: str) -> None:
         config = {}
 
     mcp_servers = config.setdefault("mcpServers", {})
-    mcp_servers[name] = _build_mcp_entry(port)
+    mcp_servers[name] = _build_mcp_entry(port, module, stdio=True)
 
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
@@ -88,9 +103,11 @@ def _install_claude_opencv_config(path: Path, port: int, name: str) -> None:
     mcp_servers[name] = _build_custom_entry(
         command="python",
         args=[
-            "examples/opencv_mcp_web/server.py",
-            "--host",
-            "0.0.0.0",
+            "-m",
+            "toolanything.cli",
+            "serve",
+            "examples.opencv_mcp_web.server",
+            "--stdio",
             "--port",
             str(port),
         ],
@@ -148,15 +165,38 @@ def _build_parser() -> argparse.ArgumentParser:
     stdio_parser = subparsers.add_parser("run-stdio", help="啟動 MCP Stdio Server (供 Claude Desktop 使用)")
     stdio_parser.set_defaults(func=lambda args: _run_stdio_server())
 
+    serve_parser = subparsers.add_parser("serve", help="載入工具模組並啟動伺服器")
+    serve_parser.add_argument("module", help="工具模組路徑（例如 examples.opencv_mcp_web.server）")
+    serve_parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
+    serve_parser.add_argument("--host", default="0.0.0.0", help="監聽 host，預設 0.0.0.0")
+    serve_parser.add_argument(
+        "--stdio",
+        action="store_true",
+        help="改用 stdio 啟動（供 MCP Desktop 類型使用）",
+    )
+    serve_parser.set_defaults(
+        func=lambda args: _serve_module(
+            module=args.module,
+            host=args.host,
+            port=args.port,
+            stdio=args.stdio,
+        )
+    )
+
     init_parser = subparsers.add_parser("init-claude", help="生成 Claude Desktop MCP 設定片段")
     init_parser.add_argument("--output", default="claude_desktop_config.json", help="輸出檔案路徑")
     init_parser.add_argument("--port", type=int, default=9090, help="MCP server port，預設 9090")
+    init_parser.add_argument(
+        "--module",
+        help="工具模組路徑（例如 examples.opencv_mcp_web.server），提供時會使用 serve 模式",
+    )
     init_parser.add_argument("--force", action="store_true", help="已存在時覆寫輸出檔案")
     init_parser.set_defaults(
         func=lambda args: _init_claude_config(
             path=Path(args.output),
             port=args.port,
             force=args.force,
+            module=args.module,
         )
     )
 
@@ -169,12 +209,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     install_parser.add_argument("--port", type=int, default=9090, help="MCP server port，預設 9090")
     install_parser.add_argument(
+        "--module",
+        help="工具模組路徑（例如 examples.opencv_mcp_web.server），提供時會使用 serve 模式",
+    )
+    install_parser.add_argument(
         "--name",
         default="toolanything",
         help="在 Claude Desktop 中顯示的 mcpServers 名稱，預設 toolanything",
     )
     install_parser.set_defaults(
-        func=lambda args: _install_claude_config(path=args.config, port=args.port, name=args.name)
+        func=lambda args: _install_claude_config(
+            path=args.config, port=args.port, name=args.name, module=args.module
+        )
     )
 
     install_opencv_parser = subparsers.add_parser(

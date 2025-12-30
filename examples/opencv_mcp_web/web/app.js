@@ -94,7 +94,7 @@ function parseSseChunk(chunk) {
 }
 
 async function invokeToolSse(baseUrl, payload, handlers) {
-  const response = await fetch(`${baseUrl}/invoke-sse`, {
+  const response = await fetch(`${baseUrl}/invoke/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -288,7 +288,10 @@ async function runTool() {
           applyResult(payload);
         },
         error: (payload) => {
-          const errorMessage = payload?.error?.message || "工具執行失敗";
+          const errorMessage =
+            payload?.payload?.error?.message ||
+            payload?.payload?.error?.type ||
+            "工具執行失敗";
           showToast(errorMessage);
         },
         done: () => {

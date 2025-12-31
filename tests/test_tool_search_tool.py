@@ -79,3 +79,80 @@ def test_tool_search_filters_and_sorts_by_failure():
     assert all(spec.name.startswith("translate.") for spec in prefixed)
     assert any(spec.name == "translate.text" for spec in prefixed)
     assert any(spec.name == "translate.audio" for spec in prefixed)
+
+
+def test_search_rule_based_backward_compatible():
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec.from_function(
+            _translate_text,
+            name="translate.text",
+            description="翻譯文字內容",
+            tags=["lang", "text"],
+        )
+    )
+    registry.register(
+        ToolSpec.from_function(
+            _translate_audio,
+            name="translate.audio",
+            description="翻譯音訊內容",
+            tags=["lang", "audio"],
+        )
+    )
+    failure_log = FailureLogManager()
+    searcher = ToolSearchTool(registry, failure_log)
+
+    results = searcher.search(query="translate", tags=["lang"], top_k=2, now=100.0)
+    assert [spec.name for spec in results] == ["translate.audio", "translate.text"]
+
+
+def test_search_filters_side_effect_and_category():
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec.from_function(
+            _translate_text,
+            name="translate.text",
+            description="翻譯文字內容",
+            tags=["lang", "text"],
+            metadata={"side_effect": True, "category": "io"},
+        )
+    )
+    registry.register(
+        ToolSpec.from_function(
+            _helper_tool,
+            name="helper.tool",
+            description="一般輔助任務",
+            tags=["misc"],
+            metadata={"side_effect": False, "category": "analysis"},
+        )
+    )
+
+    searcher = ToolSearchTool(registry, FailureLogManager())
+    results = searcher.search(allow_side_effects=False, categories=["analysis"])
+    assert [spec.name for spec in results] == ["helper.tool"]
+
+
+def test_search_ranking_prefers_cost_latency_when_tied():
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec.from_function(
+            _translate_text,
+            name="translate.text",
+            description="翻譯內容",
+            tags=["lang"],
+            metadata={"cost": 2.0, "latency_hint_ms": 200},
+        )
+    )
+    registry.register(
+        ToolSpec.from_function(
+            _translate_audio,
+            name="translate.audio",
+            description="翻譯內容",
+            tags=["lang"],
+            metadata={"cost": 1.0, "latency_hint_ms": 100},
+        )
+    )
+
+    searcher = ToolSearchTool(registry, FailureLogManager())
+    results = searcher.search(query="翻譯", use_metadata_ranking=True)
+    assert [spec.name for spec in results][:2] == ["translate.audio", "translate.text"]

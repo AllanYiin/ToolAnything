@@ -10,6 +10,11 @@ from toolanything.core import (
     build_parameters_schema,
     build_search_tool,
     python_type_to_schema,
+    ToolMetadata,
+    normalize_metadata,
+    BaseToolSelectionStrategy,
+    RuleBasedStrategy,
+    HybridStrategy,
 )
 from toolanything.pipeline.context import PipelineContext
 from toolanything.decorators import pipeline, tool
@@ -38,6 +43,11 @@ __all__ = [
     "build_search_tool",
     "build_parameters_schema",
     "python_type_to_schema",
+    "ToolMetadata",
+    "normalize_metadata",
+    "BaseToolSelectionStrategy",
+    "RuleBasedStrategy",
+    "HybridStrategy",
     "pipeline",
     "tool",
     "StateManager",

@@ -16,6 +16,16 @@ def test_metadata_normalization_defaults():
     )
 
 
+def test_metadata_default_values_when_missing():
+    metadata = normalize_metadata({}, tags=None)
+    assert metadata.cost is None
+    assert metadata.latency_hint_ms is None
+    assert metadata.side_effect is None
+    assert metadata.category is None
+    assert metadata.tags == ()
+    assert metadata.extra == {}
+
+
 def test_decorator_register_metadata_roundtrip():
     registry = ToolRegistry()
 
@@ -43,3 +53,4 @@ def test_decorator_register_metadata_roundtrip():
     assert normalized.category == "io"
     assert "cli" in normalized.tags
     assert normalized.extra["extra"] == "value"
+    assert spec.tool_metadata == normalized

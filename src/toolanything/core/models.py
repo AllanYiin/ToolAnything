@@ -106,8 +106,16 @@ class ToolSpec(DefinitionMixin):
             documentation=documentation,
         )
 
-    def normalized_metadata(self) -> ToolMetadata:
+    @property
+    def tool_metadata(self) -> ToolMetadata:
+        """回傳正規化後的 metadata 視圖。"""
+
         return normalize_metadata(self.metadata, tags=self.tags)
+
+    def normalized_metadata(self) -> ToolMetadata:
+        """向下相容的 metadata 視圖方法。"""
+
+        return self.tool_metadata
 
 
 @dataclass

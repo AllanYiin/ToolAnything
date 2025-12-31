@@ -5,10 +5,19 @@ import argparse
 import json
 import os
 import platform
+import shlex
+import socket
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
+from urllib import request as url_request
+from urllib.parse import urljoin
 
 from toolanything.core import FailureLogManager, ToolRegistry, ToolSearchTool
+from toolanything.core.connection_tester import ConnectionTester, render_report
+from toolanything.utils.logger import logger
 
 
 def _get_default_claude_config_path() -> Path:
@@ -190,6 +199,158 @@ def _print_examples_nav() -> None:
         print(f"- {title}: {path} ({description})")
 
 
+def _run_doctor(args: argparse.Namespace) -> None:
+    tester = ConnectionTester(timeout=args.timeout)
+
+    if args.mode == "stdio":
+        if args.cmd and args.tools:
+            report = tester.build_config_error(
+                mode="stdio",
+                message="--cmd 與 --tools 不可同時使用",
+                suggestion="請擇一提供 stdio server 啟動方式",
+            )
+        elif args.cmd:
+            cmd = shlex.split(args.cmd)
+            report = tester.run_stdio(cmd)
+        elif args.tools:
+            cmd = [
+                sys.executable,
+                "-m",
+                "toolanything.core.doctor_server",
+                "--tools",
+                args.tools,
+            ]
+            report = tester.run_stdio(cmd)
+        else:
+            report = tester.build_config_error(
+                mode="stdio",
+                message="缺少 stdio 啟動參數",
+                suggestion="請提供 --cmd 或 --tools 啟動 stdio server",
+            )
+    else:
+        report = _run_doctor_http(args, tester)
+
+    if args.json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(render_report(report))
+
+    if not report.ok:
+        raise SystemExit(1)
+
+
+def _run_doctor_http(args: argparse.Namespace, tester: ConnectionTester) -> Any:
+    if args.url and (args.cmd or args.tools):
+        return tester.build_config_error(
+            mode="http",
+            message="--url 不可與 --cmd/--tools 同時使用",
+            suggestion="請擇一提供 HTTP 連線或啟動方式",
+        )
+
+    if args.url:
+        return tester.run_http(args.url)
+
+    if args.cmd:
+        url = args.url or "http://127.0.0.1:9090"
+        return _run_http_subprocess(tester, url, shlex.split(args.cmd), args.timeout)
+
+    if args.tools:
+        port = _pick_free_port()
+        url = f"http://127.0.0.1:{port}"
+        cmd = [
+            sys.executable,
+            "-m",
+            "toolanything.cli",
+            "serve",
+            args.tools,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ]
+        return _run_http_subprocess(tester, url, cmd, args.timeout)
+
+    return tester.build_config_error(
+        mode="http",
+        message="缺少 HTTP 連線或啟動參數",
+        suggestion="請提供 --url 連線既有 server，或使用 --tools/--cmd 自動啟動",
+    )
+
+
+def _pick_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _wait_for_http_ready(url: str, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    health_url = urljoin(url, "/health")
+    last_error: str | None = None
+    while time.monotonic() < deadline:
+        try:
+            with url_request.urlopen(health_url, timeout=1) as response:
+                if response.status == 200:
+                    return
+                last_error = f"status {response.status}"
+        except Exception as exc:
+            last_error = str(exc)
+        time.sleep(0.2)
+    raise RuntimeError(last_error or "unknown error")
+
+
+def _run_http_subprocess(
+    tester: ConnectionTester, url: str, cmd: list[str], timeout: float
+) -> Any:
+    process: subprocess.Popen[str] | None = None
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            _wait_for_http_ready(url, timeout=min(5.0, timeout))
+        except Exception as exc:
+            report = tester.build_config_error(
+                mode="http",
+                message="HTTP server 未就緒",
+                suggestion="請確認啟動命令是否正確或提高 --timeout",
+            )
+            report.steps[0].details = {
+                "exception": str(exc),
+                "stderr": _collect_stderr(process),
+            }
+            return report
+        return tester.run_http(url)
+    finally:
+        if process is not None:
+            _terminate_process(process)
+
+
+def _collect_stderr(process: subprocess.Popen[str]) -> str:
+    if process.stderr is None:
+        return ""
+    try:
+        _, stderr = process.communicate(timeout=1)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        _, stderr = process.communicate(timeout=1)
+    return stderr or ""
+
+
+def _terminate_process(process: subprocess.Popen[str]) -> None:
+    try:
+        process.terminate()
+        process.wait(timeout=2)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="toolanything", description="ToolAnything CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -357,13 +518,59 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     examples_parser.set_defaults(func=lambda args: _print_examples_nav())
 
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        aliases=["connection-test"],
+        help="檢查 MCP transport 與工具呼叫狀態",
+    )
+    doctor_parser.add_argument(
+        "--mode",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="診斷模式（stdio 或 http），預設 stdio",
+    )
+    doctor_parser.add_argument(
+        "--cmd",
+        help=(
+            "stdio/http 模式啟動命令（例如 \"python -m toolanything.cli run-stdio\"；"
+            "http 模式預設連 http://127.0.0.1:9090）"
+        ),
+    )
+    doctor_parser.add_argument(
+        "--tools",
+        help="工具模組路徑，stdio 會啟動 doctor 專用 server；http 會自動啟動 serve",
+    )
+    doctor_parser.add_argument(
+        "--url",
+        help="http 模式 MCP server base URL（例如 http://localhost:9090）",
+    )
+    doctor_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=8.0,
+        help="每一步驟的 timeout 秒數，預設 8 秒",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="輸出 JSON 格式報告",
+    )
+    doctor_parser.set_defaults(func=_run_doctor)
+
     return parser
 
 
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except SystemExit:
+        raise
+    except Exception:
+        logger.exception("CLI 執行失敗")
+        print("[ToolAnything] CLI 執行失敗，請查看 logs/toolanything.log")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

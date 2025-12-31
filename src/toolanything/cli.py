@@ -6,10 +6,12 @@ import json
 import os
 import platform
 import shlex
+
 import socket
 import subprocess
 import sys
 import time
+
 from pathlib import Path
 from typing import Any, Dict
 from urllib import request as url_request
@@ -228,6 +230,7 @@ def _run_doctor(args: argparse.Namespace) -> None:
                 suggestion="請提供 --cmd 或 --tools 啟動 stdio server",
             )
     else:
+
         report = _run_doctor_http(args, tester)
 
     if args.json:
@@ -237,6 +240,7 @@ def _run_doctor(args: argparse.Namespace) -> None:
 
     if not report.ok:
         raise SystemExit(1)
+
 
 
 def _run_doctor_http(args: argparse.Namespace, tester: ConnectionTester) -> Any:
@@ -349,6 +353,7 @@ def _terminate_process(process: subprocess.Popen[str]) -> None:
             process.kill()
         except Exception:
             pass
+
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -531,6 +536,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     doctor_parser.add_argument(
         "--cmd",
+
         help=(
             "stdio/http 模式啟動命令（例如 \"python -m toolanything.cli run-stdio\"；"
             "http 模式預設連 http://127.0.0.1:9090）"
@@ -539,6 +545,7 @@ def _build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument(
         "--tools",
         help="工具模組路徑，stdio 會啟動 doctor 專用 server；http 會自動啟動 serve",
+
     )
     doctor_parser.add_argument(
         "--url",

@@ -76,10 +76,12 @@ toolanything doctor --mode stdio --tools examples.quickstart.tools
 # 自訂 stdio 啟動指令
 toolanything doctor --mode stdio --cmd "python -m toolanything.cli run-stdio"
 
+
 # http 模式：自動啟動 serve（SSE + JSON-RPC）
 toolanything doctor --mode http --tools examples.quickstart.tools
 
 # 連線既有 HTTP server
+
 toolanything doctor --mode http --url http://localhost:9090
 ```
 

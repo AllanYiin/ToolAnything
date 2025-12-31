@@ -6,6 +6,40 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 - 語法糖簡潔：依據 type hints 生成 JSON Schema，降低心智負擔。
 - 支援 pipeline 與多使用者 state：透過 `@pipeline` decorator 組裝跨工具流程並維持使用者上下文。
 
+👉 建議先閱讀 [Architecture Walkthrough](docs/architecture-walkthrough.md) 了解協議邊界與擴充方式。
+
+## Learning Path（學習路徑）
+
+### 1) 初學者路線：從 0 到第一個 Tool
+
+**閱讀順序**
+1. [`examples/quickstart/README.md`](examples/quickstart/README.md)：最小可跑流程（註冊工具、啟動 server、tools/list、tools/call）。  
+2. [`src/toolanything/decorators/tool.py`](src/toolanything/decorators/tool.py)：`tool()` decorator 註冊入口。  
+3. [`src/toolanything/core/registry.py`](src/toolanything/core/registry.py)：`ToolRegistry` 的註冊與查詢。  
+
+**讀完能做到什麼**
+- 可以寫出自己的工具函數，啟動 MCP server，並透過 `tools/list`/`tools/call` 驗證工具可用。
+
+### 2) 已懂 MCP/JSON-RPC 的路線：掌握協議邊界
+
+**閱讀順序**
+1. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md)：B/C/G 章節，了解 protocol 與 server 的責任切割。  
+2. [`src/toolanything/protocol/mcp_jsonrpc.py`](src/toolanything/protocol/mcp_jsonrpc.py)：`MCPJSONRPCProtocolCore.handle()` 的 method routing。  
+3. [`src/toolanything/server/mcp_stdio_server.py`](src/toolanything/server/mcp_stdio_server.py)：stdio transport 如何注入依賴並呼叫 protocol core。  
+
+**讀完能做到什麼**
+- 能清楚判斷應該在哪一層擴充 MCP 行為，避免 server/transport 汙染協議核心。
+
+### 3) 進階路線：工具搜尋與策略化選擇
+
+**閱讀順序**
+1. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md)：E/F/G 章節（策略、metadata、end-to-end）。  
+2. [`src/toolanything/core/selection_strategies.py`](src/toolanything/core/selection_strategies.py)：`BaseToolSelectionStrategy`、`RuleBasedStrategy`、`HybridStrategy`。  
+3. [`src/toolanything/core/metadata.py`](src/toolanything/core/metadata.py)：`ToolMetadata` 與 `normalize_metadata()`。  
+
+**讀完能做到什麼**
+- 能自訂 tool selection strategy、依 metadata 篩選排序，並接到 `ToolSearchTool` 或 CLI。  
+
 ## 協議對應方式（MCP STDIO / SSE / OpenAI Tool Calling）
 
 專案內同時支援 MCP STDIO、MCP HTTP（含 SSE）與 OpenAI Tool Calling，其對應方式如下：
@@ -31,7 +65,7 @@ from toolanything import tool, pipeline, ToolRegistry, StateManager
 state_manager = StateManager()
 
 # 不需額外指定 registry，會自動使用全域預設註冊表
-@tool(path="weather.query", description="取得城市天氣")
+@tool(name="weather.query", description="取得城市天氣")
 def get_weather(city: str, unit: str = "c") -> dict:
     return {"city": city, "unit": unit, "temp": 25}
 

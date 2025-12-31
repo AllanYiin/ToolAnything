@@ -88,6 +88,15 @@ def test_cli_search_arguments_forwarding(monkeypatch):
             "--top-k",
             "5",
             "--disable-failure-sort",
+            "--max-cost",
+            "1.5",
+            "--latency-budget-ms",
+            "250",
+            "--allow-side-effects",
+            "--category",
+            "io,admin",
+            "--category",
+            "analysis",
         ]
     )
     args.func(args)
@@ -98,6 +107,10 @@ def test_cli_search_arguments_forwarding(monkeypatch):
         "prefix": "tool",
         "top_k": 5,
         "sort_by_failure": False,
+        "max_cost": 1.5,
+        "latency_budget_ms": 250,
+        "allow_side_effects": True,
+        "categories": ["io", "admin", "analysis"],
     }
 
 
@@ -123,3 +136,4 @@ def test_cli_search_uses_registry(tmp_path, monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "demo.echo" in output
     assert "failure_score" in output
+    assert "latency_hint_ms" in output

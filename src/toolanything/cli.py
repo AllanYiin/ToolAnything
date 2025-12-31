@@ -125,6 +125,10 @@ def _run_search(
     prefix: str | None,
     top_k: int,
     sort_by_failure: bool,
+    max_cost: float | None,
+    latency_budget_ms: int | None,
+    allow_side_effects: bool,
+    categories: list[str] | None,
 ) -> None:
     failure_log = FailureLogManager(Path(".tool_failures.json"))
     registry = ToolRegistry.global_instance()
@@ -136,10 +140,15 @@ def _run_search(
         prefix=prefix,
         top_k=top_k,
         sort_by_failure=sort_by_failure,
+        max_cost=max_cost,
+        latency_budget_ms=latency_budget_ms,
+        allow_side_effects=allow_side_effects,
+        categories=categories,
     )
 
     for spec in results:
         score = failure_log.failure_score(spec.name)
+        metadata = spec.normalized_metadata()
         print(
             json.dumps(
                 {
@@ -147,6 +156,10 @@ def _run_search(
                     "description": spec.description,
                     "tags": list(spec.tags),
                     "failure_score": score,
+                    "cost": metadata.cost,
+                    "latency_hint_ms": metadata.latency_hint_ms,
+                    "side_effect": metadata.side_effect,
+                    "category": metadata.category,
                 },
                 ensure_ascii=False,
             )
@@ -260,6 +273,24 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="關閉依近期失敗分數排序的功能",
     )
+    search_parser.add_argument("--max-cost", type=float, default=None, help="最大成本門檻")
+    search_parser.add_argument(
+        "--latency-budget-ms",
+        type=int,
+        default=None,
+        help="延遲預算（毫秒）",
+    )
+    search_parser.add_argument(
+        "--allow-side-effects",
+        action="store_true",
+        help="允許含 side_effect 的工具（預設排除）",
+    )
+    search_parser.add_argument(
+        "--category",
+        action="append",
+        default=None,
+        help="工具分類（可重複指定或用逗號分隔）",
+    )
     search_parser.set_defaults(
         func=lambda args: _run_search(
             query=args.query,
@@ -267,6 +298,16 @@ def _build_parser() -> argparse.ArgumentParser:
             prefix=args.prefix,
             top_k=args.top_k,
             sort_by_failure=not args.disable_failure_sort,
+            max_cost=args.max_cost,
+            latency_budget_ms=args.latency_budget_ms,
+            allow_side_effects=args.allow_side_effects,
+            categories=[
+                item
+                for entry in (args.category or [])
+                for item in entry.split(",")
+                if item
+            ]
+            or None,
         )
     )
 

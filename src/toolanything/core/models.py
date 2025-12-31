@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from toolanything.utils.docstring_parser import DocMetadata
 from toolanything.utils.docstring_parser import parse_docstring
 from toolanything.core.schema import build_parameters_schema
+from toolanything.core.metadata import ToolMetadata, normalize_metadata
 
 
 def _derive_default_name(func: Callable[..., Any]) -> str:
@@ -104,6 +105,9 @@ class ToolSpec(DefinitionMixin):
             metadata=dict(metadata or {}),
             documentation=documentation,
         )
+
+    def normalized_metadata(self) -> ToolMetadata:
+        return normalize_metadata(self.metadata, tags=self.tags)
 
 
 @dataclass

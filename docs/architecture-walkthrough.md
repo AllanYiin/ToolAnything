@@ -1,134 +1,77 @@
 # Architecture Walkthrough
 
-> 這份文件說明 ToolAnything 的設計動機、協議邊界與擴充方式。每一節都會指向**實際檔案位置**與**最小範例**，方便你直接對照程式碼。
+> 這份文件是「設計敘事 + 擴充指南」，不是 API 文件。每一章都對應至少一個**真實檔案路徑**與**真實符號**，方便你直接對照程式碼。
 
-## A. Repo 的定位與三類使用者
+## Repo 定位與三類使用者
 
-**設計動機**
-- ToolAnything 要解決「一份工具程式碼，多協議可用」與「工具搜尋/編排更有效率」的需求。
-- 因此 repo 同時提供：協議轉換（OpenAI/MCP）、工具註冊、工具搜尋策略、以及最小 MCP Server。
+ToolAnything 的定位是「跨協議 AI 工具中介層」：一份工具定義可以輸出到 MCP 與 OpenAI Tool Calling。對應三類使用者：
 
-**實際檔案位置（重要符號）**
-- `src/toolanything/decorators/tool.py`：`tool()` decorator，註冊工具入口。
-- `src/toolanything/core/registry.py`：`ToolRegistry`，統一工具與 pipeline 的註冊中心。
-- `src/toolanything/core/tool_search.py`：`ToolSearchTool`，工具搜尋入口。
-- `src/toolanything/core/selection_strategies.py`：`RuleBasedStrategy`、`HybridStrategy`，策略層。
+1. **初學者**：只需要把 Python 函式變成可呼叫的工具。
+2. **已有 MCP 概念者**：關注協議邊界、transport 與 protocol core 的責任切割。
+3. **進階使用者**：需要搜尋、排序與策略化選擇工具。
 
-**三類使用者定位**
-1. **初學者**：只想把 Python 函數變成可呼叫的工具。
-2. **已懂 MCP/JSON-RPC 的開發者**：想要明確知道協議邊界、避免 server/transport 汙染協議層。
-3. **進階使用者**：想要做更有效率的工具搜尋/策略化選擇（Phase 4 的成果）。
+**對照位置與符號**
+- `src/toolanything/decorators/tool.py`：`tool()` decorator 是工具註冊入口。
+- `src/toolanything/core/models.py`：`ToolSpec` 是工具描述的單一資料來源。
 
-**最小範例：註冊工具（初學者視角）**
+**最小概念示例**
 ```python
 from toolanything.decorators import tool
 
-@tool(name="calculator.add", description="加總兩個整數")
-def add(a: int, b: int) -> int:
-    return a + b
+@tool(name="quickstart.greet", description="打招呼")
+def greet(name: str) -> str:
+    return f"Hello {name}"
 ```
 
----
+## 為什麼 protocol 要獨立（指出 protocol core 的入口與責任）
 
-## B. 為什麼 protocol 要獨立（protocol core 的責任邊界）
+協議核心負責 JSON-RPC method routing、錯誤格式與回應包裝，避免每個 server/transport 重新實作 MCP method。
 
-**設計動機**
-- MCP JSON-RPC 的 method routing、錯誤格式與 response 結構應該被「協議核心」集中管理。
-- 任何 server/transport 都只需要把請求丟給 protocol core，不應再重複實作 MCP method。這讓協議升級與測試都更可控。
+**對照位置與符號**
+- `src/toolanything/protocol/mcp_jsonrpc.py`：`MCPJSONRPCProtocolCore.handle()` 是 method routing 的唯一入口。
+- `src/toolanything/protocol/mcp_jsonrpc.py`：`MCPProtocolCoreImpl` 指向預設實作。
 
-**實際檔案位置（重要符號）**
-- `src/toolanything/protocol/mcp_jsonrpc.py`：
-  - `MCPJSONRPCProtocolCore.handle()`：method routing 的單一入口。
-  - `MCPProtocolCoreImpl`：預設 protocol core 的別名。
-  - `MCPRequestContext`：由 server/transport 注入的上下文。
+**責任重點**
+- protocol core 處理 `initialize` / `tools/list` / `tools/call`。
+- transport/server 只注入 capability、tool schema、tool invoker 與 context。
 
-**最小範例：Protocol Core 處理入口**
-```python
-from toolanything.protocol.mcp_jsonrpc import MCPProtocolCoreImpl, MCPRequestContext
+## 為什麼 server/transport 不知道 MCP method（指出 server 僅 I/O，method routing 在哪）
 
-protocol = MCPProtocolCoreImpl()
-response = protocol.handle(
-    {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
-    context=MCPRequestContext(user_id="demo", transport="stdio"),
-    deps=deps,
-)
-```
-> `deps` 是由 server/transport 注入的 capability/tools/invoker 集合（見 `src/toolanything/server/*`）。
+server/transport 只處理 I/O 與依賴注入，method routing 由 protocol core 統一處理。
 
----
+**對照位置與符號**
+- `src/toolanything/server/mcp_tool_server.py`：`MCPToolHandler.do_POST()` 將 request 轉交給 `protocol_core.handle(...)`。
+- `src/toolanything/protocol/mcp_jsonrpc.py`：`MCPJSONRPCProtocolCore.handle()` 實際做 method routing。
 
-## C. 為什麼 server 不能知道 MCP method（如何避免污染）
+**設計結果**
+- 任何 transport（HTTP/SSE/stdio）都可共用同一份 MCP method 行為。
+- server 只需關心如何讀/寫與 session context。
 
-**設計動機**
-- server/transport 只負責 I/O（HTTP/stdio）與組裝 dependencies，不應直接處理 MCP method。
-- 這樣任何 transport（HTTP/SSE/stdio/自訂）都能共享同一份 protocol core。
+## 怎麼新增一個 transport（以現有 SSE/STDIO 對照，給出最小新增步驟）
 
-**實際檔案位置（重要符號）**
-- `src/toolanything/server/mcp_tool_server.py`：`_build_handler()` 內建立 `_ProtocolDependencies`，透過 `protocol_core.handle(...)` 路由。
-- `src/toolanything/server/mcp_stdio_server.py`：`MCPStdioServer.run()` 只負責讀寫 stdin/stdout，並呼叫 `MCPProtocolCoreImpl.handle()`。
+新增 transport 的重點是：**I/O + 依賴注入 + MCPRequestContext**。
 
-**最小範例：server 只做 I/O 與注入依賴**
-```python
-# 摘自 mcp_stdio_server.py 的概念
-context = MCPRequestContext(user_id="default", transport="stdio")
-response = self._protocol_core.handle(request, context=context, deps=self._deps)
-```
+**對照位置與符號**
+- `src/toolanything/server/mcp_tool_server.py`：`_build_handler()` 展示 HTTP/SSE 的依賴注入。
+- `src/toolanything/server/mcp_stdio_server.py`：`MCPStdioServer.run()` 展示 stdio 讀寫。
+- `src/toolanything/protocol/mcp_jsonrpc.py`：`MCPRequestContext`。
 
----
+**最小新增步驟**
+1. 建立新的 transport server（例如 `src/toolanything/server/mcp_websocket_server.py`）。
+2. 建立 `_ProtocolDependencies`：capabilities/tools/invoker。
+3. 將收到的 JSON-RPC request 交給 `MCPProtocolCoreImpl.handle(...)`。
+4. 將 response（若非 `None`）回寫到 transport 的輸出通道。
 
-## D. 怎麼新增一個 transport（新增 SSE/stdio/其他）
+## 怎麼新增一個 tool strategy（指出策略介面與預設策略，如何接到 ToolSearchTool/CLI）
 
-**設計動機**
-- 只要新 transport 能把「JSON-RPC request」交給 protocol core，就能與 MCP 行為完全一致。
-- 因此擴充 transport 的重點是：I/O + 依賴注入 + context。
+搜尋策略負責「篩選 + 排序」，預設以 `RuleBasedStrategy` 執行（文字相似度 + metadata 條件）。
 
-**實際檔案位置（重要符號）**
-- `src/toolanything/server/mcp_tool_server.py`：HTTP/SSE 版本參考。
-- `src/toolanything/server/mcp_stdio_server.py`：stdio 版本參考。
-- `src/toolanything/protocol/mcp_jsonrpc.py`：`MCPProtocolCoreImpl` 與 `MCPRequestContext`。
+**對照位置與符號**
+- `src/toolanything/core/selection_strategies.py`：`BaseToolSelectionStrategy`、`RuleBasedStrategy`。
+- `src/toolanything/core/tool_search.py`：`ToolSearchTool` 注入策略。
+- `src/toolanything/cli.py`：`_run_search()` 使用 `ToolSearchTool`。
 
-**新增檔案路徑建議**
-- 建議新增在：`src/toolanything/server/mcp_<transport>_server.py`
-
-**必實作介面/函式**
-- 建立 `_ProtocolDependencies`（capabilities/tools/invoker）。
-- 準備 `MCPRequestContext`。
-- 呼叫 `MCPProtocolCoreImpl.handle(request, context=..., deps=...)`。
-
-**最小可跑示例（Pseudo-code）**
-```python
-# src/toolanything/server/mcp_websocket_server.py
-from toolanything.protocol.mcp_jsonrpc import MCPProtocolCoreImpl, MCPRequestContext
-
-class MCPWebSocketServer:
-    def __init__(self, registry):
-        self.protocol = MCPProtocolCoreImpl()
-        self.deps = _ProtocolDependencies(...)
-
-    async def on_message(self, payload: dict) -> None:
-        context = MCPRequestContext(user_id="default", transport="websocket")
-        response = self.protocol.handle(payload, context=context, deps=self.deps)
-        if response is not None:
-            await self.send_json(response)
-```
-
----
-
-## E. 怎麼新增一個 tool strategy（Phase 4 的策略層）
-
-**設計動機**
-- 工具搜尋與排序不只要看相似度，還要考慮 failure_score、metadata 等因素。
-- 策略層讓你可以替換排序規則，甚至導入 embedding-based 的搜尋。
-
-**實際檔案位置（重要符號）**
-- `src/toolanything/core/selection_strategies.py`：
-  - `BaseToolSelectionStrategy`
-  - `RuleBasedStrategy`
-  - `HybridStrategy`
-- `src/toolanything/core/tool_search.py`：`ToolSearchTool` + `build_search_tool()`
-- `src/toolanything/cli.py`：`search` CLI 使用 `ToolSearchTool`。
-
-**最小範例：自訂策略並掛上 ToolSearchTool**
+**最小做法（自訂策略 → 注入 ToolSearchTool）**
 ```python
 from toolanything.core.selection_strategies import BaseToolSelectionStrategy, SelectionOptions
 from toolanything.core.tool_search import ToolSearchTool
@@ -138,117 +81,65 @@ class AlwaysFirstStrategy(BaseToolSelectionStrategy):
         return list(tools)[: options.top_k]
 
 searcher = ToolSearchTool(registry, failure_log, strategy=AlwaysFirstStrategy())
-results = searcher.search(query="weather")
+results = searcher.search(query="demo")
 ```
 
-**如何接到 ToolSearchTool 或 CLI**
-- ToolSearchTool：直接在初始化時注入 `strategy=...`。
-- CLI：可以在 CLI 的 `search` 流程中替換 `ToolSearchTool` 初始化（檔案：`src/toolanything/cli.py`）。
+## Tool metadata 設計（cost/latency_hint_ms/side_effect/category/tags/extra）與向下相容策略
 
----
+metadata 提供成本、延遲、副作用等訊號，讓搜尋可依條件篩選。未填 metadata 的舊工具仍可用，未知欄位會被保留在 `extra`。
 
-## F. Tool metadata 的設計（Phase 4 的 metadata schema）
+**對照位置與符號**
+- `src/toolanything/core/metadata.py`：`ToolMetadata`、`normalize_metadata()`。
+- `src/toolanything/core/models.py`：`ToolSpec.normalized_metadata()`。
+- `src/toolanything/core/selection_strategies.py`：`RuleBasedStrategy._filter_by_metadata()`。
 
-**設計動機**
-- metadata 讓工具搜尋與排序可以考慮成本、延遲與副作用，而不是只看文字相似度。
-- 同時保留向下相容：舊工具不填 metadata 仍可用。
+**向下相容策略**
+- 未提供欄位 → 以 `None` 視為「未知」，不會被硬性排除。
+- 未知欄位 → `normalize_metadata()` 會留在 `extra`。
 
-**實際檔案位置（重要符號）**
-- `src/toolanything/core/metadata.py`：`ToolMetadata`、`normalize_metadata()`
-- `src/toolanything/core/models.py`：`ToolSpec.metadata`、`ToolSpec.normalized_metadata()`
-- `src/toolanything/core/selection_strategies.py`：`RuleBasedStrategy._filter_by_metadata()`
+## End-to-end 流程（initialize → tools/list → tool search → tools/call）
 
-**最小範例：註冊 metadata 並讀取**
-```python
-from toolanything.decorators import tool
+以下用文字與 Mermaid 表示資料流，協議處理都集中在 `MCPJSONRPCProtocolCore.handle()`。
 
-@tool(
-    name="flight.search",
-    description="搜尋航班",
-    metadata={
-        "cost": 0.02,
-        "latency_hint_ms": 1200,
-        "side_effect": False,
-        "category": "travel",
-        "tags": ["flight", "search"],
-        "extra": {"provider": "demo"},
-    },
-)
-def search_flight(origin: str, dest: str):
-    return {"origin": origin, "dest": dest}
+**對照位置與符號**
+- `src/toolanything/protocol/mcp_jsonrpc.py`：`MCPJSONRPCProtocolCore.handle()`。
+- `src/toolanything/core/tool_search.py`：`ToolSearchTool.search()`。
+- `src/toolanything/core/registry.py`：`ToolRegistry.execute_tool()`。
+
+**文字流程**
+1. Client 發出 `initialize`。
+2. Protocol core 透過 `MCPCapabilitiesProvider` 回傳能力資訊。
+3. Client 呼叫 `tools/list`，protocol core 透過 `MCPToolSchemaProvider.list_tools()` 回傳工具清單。
+4. 本地或外部工具搜尋（`ToolSearchTool.search()`）挑選候選工具。
+5. Client 發出 `tools/call`，protocol core 透過 `MCPToolInvoker.call_tool()` 執行並回傳結果。
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Transport
+    participant ProtocolCore
+    participant Registry
+    participant Search
+
+    Client->>Transport: JSON-RPC initialize
+    Transport->>ProtocolCore: handle(request, context, deps)
+    ProtocolCore-->>Client: capabilities
+
+    Client->>Transport: JSON-RPC tools/list
+    Transport->>ProtocolCore: handle(request, context, deps)
+    ProtocolCore-->>Client: tools schema
+
+    Client->>Search: ToolSearchTool.search(query)
+    Search->>Registry: registry.list()
+    Search-->>Client: ranked tools
+
+    Client->>Transport: JSON-RPC tools/call
+    Transport->>ProtocolCore: handle(request, context, deps)
+    ProtocolCore->>Registry: ToolRegistry.execute_tool()
+    ProtocolCore-->>Client: tool result
 ```
-> `normalize_metadata()` 會把未知欄位保留在 `extra`，不影響舊工具。
-
----
-
-## G. End-to-end 流程（從啟動到工具呼叫）
-
-**設計動機**
-- MCP flow 必須涵蓋初始化、列出工具、搜尋工具、與工具呼叫。
-- ToolAnything 也把 failure_score 納入搜尋排序，避免近期失敗頻繁的工具搶到前面順位。
-
-**實際檔案位置（重要符號）**
-- 初始化/列表/呼叫：`src/toolanything/protocol/mcp_jsonrpc.py`（`MCPJSONRPCProtocolCore.handle`）
-- server 啟動：`src/toolanything/server/mcp_tool_server.py`（`run_server`）
-- stdio 啟動：`src/toolanything/server/mcp_stdio_server.py`（`run_stdio_server`）
-- 失敗排序：`src/toolanything/core/failure_log.py`（`FailureLogManager.failure_score`）
-- 搜尋入口：`src/toolanything/core/tool_search.py`（`ToolSearchTool.search`）
-
-**最小範例：stdio 方式完成 initialize → tools/list → tools/call**
-```python
-import json
-import subprocess
-import sys
-from pathlib import Path
-
-from toolanything.protocol.mcp_jsonrpc import (
-    MCP_METHOD_INITIALIZE,
-    MCP_METHOD_NOTIFICATIONS_INITIALIZED,
-    MCP_METHOD_TOOLS_LIST,
-    MCP_METHOD_TOOLS_CALL,
-    build_notification,
-    build_request,
-)
-
-module_path = Path("examples/quickstart/tools.py")
-cmd = [sys.executable, "-m", "toolanything.cli", "serve", str(module_path), "--stdio"]
-proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-
-proc.stdin.write(json.dumps(build_request(MCP_METHOD_INITIALIZE, 1)) + "\n")
-proc.stdin.flush()
-print(proc.stdout.readline())  # initialize response
-
-proc.stdin.write(json.dumps(build_notification(MCP_METHOD_NOTIFICATIONS_INITIALIZED, {})) + "\n")
-proc.stdin.flush()
-
-proc.stdin.write(json.dumps(build_request(MCP_METHOD_TOOLS_LIST, 2)) + "\n")
-proc.stdin.flush()
-print(proc.stdout.readline())  # tools/list response
-
-proc.stdin.write(
-    json.dumps(
-        build_request(
-            MCP_METHOD_TOOLS_CALL,
-            3,
-            params={"name": "calculator.add", "arguments": {"a": 1, "b": 2}},
-        )
-    )
-    + "\n"
-)
-proc.stdin.flush()
-print(proc.stdout.readline())  # tools/call response
-
-proc.stdin.close()
-proc.wait()
-```
-
-**failure_score 如何影響排序**
-- `FailureLogManager.failure_score()` 在 `RuleBasedStrategy.select()` 中被使用（`src/toolanything/core/selection_strategies.py`），
-  近期失敗多的工具會被排序到較後面，避免被優先選中。
-
----
 
 ## 延伸閱讀
 
-- `docs/README.md`：文件索引
-- `examples/quickstart/README.md`：最小可跑範例
+- `docs/README.md`
+- `examples/quickstart/README.md`

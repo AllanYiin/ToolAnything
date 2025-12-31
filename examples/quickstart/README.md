@@ -1,57 +1,25 @@
-# Quickstart（最小可跑）
+# Quickstart（情境式入門）
 
-這份範例會示範：
-- 註冊工具（`examples/quickstart/tools.py`）
-- 以 **stdio** 模式啟動 MCP server
-- 依序完成 `initialize`、`tools/list`、`tools/call`
-- 使用工具搜尋（ToolSearchTool）
+這條路線的目標是：**從零跑通 MCP 流程**（工具定義 → 啟動 server → `tools/list` → CLI search → `tools/call`）。
 
-> 下列指令都在 repo 根目錄執行。
+> 下列步驟都在 repo 根目錄執行。
 
-## 1) 安裝依賴
+## 入口與關卡順序
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
+1. **安裝/啟動/驗證清單**：`00_setup.md`
+2. **定義工具**：`01_define_tools.py`
+3. **啟動 transport**：`02_run_server.py`
+4. **查詢與呼叫**：`03_search_and_call.py`
 
-## 2) 註冊工具（已在 tools.py 定義）
+## 這條路線結束後你能做到
 
-工具範例定義在 `examples/quickstart/tools.py`：
+- 自己定義工具並帶 metadata（含 side_effect）。
+- 用 CLI 搜尋工具。
+- 透過 MCP `tools/list` 與 `tools/call` 驗證工具可用。
 
-- `calculator.add`：加總兩個整數
-- `text.reverse`：反轉字串
+## 進階延伸（完成 Quickstart 後再看）
 
-## 3) 啟動 MCP stdio server + 完整 MCP 流程
-
-以下指令會**自動啟動** stdio server，並依序送出：
-`initialize` → `notifications/initialized` → `tools/list` → `tools/call`。
-
-```bash
-python examples/quickstart/stdio_roundtrip.py
-```
-
-你會看到類似輸出（省略部分內容）：
-
-```text
-initialize: {"jsonrpc": "2.0", "id": 1, "result": { ... }}
-tools/list: {"jsonrpc": "2.0", "id": 2, "result": {"tools": [ ... ]}}
-tools/call: {"jsonrpc": "2.0", "id": 3, "result": { ... }}
-```
-
-## 4) 工具搜尋（ToolSearchTool）
-
-```bash
-python examples/quickstart/search_tools.py --query "加總"
-```
-
-這個步驟會透過 `ToolSearchTool.search()` 搜尋已註冊工具，並回傳 metadata。
-
----
-
-## 檔案位置一覽
-
-- 工具定義：`examples/quickstart/tools.py`
-- MCP roundtrip：`examples/quickstart/stdio_roundtrip.py`
-- 工具搜尋：`examples/quickstart/search_tools.py`
+- `examples/demo_mcp.py`：最小 MCP HTTP server demo。
+- `examples/demo_mcp_stdio.py`：最小 MCP stdio demo。
+- `examples/weather_tool/`：天氣工具模組。
+- `examples/opencv_mcp_web/`：ASGI SSE 的完整範例。

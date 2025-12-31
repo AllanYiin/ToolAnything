@@ -12,8 +12,10 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 
 ### 1) 初學者路線：從 0 到第一個 Tool
 
+**對應 examples 入口**：[`examples/quickstart/README.md`](examples/quickstart/README.md)
+
 **閱讀順序**
-1. [`examples/quickstart/00_setup.md`](examples/quickstart/00_setup.md) → `01_define_tools.py` → `02_run_server.py` → `03_search_and_call.py`：最小可跑流程。  
+1. [`examples/quickstart/README.md`](examples/quickstart/README.md) → `00_setup.md` → `01_define_tools.py` → `02_run_server.py` → `03_search_and_call.py`：最小可跑流程。  
 2. [`src/toolanything/decorators/tool.py`](src/toolanything/decorators/tool.py)：`tool()` decorator 註冊入口。  
 3. [`src/toolanything/core/models.py`](src/toolanything/core/models.py)：`ToolSpec` 的工具描述結構。  
 4. [`src/toolanything/cli.py`](src/toolanything/cli.py)：`toolanything search` 與 `toolanything serve`。  
@@ -22,6 +24,8 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 - 可以新增第一個 tool，透過 CLI search 找到它，並用 MCP `tools/call` 呼叫。
 
 ### 2) 已懂 MCP/JSON-RPC 的路線：掌握協議邊界
+
+**對應 examples 入口**：[`examples/protocol_boundary/README.md`](examples/protocol_boundary/README.md)
 
 **閱讀順序**
 1. [`src/toolanything/server/mcp_tool_server.py`](src/toolanything/server/mcp_tool_server.py) 與 [`src/toolanything/server/mcp_stdio_server.py`](src/toolanything/server/mcp_stdio_server.py)：看 transport 如何注入依賴。  
@@ -32,6 +36,8 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 - 能判斷應該在 protocol core、server/transport 或工具層擴充功能，而不改動核心路由。
 
 ### 3) 進階路線：工具搜尋與策略化選擇
+
+**對應 examples 入口**：[`examples/tool_selection/README.md`](examples/tool_selection/README.md)
 
 **閱讀順序**
 1. [`src/toolanything/core/tool_search.py`](src/toolanything/core/tool_search.py)：`ToolSearchTool.search()` 入口。  
@@ -85,12 +91,16 @@ def trip_plan(ctx, city: str):
 ## Examples（情境入口清單）
 
 - **Quickstart：從零跑通 MCP 基本流程**  
-  入口：[`examples/quickstart/00_setup.md`](examples/quickstart/00_setup.md)  
+  入口：[`examples/quickstart/README.md`](examples/quickstart/README.md)  
   目標：定義工具 → 啟動 server → tools/list → CLI search → tools/call。  
 
 - **Tool Selection：metadata 與策略化搜尋**  
-  入口：[`examples/tool_selection/01_metadata_catalog.py`](examples/tool_selection/01_metadata_catalog.py)  
+  入口：[`examples/tool_selection/README.md`](examples/tool_selection/README.md)  
   目標：用 metadata 建立工具目錄、練習搜尋條件與自訂策略。  
+
+- **Protocol Boundary：協議邊界與 transport 對照**  
+  入口：[`examples/protocol_boundary/README.md`](examples/protocol_boundary/README.md)  
+  目標：理解 protocol/core 與 server/transport 的責任分界。  
 
 - **進階示例（閱讀時機：完成 Quickstart 後）**  
   - `examples/demo_mcp.py`：最小 MCP HTTP server demo。  
@@ -118,11 +128,23 @@ Schema 引擎會依據函數的 type hints 生成 JSON Schema，支援項目如�
 - `src/toolanything/pipeline/`：流程執行輔助。
 - `src/toolanything/utils/`：共用工具函數。
 
-## 下一步
+## 下一步（Roadmap）
 
-- 撰寫更多自動化測試涵蓋 decorator 與 adapter。
-- 擴充 CLI、文件與 examples 目錄。
-- 引入 SecurityManager、ResultSerializer 等擴展點的實際應用範例。
+- [ ] **擴充 CLI（tool search / strategy / metadata）**
+  - [ ] `toolanything search` 新增 `--strategy` 參數，能選擇 `rule-based` / `weighted` 等策略，並明確指出會影響 metadata 條件篩選的行為。
+  - [ ] 增加 `toolanything search --metadata` 範例輸出說明（例如 `max-cost`、`latency-budget-ms`、`allow-side-effects`、`category` 與 tags），並補齊與 ToolSelection strategy 的關聯。
+  - [ ] `toolanything explain-search`（非破壞性子命令）輸出當前搜尋條件與策略、metadata 的對應說明，便於除錯。
+  - [ ] `toolanything examples` 提供 examples 入口導覽（連結與簡介）。
+- [ ] **擴充文件（docs/）**
+  - [ ] 補齊 [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md) 的「Tool Search 與 Strategy」章節，連到 metadata 與策略實作。
+  - [ ] 新增 `docs/cli-reference.md`：列出所有子命令、flag、使用情境與 `See also` 對應 examples。
+  - [ ] 更新 [`docs/README.md`](docs/README.md) 索引，補上 Learning Path 與 examples 導覽。
+- [ ] **擴充 examples 目錄**
+  - [ ] [`examples/quickstart/README.md`](examples/quickstart/README.md)：補上一步步執行指令與預期輸出片段。
+  - [ ] [`examples/tool_selection/README.md`](examples/tool_selection/README.md)：新增 metadata/constraints/strategy 三條路徑的差異示範。
+  - [ ] [`examples/protocol_boundary/README.md`](examples/protocol_boundary/README.md)：整理 protocol/core 與 server/transport 的對照清單與示意。
+- [ ] 撰寫更多自動化測試涵蓋 decorator 與 adapter。
+- [ ] 引入 SecurityManager、ResultSerializer 等擴展點的實際應用範例。
 
 ## 相依套件說明
 

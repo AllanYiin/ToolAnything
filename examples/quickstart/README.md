@@ -11,6 +11,19 @@
 3. **啟動 transport**：`02_run_server.py`
 4. **查詢與呼叫**：`03_search_and_call.py`
 
+## 建議步驟
+
+1. 依序完成 `00_setup.md` 的安裝與環境確認。
+2. 執行 `01_define_tools.py`，確保工具註冊可以被 CLI 搜尋到。
+3. 依照 `02_run_server.py` 啟動 MCP server（HTTP / stdio 皆可）。
+4. 參考 `03_search_and_call.py`，完成 `tools/list`、`toolanything search` 與 `tools/call`。
+
+## 預期輸出（節錄）
+
+- `toolanything search` 會回傳 JSON 列表，包含 `name`、`description`、`cost`、`latency_hint_ms`、`side_effect` 等欄位。
+- `tools/list` 會列出剛註冊的工具名稱與 schema。
+- `tools/call` 回傳工具執行結果，例如 `{ "city": "Taipei", "temp": 25 }`。
+
 ## 這條路線結束後你能做到
 
 - 自己定義工具並帶 metadata（含 side_effect）。

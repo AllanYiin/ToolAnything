@@ -166,6 +166,30 @@ def _run_search(
         )
 
 
+def _print_examples_nav() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    entries = [
+        (
+            "Quickstart",
+            repo_root / "examples" / "quickstart" / "README.md",
+            "從 0 跑通 tools/list + search + call 的最短路徑",
+        ),
+        (
+            "Tool Selection",
+            repo_root / "examples" / "tool_selection" / "README.md",
+            "metadata / constraints / strategy 的搜尋差異",
+        ),
+        (
+            "Protocol Boundary",
+            repo_root / "examples" / "protocol_boundary" / "README.md",
+            "protocol/core 與 server/transport 邊界說明",
+        ),
+    ]
+    print("ToolAnything examples 入口：")
+    for title, path, description in entries:
+        print(f"- {title}: {path} ({description})")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="toolanything", description="ToolAnything CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -258,7 +282,22 @@ def _build_parser() -> argparse.ArgumentParser:
         )
     )
 
-    search_parser = subparsers.add_parser("search", help="搜尋已註冊的工具並依失敗分數排序")
+    search_parser = subparsers.add_parser(
+        "search",
+        help="搜尋已註冊的工具並依失敗分數排序",
+        description=(
+            "搜尋已註冊的工具並依失敗分數排序，支援 metadata / constraints 條件。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "範例:\n"
+            "  toolanything search --query weather --max-cost 0.1 --latency-budget-ms 200\n"
+            "  toolanything search --tags finance realtime --allow-side-effects\n"
+            "  toolanything search --category routing --category search\n"
+            "  策略示例：python examples/tool_selection/03_custom_strategy.py (strategy 比較)\n\n"
+            "See also: examples/tool_selection/README.md"
+        ),
+    )
     search_parser.add_argument("--query", default="", help="名稱或描述關鍵字")
     search_parser.add_argument(
         "--tags",
@@ -310,6 +349,13 @@ def _build_parser() -> argparse.ArgumentParser:
             or None,
         )
     )
+
+    examples_parser = subparsers.add_parser(
+        "examples",
+        help="列出 examples 入口與簡介",
+        description="輸出 examples 入口路徑與簡要說明。",
+    )
+    examples_parser.set_defaults(func=lambda args: _print_examples_nav())
 
     return parser
 

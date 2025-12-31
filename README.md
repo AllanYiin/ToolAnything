@@ -13,32 +13,34 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 ### 1) 初學者路線：從 0 到第一個 Tool
 
 **閱讀順序**
-1. [`examples/quickstart/README.md`](examples/quickstart/README.md)：最小可跑流程（註冊工具、啟動 server、tools/list、tools/call）。  
+1. [`examples/quickstart/00_setup.md`](examples/quickstart/00_setup.md) → `01_define_tools.py` → `02_run_server.py` → `03_search_and_call.py`：最小可跑流程。  
 2. [`src/toolanything/decorators/tool.py`](src/toolanything/decorators/tool.py)：`tool()` decorator 註冊入口。  
-3. [`src/toolanything/core/registry.py`](src/toolanything/core/registry.py)：`ToolRegistry` 的註冊與查詢。  
+3. [`src/toolanything/core/models.py`](src/toolanything/core/models.py)：`ToolSpec` 的工具描述結構。  
+4. [`src/toolanything/cli.py`](src/toolanything/cli.py)：`toolanything search` 與 `toolanything serve`。  
 
 **讀完能做到什麼**
-- 可以寫出自己的工具函數，啟動 MCP server，並透過 `tools/list`/`tools/call` 驗證工具可用。
+- 可以新增第一個 tool，透過 CLI search 找到它，並用 MCP `tools/call` 呼叫。
 
 ### 2) 已懂 MCP/JSON-RPC 的路線：掌握協議邊界
 
 **閱讀順序**
-1. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md)：B/C/G 章節，了解 protocol 與 server 的責任切割。  
+1. [`src/toolanything/server/mcp_tool_server.py`](src/toolanything/server/mcp_tool_server.py) 與 [`src/toolanything/server/mcp_stdio_server.py`](src/toolanything/server/mcp_stdio_server.py)：看 transport 如何注入依賴。  
 2. [`src/toolanything/protocol/mcp_jsonrpc.py`](src/toolanything/protocol/mcp_jsonrpc.py)：`MCPJSONRPCProtocolCore.handle()` 的 method routing。  
-3. [`src/toolanything/server/mcp_stdio_server.py`](src/toolanything/server/mcp_stdio_server.py)：stdio transport 如何注入依賴並呼叫 protocol core。  
+3. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md#為什麼-protocol-要獨立指出-protocol-core-的入口與責任)：對照協議邊界與責任切割。  
 
 **讀完能做到什麼**
-- 能清楚判斷應該在哪一層擴充 MCP 行為，避免 server/transport 汙染協議核心。
+- 能判斷應該在 protocol core、server/transport 或工具層擴充功能，而不改動核心路由。
 
 ### 3) 進階路線：工具搜尋與策略化選擇
 
 **閱讀順序**
-1. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md)：E/F/G 章節（策略、metadata、end-to-end）。  
-2. [`src/toolanything/core/selection_strategies.py`](src/toolanything/core/selection_strategies.py)：`BaseToolSelectionStrategy`、`RuleBasedStrategy`、`HybridStrategy`。  
+1. [`src/toolanything/core/tool_search.py`](src/toolanything/core/tool_search.py)：`ToolSearchTool.search()` 入口。  
+2. [`src/toolanything/core/selection_strategies.py`](src/toolanything/core/selection_strategies.py)：`BaseToolSelectionStrategy`、`RuleBasedStrategy`。  
 3. [`src/toolanything/core/metadata.py`](src/toolanything/core/metadata.py)：`ToolMetadata` 與 `normalize_metadata()`。  
+4. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md#tool-metadata-設計costlatency_hint_msside_effectcategorytagsextra與向下相容策略)：metadata 與策略章節整理。  
 
 **讀完能做到什麼**
-- 能自訂 tool selection strategy、依 metadata 篩選排序，並接到 `ToolSearchTool` 或 CLI。  
+- 能自訂策略、限制 metadata 條件搜尋，並透過 `ToolSearchTool` 實作策略化工具選擇。  
 
 ## 協議對應方式（MCP STDIO / SSE / OpenAI Tool Calling）
 
@@ -79,6 +81,22 @@ def trip_plan(ctx, city: str):
 ```
 
 預設會使用惰性初始化的全域 Registry，進階使用者仍可手動建立 `ToolRegistry()`，並透過 decorator 的 `registry` 參數覆寫使用的實例。
+
+## Examples（情境入口清單）
+
+- **Quickstart：從零跑通 MCP 基本流程**  
+  入口：[`examples/quickstart/00_setup.md`](examples/quickstart/00_setup.md)  
+  目標：定義工具 → 啟動 server → tools/list → CLI search → tools/call。  
+
+- **Tool Selection：metadata 與策略化搜尋**  
+  入口：[`examples/tool_selection/01_metadata_catalog.py`](examples/tool_selection/01_metadata_catalog.py)  
+  目標：用 metadata 建立工具目錄、練習搜尋條件與自訂策略。  
+
+- **進階示例（閱讀時機：完成 Quickstart 後）**  
+  - `examples/demo_mcp.py`：最小 MCP HTTP server demo。  
+  - `examples/demo_mcp_stdio.py`：MCP stdio demo。  
+  - `examples/weather_tool/`：天氣工具模組。  
+  - `examples/opencv_mcp_web/`：OpenCV MCP Web 範例（ASGI）。  
 
 ## 工具介面類型支援與規範
 

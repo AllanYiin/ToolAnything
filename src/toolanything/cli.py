@@ -5,10 +5,14 @@ import argparse
 import json
 import os
 import platform
+import shlex
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
 from toolanything.core import FailureLogManager, ToolRegistry, ToolSearchTool
+from toolanything.core.connection_tester import ConnectionTester, render_report
+from toolanything.utils.logger import logger
 
 
 def _get_default_claude_config_path() -> Path:
@@ -190,6 +194,53 @@ def _print_examples_nav() -> None:
         print(f"- {title}: {path} ({description})")
 
 
+def _run_doctor(args: argparse.Namespace) -> None:
+    tester = ConnectionTester(timeout=args.timeout)
+
+    if args.mode == "stdio":
+        if args.cmd and args.tools:
+            report = tester.build_config_error(
+                mode="stdio",
+                message="--cmd 與 --tools 不可同時使用",
+                suggestion="請擇一提供 stdio server 啟動方式",
+            )
+        elif args.cmd:
+            cmd = shlex.split(args.cmd)
+            report = tester.run_stdio(cmd)
+        elif args.tools:
+            cmd = [
+                sys.executable,
+                "-m",
+                "toolanything.core.doctor_server",
+                "--tools",
+                args.tools,
+            ]
+            report = tester.run_stdio(cmd)
+        else:
+            report = tester.build_config_error(
+                mode="stdio",
+                message="缺少 stdio 啟動參數",
+                suggestion="請提供 --cmd 或 --tools 啟動 stdio server",
+            )
+    else:
+        if not args.url:
+            report = tester.build_config_error(
+                mode="http",
+                message="缺少 --url 參數",
+                suggestion="請提供 MCP HTTP server 的 base URL",
+            )
+        else:
+            report = tester.run_http(args.url)
+
+    if args.json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(render_report(report))
+
+    if not report.ok:
+        raise SystemExit(1)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="toolanything", description="ToolAnything CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -357,13 +408,56 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     examples_parser.set_defaults(func=lambda args: _print_examples_nav())
 
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        aliases=["connection-test"],
+        help="檢查 MCP transport 與工具呼叫狀態",
+    )
+    doctor_parser.add_argument(
+        "--mode",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="診斷模式（stdio 或 http），預設 stdio",
+    )
+    doctor_parser.add_argument(
+        "--cmd",
+        help="stdio 模式啟動命令（例如 \"python -m toolanything.cli run-stdio\"）",
+    )
+    doctor_parser.add_argument(
+        "--tools",
+        help="工具模組路徑，提供時會啟動 doctor 專用 stdio server",
+    )
+    doctor_parser.add_argument(
+        "--url",
+        help="http 模式 MCP server base URL（例如 http://localhost:9090）",
+    )
+    doctor_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=8.0,
+        help="每一步驟的 timeout 秒數，預設 8 秒",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="輸出 JSON 格式報告",
+    )
+    doctor_parser.set_defaults(func=_run_doctor)
+
     return parser
 
 
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except SystemExit:
+        raise
+    except Exception:
+        logger.exception("CLI 執行失敗")
+        print("[ToolAnything] CLI 執行失敗，請查看 logs/toolanything.log")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -65,6 +65,23 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
   - 不依賴 URL，屬於資料格式與呼叫封裝的對接。
   - 實作位置：`src/toolanything/adapters/openai_adapter.py`
 
+## Connection Tester / Doctor
+
+ToolAnything 提供 `doctor` 子命令，用來快速確認 transport 與 MCP 基本流程是否可用：
+
+```bash
+# stdio 模式：自動啟動 doctor 專用 server，含 __ping__ 工具
+toolanything doctor --mode stdio --tools examples.quickstart.tools
+
+# 自訂 stdio 啟動指令
+toolanything doctor --mode stdio --cmd "python -m toolanything.cli run-stdio"
+
+# http 模式（SSE + JSON-RPC）
+toolanything doctor --mode http --url http://localhost:9090
+```
+
+輸出會包含每個步驟的 PASS/FAIL、耗時與錯誤建議，便於快速定位 transport、initialize、tools/list、tools/call 的問題。
+
 ## 快速範例
 
 ```python

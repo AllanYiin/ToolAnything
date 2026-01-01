@@ -7,10 +7,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from toolanything.core.registry import ToolRegistry
-from toolanything.server.mcp_stdio_server import run_stdio_server
-from toolanything.server.mcp_tool_server import run_server
-from toolanything.utils.logger import configure_logging, logger
+from ..core.registry import ToolRegistry
+from ..server.mcp_stdio_server import run_stdio_server
+from ..server.mcp_tool_server import run_server
+from ..utils.logger import configure_logging, logger
 
 
 def load_tool_module(module: str) -> None:

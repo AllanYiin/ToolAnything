@@ -5,7 +5,7 @@ import asyncio
 import inspect
 from typing import Any, Optional
 
-from toolanything.state.manager import StateManager
+from ..state import StateManager
 
 
 class PipelineContext:

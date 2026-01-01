@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from toolanything.core.registry import ToolRegistry
-from toolanything.decorators.tool import tool
+from .registry import ToolRegistry
+from ..decorators.tool import tool
 
 
 PING_TOOL_NAME = "__ping__"
@@ -27,4 +27,3 @@ def register_ping_tool(registry: ToolRegistry) -> None:
     )
     def _ping() -> Dict[str, Any]:
         return {"ok": True, "message": "pong"}
-

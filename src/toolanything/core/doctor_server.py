@@ -4,11 +4,11 @@ from __future__ import annotations
 import argparse
 import sys
 
-from toolanything.core.builtin_tools import register_ping_tool
-from toolanything.core.registry import ToolRegistry
-from toolanything.runtime.serve import load_tool_module
-from toolanything.server.mcp_stdio_server import run_stdio_server
-from toolanything.utils.logger import configure_logging, logger
+from .builtin_tools import register_ping_tool
+from .registry import ToolRegistry
+from ..runtime.serve import load_tool_module
+from ..server.mcp_stdio_server import run_stdio_server
+from ..utils.logger import configure_logging, logger
 
 
 def _build_parser() -> argparse.ArgumentParser:

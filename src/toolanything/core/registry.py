@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from .failure_log import FailureLogManager
 from .models import PipelineDefinition, ToolSpec
 from ..pipeline.context import PipelineContext, is_context_parameter
-from ..state.manager import StateManager
+from ..state import StateManager
 
 
 class ToolRegistry:

@@ -5,8 +5,8 @@ import platform
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Dict, List, Optional
 
-from toolanything.core.registry import ToolRegistry
-from toolanything.exceptions import ToolError
+from ..core.registry import ToolRegistry
+from ..exceptions import ToolError
 
 from .base_adapter import BaseAdapter
 

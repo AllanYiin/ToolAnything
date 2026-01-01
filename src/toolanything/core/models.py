@@ -4,10 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from toolanything.utils.docstring_parser import DocMetadata
-from toolanything.utils.docstring_parser import parse_docstring
-from toolanything.core.schema import build_parameters_schema
-from toolanything.core.metadata import ToolMetadata, normalize_metadata
+from ..utils.docstring_parser import DocMetadata
+from ..utils.docstring_parser import parse_docstring
+from .schema import build_parameters_schema
+from .metadata import ToolMetadata, normalize_metadata
 
 
 def _derive_default_name(func: Callable[..., Any]) -> str:

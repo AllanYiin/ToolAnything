@@ -9,7 +9,7 @@ from functools import lru_cache
 from types import UnionType
 from typing import Any, Dict, get_args, get_origin
 
-from toolanything.pipeline.context import is_context_parameter
+from ..pipeline.context import is_context_parameter
 
 
 @dataclass

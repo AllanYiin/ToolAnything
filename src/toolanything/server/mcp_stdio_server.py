@@ -9,11 +9,11 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from toolanything.adapters.mcp_adapter import MCPAdapter
-from toolanything.core.registry import ToolRegistry
-from toolanything.core.result_serializer import ResultSerializer
-from toolanything.core.security_manager import SecurityManager
-from toolanything.protocol.mcp_jsonrpc import MCPProtocolCoreImpl, MCPRequestContext
+from ..adapters.mcp_adapter import MCPAdapter
+from ..core.registry import ToolRegistry
+from ..core.result_serializer import ResultSerializer
+from ..core.security_manager import SecurityManager
+from ..protocol.mcp_jsonrpc import MCPProtocolCoreImpl, MCPRequestContext
 
 
 class _CapabilitiesProvider:

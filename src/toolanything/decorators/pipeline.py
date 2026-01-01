@@ -5,12 +5,12 @@ import inspect
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from toolanything.core.models import PipelineDefinition
-from toolanything.core.registry import ToolRegistry
-from toolanything.core.schema import build_parameters_schema
-from toolanything.pipeline.context import PipelineContext
-from toolanything.state.manager import StateManager
-from toolanything.utils.docstring_parser import parse_docstring
+from ..core.models import PipelineDefinition
+from ..core.registry import ToolRegistry
+from ..core.schema import build_parameters_schema
+from ..pipeline.context import PipelineContext
+from ..state import StateManager
+from ..utils.docstring_parser import parse_docstring
 
 
 def pipeline(

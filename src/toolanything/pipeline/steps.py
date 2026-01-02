@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Mapping, Optional
 
-from toolanything.runtime.concurrency import ParallelOptions, RetryPolicy, parallel_run
+from ..runtime.concurrency import ParallelOptions, RetryPolicy, parallel_run
 
 
 class Step:

@@ -6,8 +6,8 @@ from dataclasses import replace
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from toolanything.core.models import ToolSpec
-from toolanything.core.registry import ToolRegistry
+from ..core.models import ToolSpec
+from ..core.registry import ToolRegistry
 
 
 def tool(

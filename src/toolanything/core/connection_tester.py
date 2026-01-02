@@ -13,13 +13,13 @@ from urllib import error as url_error
 from urllib import request as url_request
 from urllib.parse import urljoin
 
-from toolanything.protocol.mcp_jsonrpc import (
+from ..protocol.mcp_jsonrpc import (
     MCP_METHOD_INITIALIZE,
     MCP_METHOD_TOOLS_CALL,
     MCP_METHOD_TOOLS_LIST,
     build_request,
 )
-from toolanything.utils.logger import logger
+from ..utils.logger import logger
 
 
 @dataclass(slots=True)

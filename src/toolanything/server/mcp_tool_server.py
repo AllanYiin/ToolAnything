@@ -11,17 +11,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse
 
-from toolanything.adapters.mcp_adapter import MCPAdapter
-from toolanything.core.registry import ToolRegistry
-from toolanything.core.result_serializer import ResultSerializer
-from toolanything.core.security_manager import SecurityManager
-from toolanything.exceptions import ToolError
-from toolanything.protocol.mcp_jsonrpc import (
+from ..adapters.mcp_adapter import MCPAdapter
+from ..core.registry import ToolRegistry
+from ..core.result_serializer import ResultSerializer
+from ..core.security_manager import SecurityManager
+from ..exceptions import ToolError
+from ..protocol.mcp_jsonrpc import (
     MCPProtocolCoreImpl,
     MCPRequestContext,
     build_transport_ready_message,
 )
-from toolanything.utils.logger import configure_logging, logger
+from ..utils.logger import configure_logging, logger
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: Dict[str, Any]) -> None:

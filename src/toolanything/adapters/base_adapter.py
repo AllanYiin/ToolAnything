@@ -4,10 +4,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from toolanything.core.registry import ToolRegistry
-from toolanything.core.result_serializer import ResultSerializer
-from toolanything.core.security_manager import SecurityManager
-from toolanything.core.failure_log import FailureLogManager
+from ..core.registry import ToolRegistry
+from ..core.result_serializer import ResultSerializer
+from ..core.security_manager import SecurityManager
+from ..core.failure_log import FailureLogManager
 
 
 class BaseAdapter(ABC):
@@ -39,4 +39,3 @@ class BaseAdapter(ABC):
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """執行工具並回傳符合協議的結果包裝。"""
-

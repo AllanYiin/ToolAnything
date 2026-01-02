@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Literal, Mapping, Optional, Protocol, Sequence, TypedDict
 
-from toolanything.exceptions import ToolError
+from ..exceptions import ToolError
 
 
 MCP_JSONRPC_VERSION = "2.0"

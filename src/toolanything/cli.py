@@ -17,9 +17,9 @@ from typing import Any, Dict
 from urllib import request as url_request
 from urllib.parse import urljoin
 
-from toolanything.core import FailureLogManager, ToolRegistry, ToolSearchTool
-from toolanything.core.connection_tester import ConnectionTester, render_report
-from toolanything.utils.logger import logger
+from .core import FailureLogManager, ToolRegistry, ToolSearchTool
+from .core.connection_tester import ConnectionTester, render_report
+from .utils.logger import logger
 
 
 def _get_default_claude_config_path() -> Path:
@@ -64,19 +64,19 @@ def _init_claude_config(path: Path, port: int, force: bool, module: str | None) 
 
 
 def _run_mcp_server(port: int, host: str) -> None:
-    from toolanything.server.mcp_tool_server import run_server
+    from .server.mcp_tool_server import run_server
 
     run_server(port=port, host=host)
 
 
 def _run_stdio_server() -> None:
-    from toolanything.server.mcp_stdio_server import run_stdio_server
+    from .server.mcp_stdio_server import run_stdio_server
 
     run_stdio_server()
 
 
 def _serve_module(module: str, host: str, port: int, stdio: bool) -> None:
-    from toolanything.runtime import run
+    from .runtime import run
 
     run(module=module, host=host, port=port, stdio=stdio)
 

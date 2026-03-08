@@ -242,11 +242,11 @@ function renderTools(tools) {
   toolSelect.innerHTML = "";
 
   if (!tools.length) {
-    toolsList.innerHTML = "<li>尚未取得工具</li>";
+    toolsList.innerHTML = "<li>server 已接通，但目前沒有暴露任何工具</li>";
     toolSelect.innerHTML = '<option value="">沒有可用工具</option>';
     toolCount.textContent = "0";
     footerToolCount.textContent = "0";
-    toolDescription.textContent = "目前 server 沒有回傳工具。";
+    toolDescription.textContent = "目前 server 沒有回傳工具，請確認是用 examples.opencv_mcp_web.server 啟動。";
     toggleSettings();
     return;
   }
@@ -411,9 +411,16 @@ async function checkConnection() {
     const health = await fetchJson(`${baseUrl}/health`);
     connectionStatus.textContent = `連線成功：${health.status}`;
     const tools = await fetchJson(`${baseUrl}/tools`);
-    renderTools(tools.tools || []);
+    const toolEntries = tools.tools || [];
+    renderTools(toolEntries);
     setConnectionBadge("online", "已連線");
-    showToast("MCP Server 已接通，工具列表已更新");
+    if (toolEntries.length) {
+      connectionStatus.textContent = `連線成功：${health.status}，共 ${toolEntries.length} 個工具`;
+      showToast(`MCP Server 已接通，已取得 ${toolEntries.length} 個工具`);
+    } else {
+      connectionStatus.textContent = `連線成功：${health.status}，但 tools/list 為 0`;
+      showToast("MCP Server 已接通，但目前沒有取得任何工具；請確認 server 啟動模組是否正確");
+    }
   } catch (error) {
     connectionStatus.textContent = "連線失敗";
     showToast(error.message);

@@ -96,6 +96,7 @@
           <div class="tabs">
             <button class="tab is-active" type="button" data-tab="result">工具結果</button>
             <button class="tab" type="button" data-tab="tools">工具清單</button>
+            <button class="tab" type="button" data-tab="trace">JSON-RPC Trace</button>
             <button class="tab" type="button" data-tab="llm">LLM 測試</button>
           </div>
 
@@ -115,6 +116,14 @@
               <p>顯示目前目標 server 回傳的 MCP tools/list。</p>
             </div>
             <div id="toolList" class="tool-list empty-state">尚未載入工具。</div>
+          </section>
+
+          <section class="tab-panel" data-panel="trace">
+            <div class="section-heading compact">
+              <h2>JSON-RPC Trace</h2>
+              <p>顯示最近一次互動的 outbound / inbound MCP 訊息。</p>
+            </div>
+            <div id="traceTimeline" class="trace-list empty-state">載入工具、執行工具或跑 LLM 測試後會顯示 trace。</div>
           </section>
 
           <section class="tab-panel" data-panel="llm">

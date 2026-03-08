@@ -54,12 +54,19 @@ def test_inspector_service_lists_and_calls_http_tools():
         tools_result = service.list_tools(payload)
         assert tools_result["count"] == 2
         assert any(tool["name"] == "echo" for tool in tools_result["tools"])
+        assert any(entry["kind"] == "request" for entry in tools_result["trace"])
+        assert any(entry["kind"] == "response" for entry in tools_result["trace"])
 
         call_result = service.call_tool(payload, name="echo", arguments={"message": "hi"})
         assert call_result["result"]["meta"]["contentType"] == "application/json"
         content = call_result["result"]["content"][0]
         assert content["type"] == "text"
         assert json.loads(content["text"]) == {"echo": "hi"}
+        assert any(
+            entry["payload"].get("method") == "tools/call"
+            for entry in call_result["trace"]
+            if entry["direction"] == "outbound"
+        )
     finally:
         server.shutdown()
         server.server_close()
@@ -80,6 +87,7 @@ def test_inspector_service_supports_stdio_tools():
 
     call_result = service.call_tool(payload, name="__ping__", arguments={})
     assert json.loads(call_result["result"]["content"][0]["text"]) == {"ok": True, "message": "pong"}
+    assert any(entry["kind"] == "notification" for entry in call_result["trace"])
 
 
 def test_inspector_service_runs_mocked_openai_tool_loop():
@@ -124,6 +132,11 @@ def test_inspector_service_runs_mocked_openai_tool_loop():
         )
         assert result["final_text"] == "完成"
         assert any(entry["role"] == "tool" and entry["name"] == "echo" for entry in result["transcript"])
+        assert any(
+            entry["payload"].get("method") == "tools/call"
+            for entry in result["trace"]
+            if entry["direction"] == "outbound"
+        )
     finally:
         server.shutdown()
         server.server_close()
@@ -163,6 +176,7 @@ def test_inspector_app_tools_endpoints():
         )
         assert response.status_code == 200
         assert response.json()["count"] == 2
+        assert response.json()["trace"]
 
         response = client.post(
             "/api/tools/call",
@@ -175,6 +189,7 @@ def test_inspector_app_tools_endpoints():
         assert response.status_code == 200
         payload = response.json()
         assert json.loads(payload["result"]["content"][0]["text"]) == {"echo": "from-app"}
+        assert payload["trace"]
     finally:
         client.close()
         server.shutdown()

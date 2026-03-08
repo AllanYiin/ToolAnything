@@ -7,9 +7,8 @@ import threading
 import time
 import webbrowser
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, Mapping, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Mapping, Optional
 from urllib import error as url_error
 from urllib import request as url_request
 from urllib.parse import urlencode, urljoin
@@ -64,6 +63,24 @@ class ConnectionConfig:
     url: Optional[str] = None
     command: Optional[str] = None
     user_id: Optional[str] = None
+
+
+@dataclass(slots=True)
+class TraceEntry:
+    direction: str
+    kind: str
+    payload: Dict[str, Any]
+    transport: str
+    at_ms: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "direction": self.direction,
+            "kind": self.kind,
+            "payload": self.payload,
+            "transport": self.transport,
+            "at_ms": round(self.at_ms, 2),
+        }
 
 
 def _normalize_config(payload: Mapping[str, Any]) -> ConnectionConfig:
@@ -121,6 +138,8 @@ def _unwrap_response(response: Dict[str, Any], request_id: int) -> Dict[str, Any
 class _BaseInspectorSession(AbstractContextManager["_BaseInspectorSession"]):
     def __init__(self) -> None:
         self._request_id = 0
+        self._started_at = time.monotonic()
+        self.trace: list[TraceEntry] = []
 
     def __enter__(self) -> "_BaseInspectorSession":
         return self
@@ -134,6 +153,20 @@ class _BaseInspectorSession(AbstractContextManager["_BaseInspectorSession"]):
     def _next_id(self) -> int:
         self._request_id += 1
         return self._request_id
+
+    def _record(self, *, direction: str, kind: str, transport: str, payload: Dict[str, Any]) -> None:
+        self.trace.append(
+            TraceEntry(
+                direction=direction,
+                kind=kind,
+                transport=transport,
+                payload=payload,
+                at_ms=(time.monotonic() - self._started_at) * 1000,
+            )
+        )
+
+    def export_trace(self) -> list[Dict[str, Any]]:
+        return [entry.to_dict() for entry in self.trace]
 
     def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
@@ -224,7 +257,10 @@ class _StdioInspectorSession(_BaseInspectorSession):
         if self.client is None:
             raise InspectorError("stdio client 尚未建立", status_code=500)
         try:
-            return self.client.send_request(payload)
+            self._record(direction="outbound", kind="request", transport="stdio", payload=payload)
+            response = self.client.send_request(payload)
+            self._record(direction="inbound", kind="response", transport="stdio", payload=response)
+            return response
         except StepFailure as exc:
             raise InspectorError(
                 exc.message,
@@ -235,6 +271,7 @@ class _StdioInspectorSession(_BaseInspectorSession):
         if self.process is None or self.process.stdin is None:
             raise InspectorError("stdio client 尚未建立", status_code=500)
         try:
+            self._record(direction="outbound", kind="notification", transport="stdio", payload=payload)
             self.process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
             self.process.stdin.flush()
         except Exception as exc:
@@ -314,6 +351,7 @@ class _HttpInspectorSession(_BaseInspectorSession):
                 continue
             payload = event.get("data", {})
             if isinstance(payload, dict) and payload.get("method") == "transport/ready":
+                self._record(direction="inbound", kind="event", transport="http", payload=payload)
                 return payload
         raise InspectorError("等待 transport/ready 逾時", status_code=504)
 
@@ -330,6 +368,7 @@ class _HttpInspectorSession(_BaseInspectorSession):
                 continue
             payload = event.get("data", {})
             if isinstance(payload, dict) and payload.get("id") == request_id:
+                self._record(direction="inbound", kind="response", transport="http", payload=payload)
                 return payload
         raise InspectorError(
             "等待 MCP 回應逾時",
@@ -340,6 +379,7 @@ class _HttpInspectorSession(_BaseInspectorSession):
     def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if self.message_endpoint is None:
             raise InspectorError("message endpoint 尚未建立", status_code=500)
+        self._record(direction="outbound", kind="request", transport="http", payload=payload)
         try:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             req = url_request.Request(
@@ -368,6 +408,7 @@ class _HttpInspectorSession(_BaseInspectorSession):
     def _send_notification(self, payload: Dict[str, Any]) -> None:
         if self.message_endpoint is None:
             raise InspectorError("message endpoint 尚未建立", status_code=500)
+        self._record(direction="outbound", kind="notification", transport="http", payload=payload)
         try:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             req = url_request.Request(
@@ -420,6 +461,7 @@ class MCPInspectorService:
             "initialize": initialize,
             "tools": tools,
             "count": len(tools),
+            "trace": session.export_trace(),
         }
 
     def call_tool(
@@ -442,6 +484,7 @@ class MCPInspectorService:
             "tool": tool_name,
             "arguments": dict(arguments or {}),
             "result": result,
+            "trace": session.export_trace(),
         }
 
     def run_openai_test(
@@ -557,6 +600,7 @@ class MCPInspectorService:
             "tools_count": len(tools),
             "final_text": final_text,
             "transcript": transcript,
+            "trace": session.export_trace(),
         }
 
     def _request_openai_chat_completion(

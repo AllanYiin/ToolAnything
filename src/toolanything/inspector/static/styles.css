@@ -236,14 +236,16 @@ textarea {
 
 .report-steps,
 .tool-list,
-.timeline {
+.timeline,
+.trace-list {
   display: grid;
   gap: 12px;
 }
 
 .step-card,
 .tool-card,
-.timeline-entry {
+.timeline-entry,
+.trace-entry {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.82);
@@ -331,12 +333,24 @@ textarea {
   border-left: 4px solid var(--primary);
 }
 
+.trace-entry {
+  border-left: 4px solid #7f5539;
+}
+
 .timeline-entry.tool {
   border-left-color: var(--success);
 }
 
 .timeline-entry.error {
   border-left-color: var(--danger);
+}
+
+.trace-entry.outbound {
+  border-left-color: var(--primary);
+}
+
+.trace-entry.inbound {
+  border-left-color: var(--success);
 }
 
 .entry-meta {

@@ -3,6 +3,7 @@ const STORAGE_KEY = "toolanything.inspect.settings.v1";
 const state = {
   tools: [],
   selectedTool: null,
+  lastTrace: [],
 };
 
 const elements = {
@@ -25,6 +26,7 @@ const elements = {
   callToolButton: document.getElementById("callToolButton"),
   resultViewer: document.getElementById("resultViewer"),
   toolList: document.getElementById("toolList"),
+  traceTimeline: document.getElementById("traceTimeline"),
   apiKey: document.getElementById("apiKey"),
   modelName: document.getElementById("modelName"),
   temperature: document.getElementById("temperature"),
@@ -118,6 +120,27 @@ async function postJson(url, payload) {
 
 function renderJson(target, payload) {
   target.textContent = JSON.stringify(payload, null, 2);
+}
+
+function renderTrace(trace) {
+  state.lastTrace = trace || [];
+  if (!state.lastTrace.length) {
+    elements.traceTimeline.className = "trace-list empty-state";
+    elements.traceTimeline.textContent = "最近一次互動沒有可顯示的 trace。";
+    return;
+  }
+  elements.traceTimeline.className = "trace-list";
+  elements.traceTimeline.innerHTML = "";
+  state.lastTrace.forEach((entry, index) => {
+    const article = document.createElement("article");
+    article.className = `trace-entry ${entry.direction}`;
+    article.innerHTML = `
+      <strong>#${index + 1} ${entry.direction} / ${entry.kind}</strong>
+      <p class="entry-meta">${entry.transport} · ${entry.at_ms}ms</p>
+      <pre>${JSON.stringify(entry.payload, null, 2)}</pre>
+    `;
+    elements.traceTimeline.appendChild(article);
+  });
 }
 
 function renderReport(report) {
@@ -392,6 +415,7 @@ async function streamLlmTest(payload) {
       } else if (parsed.event === "complete") {
         appendTimelineEntry("assistant", "完成", payloadData);
         renderJson(elements.resultViewer, payloadData);
+        renderTrace(payloadData.trace || []);
       } else if (parsed.event === "error") {
         appendTimelineEntry("error", "錯誤", payloadData);
       }
@@ -421,6 +445,7 @@ async function handleLoadTools() {
     state.tools = payload.tools || [];
     populateToolSelect(state.tools);
     renderToolList(state.tools);
+    renderTrace(payload.trace || []);
     elements.toolSummary.textContent = `共 ${payload.count} 個工具`;
     setBadge("success", "工具已載入");
     activateTab("tools");
@@ -444,6 +469,7 @@ async function handleToolCall() {
     arguments: argumentsPayload,
   });
   renderJson(elements.resultViewer, payload);
+  renderTrace(payload.trace || []);
   activateTab("result");
   setBadge("success", "工具執行完成");
 }
@@ -529,6 +555,7 @@ function init() {
   updateTransportFields();
   bindEvents();
   renderJson(elements.resultViewer, { status: "idle" });
+  renderTrace([]);
   renderSchemaForm(null);
 }
 

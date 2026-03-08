@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import uuid
 from dataclasses import dataclass
 from threading import Lock
@@ -36,6 +37,7 @@ _sessions: Dict[str, asyncio.Queue] = {}
 _sessions_lock: asyncio.Lock | None = None
 
 _sessions_lock_guard = Lock()
+_allowed_origins: set[str] = set()
 
 
 
@@ -53,6 +55,29 @@ def _get_sessions_lock() -> asyncio.Lock:
 def _sse(data: Dict[str, Any]) -> str:
     payload = json.dumps(data, ensure_ascii=False)
     return f"data: {payload}\n\n"
+
+
+def _build_allowed_origins(host: str, port: int) -> set[str]:
+    configured = os.getenv("TOOLANYTHING_ALLOWED_ORIGINS")
+    if configured:
+        return {item.strip() for item in configured.split(",") if item.strip()}
+
+    allowed = {
+        f"http://127.0.0.1:{port}",
+        f"http://localhost:{port}",
+        f"https://127.0.0.1:{port}",
+        f"https://localhost:{port}",
+    }
+    if host not in {"0.0.0.0", "::", ""}:
+        allowed.add(f"http://{host}:{port}")
+        allowed.add(f"https://{host}:{port}")
+    return allowed
+
+
+def _origin_allowed(origin: str | None) -> bool:
+    if not origin or "*" in _allowed_origins:
+        return True
+    return origin in _allowed_origins
 
 
 class _CapabilitiesProvider:
@@ -134,9 +159,12 @@ class _ProtocolDependencies:
 
 @app.on_event("startup")
 async def startup() -> None:
-    global registry, adapter, serializer, security_manager, protocol_core, protocol_deps
+    global registry, adapter, serializer, security_manager, protocol_core, protocol_deps, _allowed_origins
     configure_logging()
     try:
+        host = os.getenv("TOOLANYTHING_HOST", "127.0.0.1")
+        port = int(os.getenv("TOOLANYTHING_PORT", "8080"))
+        _allowed_origins = _build_allowed_origins(host, port)
         registry = ToolRegistry.global_instance()
         adapter = MCPAdapter(registry)
         serializer = ResultSerializer()
@@ -174,6 +202,10 @@ async def health() -> Dict[str, str]:
 
 @app.get("/sse")
 async def sse(_: Request) -> StreamingResponse:
+    origin = _.headers.get("Origin")
+    if not _origin_allowed(origin):
+        return JSONResponse({"error": "origin_not_allowed"}, status_code=403)
+
     session_id = uuid.uuid4().hex
     queue: asyncio.Queue = asyncio.Queue()
     await _register_session(session_id, queue)
@@ -207,6 +239,8 @@ async def handle_message(session_id: str, request: Request) -> JSONResponse | Di
         return JSONResponse({"error": "server_not_ready"}, status_code=503)
     if protocol_core is None or protocol_deps is None:
         return JSONResponse({"error": "server_not_ready"}, status_code=503)
+    if not _origin_allowed(request.headers.get("Origin")):
+        return JSONResponse({"error": "origin_not_allowed"}, status_code=403)
 
     queue = await _get_session(session_id)
     if queue is None:
@@ -234,18 +268,20 @@ async def handle_message(session_id: str, request: Request) -> JSONResponse | Di
     return {"ok": True}
 
 
-def run_server(host: str = "0.0.0.0", port: int = 8080) -> None:
+def run_server(host: str = "127.0.0.1", port: int = 8080) -> None:
     """透過 uvicorn 啟動 ASGI MCP SSE Server。"""
 
     import uvicorn
 
+    os.environ["TOOLANYTHING_HOST"] = host
+    os.environ["TOOLANYTHING_PORT"] = str(port)
     uvicorn.run("toolanything.server.mcp_sse_asgi:app", host=host, port=port)
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="啟動 ASGI MCP SSE Server")
     parser.add_argument("--port", type=int, default=8080, help="監聽 port，預設 8080")
-    parser.add_argument("--host", default="0.0.0.0", help="監聽 host，預設 0.0.0.0")
+    parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
     return parser.parse_args()
 
 

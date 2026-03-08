@@ -16,6 +16,26 @@ def test_security_manager_masks_keys_and_audit():
     assert audit == {"tool": "demo.tool", "user": "bob", "args": masked}
 
 
+def test_security_manager_masks_nested_sensitive_values():
+    manager = SecurityManager()
+    record = {
+        "password": "secret",
+        "headers": {"Authorization": "Bearer token"},
+        "nested": {"api_key": "x", "token": "y"},
+        "items": [{"refresh_token": "abc"}],
+        "public": "ok",
+    }
+
+    masked = manager.mask_keys_in_log(record)
+
+    assert masked["password"] == "***MASKED***"
+    assert masked["headers"]["Authorization"] == "***MASKED***"
+    assert masked["nested"]["api_key"] == "***MASKED***"
+    assert masked["nested"]["token"] == "***MASKED***"
+    assert masked["items"][0]["refresh_token"] == "***MASKED***"
+    assert masked["public"] == "ok"
+
+
 def test_result_serializer_outputs():
     serializer = ResultSerializer()
 

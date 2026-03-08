@@ -6,8 +6,6 @@ import inspect
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from tenacity import retry, stop_after_attempt, wait_exponential
-
 from .failure_log import FailureLogManager
 from .models import PipelineDefinition, ToolSpec
 from ..pipeline.context import PipelineContext, is_context_parameter
@@ -216,10 +214,6 @@ class ToolRegistry:
             return await result
         return result
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-    )
     async def execute_tool_async(
         self,
         name: str,
@@ -260,10 +254,6 @@ class ToolRegistry:
                 failure_log.record_failure(normalized_name)
             raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-    )
     def execute_tool(
         self,
         name: str,

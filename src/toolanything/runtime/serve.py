@@ -34,7 +34,7 @@ def load_tool_module(module: str) -> None:
 def serve(
     *,
     module: str | None = None,
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     port: int = 9090,
     stdio: bool = False,
     registry: Optional[ToolRegistry] = None,
@@ -57,7 +57,7 @@ def serve(
 def run(
     *,
     module: str | None = None,
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     port: int = 9090,
     stdio: bool = False,
     registry: Optional[ToolRegistry] = None,

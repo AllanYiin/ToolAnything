@@ -52,7 +52,7 @@ def registry_with_tools():
 
 
 def start_http_server(registry: ToolRegistry):
-    handler_cls = _build_handler(registry)
+    handler_cls = _build_handler(registry, host="127.0.0.1", port=0)
     server = ThreadingHTTPServer(("localhost", 0), handler_cls)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -115,6 +115,28 @@ def test_mcp_http_server_endpoints(registry_with_tools):
         missing_body = json.loads(resp.read())
         assert resp.status == 500
         assert missing_body["error"]["type"] == "internal_error"
+    finally:
+        conn.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_mcp_http_server_rejects_disallowed_origin(registry_with_tools):
+    server, thread = start_http_server(registry_with_tools)
+    port = server.server_address[1]
+    conn = http.client.HTTPConnection("localhost", port, timeout=5)
+
+    try:
+        conn.request(
+            "GET",
+            "/health",
+            headers={"Origin": "https://evil.example"},
+        )
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        assert resp.status == 403
+        assert body["error"] == "origin_not_allowed"
     finally:
         conn.close()
         server.shutdown()

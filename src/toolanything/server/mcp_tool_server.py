@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import threading
 import time
 import uuid
@@ -24,12 +25,49 @@ from ..protocol.mcp_jsonrpc import (
 from ..utils.logger import configure_logging, logger
 
 
-def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: Dict[str, Any]) -> None:
+def _build_allowed_origins(host: str, port: int) -> set[str]:
+    configured = os.getenv("TOOLANYTHING_ALLOWED_ORIGINS")
+    if configured:
+        return {item.strip() for item in configured.split(",") if item.strip()}
+
+    allowed = {
+        f"http://127.0.0.1:{port}",
+        f"http://localhost:{port}",
+        f"https://127.0.0.1:{port}",
+        f"https://localhost:{port}",
+    }
+    if host not in {"0.0.0.0", "::", ""}:
+        allowed.add(f"http://{host}:{port}")
+        allowed.add(f"https://{host}:{port}")
+    return allowed
+
+
+def _send_cors_headers(
+    handler: BaseHTTPRequestHandler,
+    *,
+    allowed_origins: set[str],
+) -> None:
+    origin = handler.headers.get("Origin")
+    if origin and ("*" in allowed_origins or origin in allowed_origins):
+        handler.send_header("Access-Control-Allow-Origin", origin)
+        handler.send_header("Vary", "Origin")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    handler.send_header("Access-Control-Max-Age", "600")
+
+
+def _json_response(
+    handler: BaseHTTPRequestHandler,
+    status_code: int,
+    payload: Dict[str, Any],
+    *,
+    allowed_origins: set[str],
+) -> None:
     """將 payload 序列化成 JSON 並寫入 HTTP 回應。"""
 
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     handler.send_response(status_code)
-    _send_cors_headers(handler)
+    _send_cors_headers(handler, allowed_origins=allowed_origins)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
@@ -51,11 +89,16 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
         return None
 
 
-def _send_sse_headers(handler: BaseHTTPRequestHandler, status_code: int = 200) -> None:
+def _send_sse_headers(
+    handler: BaseHTTPRequestHandler,
+    *,
+    allowed_origins: set[str],
+    status_code: int = 200,
+) -> None:
     """送出 SSE 回應標頭。"""
 
     handler.send_response(status_code)
-    _send_cors_headers(handler)
+    _send_cors_headers(handler, allowed_origins=allowed_origins)
     handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
     handler.send_header("Cache-Control", "no-cache")
     handler.send_header("Connection", "keep-alive")
@@ -118,14 +161,6 @@ def _write_sse_event_locked(session: SSESession, event: str, data: Dict[str, Any
     except Exception:
         logger.exception("MCP SSE 寫入失敗")
         return False
-
-
-def _send_cors_headers(handler: BaseHTTPRequestHandler) -> None:
-    handler.send_header("Access-Control-Allow-Origin", "*")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    handler.send_header("Access-Control-Max-Age", "600")
-
 
 class _CapabilitiesProvider:
     def __init__(self, adapter: MCPAdapter):
@@ -202,6 +237,8 @@ class _ProtocolDependencies:
 def _build_handler(
     registry: ToolRegistry,
     *,
+    host: str,
+    port: int,
     serializer: ResultSerializer | None = None,
     security_manager: SecurityManager | None = None,
 ) -> type[BaseHTTPRequestHandler]:
@@ -209,6 +246,7 @@ def _build_handler(
 
     active_serializer = serializer or ResultSerializer()
     active_security_manager = security_manager or SecurityManager()
+    allowed_origins = _build_allowed_origins(host, port)
     mcp_adapter = MCPAdapter(registry)
     protocol_core = MCPProtocolCoreImpl()
     protocol_deps = _ProtocolDependencies(
@@ -224,26 +262,46 @@ def _build_handler(
         def log_message(self, format: str, *args: Any) -> None:  # pragma: no cover - 使用預設 logging 行為
             super().log_message(format, *args)
 
+        def _origin_allowed(self) -> bool:
+            origin = self.headers.get("Origin")
+            if not origin or "*" in allowed_origins:
+                return True
+            return origin in allowed_origins
+
+        def _reject_disallowed_origin(self) -> None:
+            _json_response(
+                self,
+                403,
+                {"error": "origin_not_allowed"},
+                allowed_origins=allowed_origins,
+            )
+
         def do_OPTIONS(self) -> None:  # noqa: N802 - 標準庫接口
             parsed = urlparse(self.path)
+            if not self._origin_allowed():
+                self._reject_disallowed_origin()
+                return
             if (
                 parsed.path in {"/", "/health", "/tools", "/sse", "/invoke", "/invoke/stream"}
                 or parsed.path.startswith("/messages/")
             ):
                 self.send_response(204)
-                _send_cors_headers(self)
+                _send_cors_headers(self, allowed_origins=allowed_origins)
                 self.end_headers()
                 return
 
-            _json_response(self, 404, {"error": "not_found"})
+            _json_response(self, 404, {"error": "not_found"}, allowed_origins=allowed_origins)
 
         def do_GET(self) -> None:  # noqa: N802 - 標準庫接口
             parsed = urlparse(self.path)
+            if not self._origin_allowed():
+                self._reject_disallowed_origin()
+                return
             if parsed.path == "/sse":
                 session_id = uuid.uuid4().hex
                 session = SSESession(self)
                 _register_sse_session(session_id, session)
-                _send_sse_headers(self, 200)
+                _send_sse_headers(self, allowed_origins=allowed_origins, status_code=200)
                 _write_sse_event(
                     self,
                     "message",
@@ -268,14 +326,19 @@ def _build_handler(
                 return
 
             if parsed.path == "/" or parsed.path == "/health":
-                _json_response(self, 200, {"status": "ok"})
+                _json_response(self, 200, {"status": "ok"}, allowed_origins=allowed_origins)
                 return
 
             if parsed.path == "/tools":
-                _json_response(self, 200, {"tools": registry.to_mcp_tools()})
+                _json_response(
+                    self,
+                    200,
+                    {"tools": registry.to_mcp_tools()},
+                    allowed_origins=allowed_origins,
+                )
                 return
 
-            _json_response(self, 404, {"error": "not_found"})
+            _json_response(self, 404, {"error": "not_found"}, allowed_origins=allowed_origins)
 
         def _handle_invoke(self) -> tuple[int, Dict[str, Any]]:
             payload = _read_json(self)
@@ -329,7 +392,7 @@ def _build_handler(
                 )
 
         def _handle_invoke_stream(self) -> None:
-            _send_sse_headers(self, 200)
+            _send_sse_headers(self, allowed_origins=allowed_origins, status_code=200)
             try:
                 status_code, payload = self._handle_invoke()
                 if status_code == 200:
@@ -362,9 +425,12 @@ def _build_handler(
 
         def do_POST(self) -> None:  # noqa: N802 - 標準庫接口
             parsed = urlparse(self.path)
+            if not self._origin_allowed():
+                self._reject_disallowed_origin()
+                return
             if parsed.path == "/invoke":
                 status_code, payload = self._handle_invoke()
-                _json_response(self, status_code, payload)
+                _json_response(self, status_code, payload, allowed_origins=allowed_origins)
                 return
 
             if parsed.path == "/invoke/stream":
@@ -379,17 +445,32 @@ def _build_handler(
                     session_id = parsed.path.split("/", 2)[2]
 
                 if not session_id:
-                    _json_response(self, 400, {"error": "missing_session"})
+                    _json_response(
+                        self,
+                        400,
+                        {"error": "missing_session"},
+                        allowed_origins=allowed_origins,
+                    )
                     return
 
                 session = _get_sse_session(session_id)
                 if session is None or not session.active:
-                    _json_response(self, 404, {"error": "session_not_found"})
+                    _json_response(
+                        self,
+                        404,
+                        {"error": "session_not_found"},
+                        allowed_origins=allowed_origins,
+                    )
                     return
 
                 payload = _read_json(self)
                 if payload is None:
-                    _json_response(self, 400, {"error": "invalid_json"})
+                    _json_response(
+                        self,
+                        400,
+                        {"error": "invalid_json"},
+                        allowed_origins=allowed_origins,
+                    )
                     return
 
                 context = MCPRequestContext(
@@ -408,24 +489,30 @@ def _build_handler(
                         session.active = False
                         _remove_sse_session(session_id)
 
-                _json_response(self, 200, {"status": "accepted"})
+                _json_response(
+                    self,
+                    200,
+                    {"status": "accepted"},
+                    allowed_origins=allowed_origins,
+                )
                 return
 
-            _json_response(self, 404, {"error": "not_found"})
+            _json_response(self, 404, {"error": "not_found"}, allowed_origins=allowed_origins)
 
     return MCPToolHandler
 
 
-def run_server(port: int, host: str = "0.0.0.0", registry: ToolRegistry | None = None) -> None:
+def run_server(port: int, host: str = "127.0.0.1", registry: ToolRegistry | None = None) -> None:
     """啟動 HTTP 形式的 MCP Tool Server。"""
 
     active_registry = registry or ToolRegistry.global_instance()
-    handler_cls = _build_handler(active_registry)
+    handler_cls = _build_handler(active_registry, host=host, port=port)
     server = ThreadingHTTPServer((host, port), handler_cls)
     print(f"[ToolAnything] MCP Tool Server 已啟動：http://{host}:{port}")
     print("健康檢查：/health，工具列表：/tools")
     print("MCP SSE：GET /sse（回傳 endpoint 供 POST /messages/{session_id} 使用）")
     print("工具呼叫：POST /invoke，SSE 呼叫工具：POST /invoke/stream（text/event-stream）")
+    print("預設僅允許 localhost Origin；可用 TOOLANYTHING_ALLOWED_ORIGINS 覆寫。")
 
     try:
         server.serve_forever()
@@ -438,7 +525,7 @@ def _parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description="啟動內建 MCP Tool Server")
     parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
-    parser.add_argument("--host", default="0.0.0.0", help="監聽 host，預設 0.0.0.0")
+    parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
     return parser.parse_args()
 
 

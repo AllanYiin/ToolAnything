@@ -362,7 +362,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run_parser = subparsers.add_parser("run-mcp", help="啟動內建 MCP Tool Server")
     run_parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
-    run_parser.add_argument("--host", default="0.0.0.0", help="監聽 host，預設 0.0.0.0")
+    run_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
     run_parser.set_defaults(func=lambda args: _run_mcp_server(port=args.port, host=args.host))
 
     stdio_parser = subparsers.add_parser("run-stdio", help="啟動 MCP Stdio Server (供 Claude Desktop 使用)")
@@ -371,7 +371,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="載入工具模組並啟動伺服器")
     serve_parser.add_argument("module", help="工具模組路徑（例如 examples.opencv_mcp_web.server）")
     serve_parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
-    serve_parser.add_argument("--host", default="0.0.0.0", help="監聽 host，預設 0.0.0.0")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
     serve_parser.add_argument(
         "--stdio",
         action="store_true",

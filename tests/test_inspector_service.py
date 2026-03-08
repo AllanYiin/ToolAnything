@@ -164,6 +164,8 @@ def test_inspector_app_tools_endpoints():
         response = client.get("/")
         assert response.status_code == 200
         assert "MCP Test Client" in response.text
+        assert "複製 Trace" in response.text
+        assert "匯出 JSON" in response.text
 
         response = client.post(
             "/api/connection/test",

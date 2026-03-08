@@ -326,6 +326,27 @@ textarea {
   gap: 12px;
 }
 
+.trace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.trace-search {
+  display: grid;
+  gap: 8px;
+  min-width: min(100%, 320px);
+}
+
+.trace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
 .capability-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -433,5 +454,9 @@ textarea {
 
   .capability-grid {
     grid-template-columns: 1fr;
+  }
+
+  .trace-toolbar {
+    flex-direction: column;
   }
 }

@@ -131,6 +131,16 @@
               <h2>JSON-RPC Trace</h2>
               <p>顯示最近一次互動的 outbound / inbound MCP 訊息。</p>
             </div>
+            <div class="trace-toolbar">
+              <label class="trace-search">
+                <span>關鍵字篩選</span>
+                <input id="traceFilterInput" type="text" placeholder="例如 tools/call 或 initialize" />
+              </label>
+              <div class="trace-actions">
+                <button id="copyTraceButton" type="button" class="button button-secondary">複製 Trace</button>
+                <button id="exportTraceButton" type="button" class="button button-secondary">匯出 JSON</button>
+              </div>
+            </div>
             <div id="traceTimeline" class="trace-list empty-state">載入工具、執行工具或跑 LLM 測試後會顯示 trace。</div>
           </section>
 

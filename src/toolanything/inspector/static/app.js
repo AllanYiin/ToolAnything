@@ -4,6 +4,7 @@ const state = {
   tools: [],
   selectedTool: null,
   lastTrace: [],
+  traceFilter: "",
 };
 
 const elements = {
@@ -29,6 +30,9 @@ const elements = {
   resultViewer: document.getElementById("resultViewer"),
   toolList: document.getElementById("toolList"),
   traceTimeline: document.getElementById("traceTimeline"),
+  traceFilterInput: document.getElementById("traceFilterInput"),
+  copyTraceButton: document.getElementById("copyTraceButton"),
+  exportTraceButton: document.getElementById("exportTraceButton"),
   apiKey: document.getElementById("apiKey"),
   modelName: document.getElementById("modelName"),
   temperature: document.getElementById("temperature"),
@@ -126,14 +130,17 @@ function renderJson(target, payload) {
 
 function renderTrace(trace) {
   state.lastTrace = trace || [];
-  if (!state.lastTrace.length) {
+  const filteredTrace = getFilteredTrace();
+  if (!filteredTrace.length) {
     elements.traceTimeline.className = "trace-list empty-state";
-    elements.traceTimeline.textContent = "最近一次互動沒有可顯示的 trace。";
+    elements.traceTimeline.textContent = state.lastTrace.length
+      ? "目前的篩選條件沒有符合的 trace。"
+      : "最近一次互動沒有可顯示的 trace。";
     return;
   }
   elements.traceTimeline.className = "trace-list";
   elements.traceTimeline.innerHTML = "";
-  state.lastTrace.forEach((entry, index) => {
+  filteredTrace.forEach((entry, index) => {
     const article = document.createElement("article");
     article.className = `trace-entry ${entry.direction}`;
     article.innerHTML = `
@@ -143,6 +150,59 @@ function renderTrace(trace) {
     `;
     elements.traceTimeline.appendChild(article);
   });
+}
+
+function getFilteredTrace() {
+  const keyword = state.traceFilter.trim().toLowerCase();
+  if (!keyword) {
+    return state.lastTrace;
+  }
+  return state.lastTrace.filter((entry) =>
+    JSON.stringify(entry).toLowerCase().includes(keyword)
+  );
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
+async function handleCopyTrace() {
+  const filteredTrace = getFilteredTrace();
+  if (!filteredTrace.length) {
+    throw new Error("目前沒有可複製的 trace");
+  }
+  await copyText(JSON.stringify(filteredTrace, null, 2));
+}
+
+function handleExportTrace() {
+  const filteredTrace = getFilteredTrace();
+  if (!filteredTrace.length) {
+    throw new Error("目前沒有可匯出的 trace");
+  }
+  const blob = new Blob([JSON.stringify(filteredTrace, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `toolanything-trace-${Date.now()}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function renderCapabilities(initializePayload) {
@@ -599,6 +659,23 @@ function bindEvents() {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => activateTab(tab.dataset.tab));
   });
+  elements.traceFilterInput.addEventListener("input", (event) => {
+    state.traceFilter = event.target.value || "";
+    renderTrace(state.lastTrace);
+  });
+  elements.copyTraceButton.addEventListener("click", () => {
+    handleCopyTrace()
+      .then(() => appendTimelineEntry("assistant", "Trace 已複製", { count: getFilteredTrace().length }))
+      .catch((error) => appendTimelineEntry("error", "Trace 複製失敗", { message: error.message }));
+  });
+  elements.exportTraceButton.addEventListener("click", () => {
+    try {
+      handleExportTrace();
+      appendTimelineEntry("assistant", "Trace 已匯出", { count: getFilteredTrace().length });
+    } catch (error) {
+      appendTimelineEntry("error", "Trace 匯出失敗", { message: error.message });
+    }
+  });
   elements.resetStateButton.addEventListener("click", resetState);
 }
 
@@ -606,6 +683,7 @@ function init() {
   restoreSettings();
   updateTransportFields();
   bindEvents();
+  elements.traceFilterInput.value = "";
   renderJson(elements.resultViewer, { status: "idle" });
   renderTrace([]);
   renderCapabilities(null);

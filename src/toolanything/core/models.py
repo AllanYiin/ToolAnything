@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from ..state import StateManager
 from ..utils.docstring_parser import DocMetadata
 from ..utils.docstring_parser import parse_docstring
 from .schema import build_parameters_schema
@@ -125,6 +126,7 @@ class PipelineDefinition(DefinitionMixin):
     func: Callable[..., Any]
     parameters: Dict[str, Any]
     stateful: bool = True
+    state_manager: Optional[StateManager] = None
     documentation: Optional[DocMetadata] = None
 
 

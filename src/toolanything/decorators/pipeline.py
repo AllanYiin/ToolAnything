@@ -30,6 +30,7 @@ def pipeline(
             description=description,
             func=func,
             parameters=params_schema,
+            state_manager=state_manager,
             documentation=documentation,
         )
 

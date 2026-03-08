@@ -120,6 +120,7 @@ def _write_sse_event(handler: BaseHTTPRequestHandler, event: str, data: Dict[str
 @dataclass(slots=True)
 class SSESession:
     handler: BaseHTTPRequestHandler
+    user_id: str = "default"
     lock: threading.Lock = field(default_factory=threading.Lock)
     active: bool = True
 
@@ -299,7 +300,8 @@ def _build_handler(
                 return
             if parsed.path == "/sse":
                 session_id = uuid.uuid4().hex
-                session = SSESession(self)
+                user_id = parse_qs(parsed.query).get("user_id", ["default"])[0] or "default"
+                session = SSESession(self, user_id=user_id)
                 _register_sse_session(session_id, session)
                 _send_sse_headers(self, allowed_origins=allowed_origins, status_code=200)
                 _write_sse_event(
@@ -474,7 +476,7 @@ def _build_handler(
                     return
 
                 context = MCPRequestContext(
-                    user_id="default",
+                    user_id=session.user_id,
                     session_id=session_id,
                     transport="sse",
                 )

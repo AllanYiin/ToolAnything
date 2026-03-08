@@ -5,6 +5,7 @@ MCP Stdio Server 實作。
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -104,6 +105,7 @@ class MCPStdioServer:
             tools=_ToolSchemaProvider(self.registry),
             invoker=_ToolInvoker(self.registry, self.result_serializer, self.security_manager),
         )
+        self._default_user_id = os.getenv("TOOLANYTHING_USER_ID", "default")
 
     def _read_message(self) -> Dict[str, Any] | None:
         """從 stdin 讀取一行 JSON 訊息並轉為字典。"""
@@ -130,7 +132,7 @@ class MCPStdioServer:
             if request is None:
                 break
 
-            context = MCPRequestContext(user_id="default", transport="stdio")
+            context = MCPRequestContext(user_id=self._default_user_id, transport="stdio")
             response = self._protocol_core.handle(request, context=context, deps=self._deps)
             if response is not None:
                 self._send_message(response)

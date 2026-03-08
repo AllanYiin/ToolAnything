@@ -8,7 +8,7 @@ from types import MethodType
 
 import pytest
 
-from toolanything import tool
+from toolanything import pipeline, tool
 from toolanything.core.registry import ToolRegistry
 from toolanything.exceptions import ToolError
 from toolanything.protocol.mcp_jsonrpc import (
@@ -19,11 +19,13 @@ from toolanything.protocol.mcp_jsonrpc import (
 )
 from toolanything.server.mcp_stdio_server import MCPStdioServer
 from toolanything.server.mcp_tool_server import _build_handler
+from toolanything.state import StateManager
 
 
 @pytest.fixture()
 def registry_with_tools():
     registry = ToolRegistry()
+    state_manager = StateManager()
 
     @tool(name="echo", description="Echo message", registry=registry)
     def echo(message: str):
@@ -37,18 +39,34 @@ def registry_with_tools():
     def explode():
         raise RuntimeError("crash")
 
+    @pipeline(
+        name="remember",
+        description="Store a value in state",
+        registry=registry,
+        state_manager=state_manager,
+    )
+    def remember(ctx, value: str):
+        ctx.set("remembered", value)
+        return {"remembered": ctx.get("remembered")}
+
     def execute_tool_stub(self, name: str, *, arguments=None, user_id=None, state_manager=None, failure_log=None):
         arguments = arguments or {}
         if name == "fail":
             raise ToolError("boom", error_type="bad_request", data={"hint": "nope"})
         if name == "explode":
             raise RuntimeError("crash")
-        func = self.get(name)
-        return func(**arguments)
+        return ToolRegistry.execute_tool(
+            self,
+            name,
+            arguments=arguments,
+            user_id=user_id,
+            state_manager=state_manager,
+            failure_log=failure_log,
+        )
 
     registry.execute_tool = MethodType(execute_tool_stub, registry)
 
-    return registry
+    return registry, state_manager
 
 
 def start_http_server(registry: ToolRegistry):
@@ -60,7 +78,8 @@ def start_http_server(registry: ToolRegistry):
 
 
 def test_mcp_http_server_endpoints(registry_with_tools):
-    server, thread = start_http_server(registry_with_tools)
+    registry, _ = registry_with_tools
+    server, thread = start_http_server(registry)
     port = server.server_address[1]
     conn = http.client.HTTPConnection("localhost", port, timeout=5)
 
@@ -123,7 +142,8 @@ def test_mcp_http_server_endpoints(registry_with_tools):
 
 
 def test_mcp_http_server_rejects_disallowed_origin(registry_with_tools):
-    server, thread = start_http_server(registry_with_tools)
+    registry, _ = registry_with_tools
+    server, thread = start_http_server(registry)
     port = server.server_address[1]
     conn = http.client.HTTPConnection("localhost", port, timeout=5)
 
@@ -145,7 +165,8 @@ def test_mcp_http_server_rejects_disallowed_origin(registry_with_tools):
 
 
 def test_mcp_stdio_server_flow(monkeypatch, registry_with_tools):
-    server = MCPStdioServer(registry_with_tools)
+    registry, _ = registry_with_tools
+    server = MCPStdioServer(registry)
 
     requests = [
         build_request(MCP_METHOD_INITIALIZE, 1),
@@ -182,3 +203,29 @@ def test_mcp_stdio_server_flow(monkeypatch, registry_with_tools):
     fail_response = output_lines[3]["error"]
     assert fail_response["message"] == "bad_request"
     assert fail_response["data"]["arguments"]["api_key"] == "***MASKED***"
+
+
+def test_mcp_http_invoke_pipeline_persists_state(registry_with_tools):
+    registry, state_manager = registry_with_tools
+    server, thread = start_http_server(registry)
+    port = server.server_address[1]
+    conn = http.client.HTTPConnection("localhost", port, timeout=5)
+
+    try:
+        payload = json.dumps(
+            {"name": "remember", "arguments": {"value": "hello"}, "user_id": "user-http"}
+        )
+        conn.request("POST", "/invoke", body=payload, headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        invoke_body = json.loads(resp.read())
+        assert resp.status == 200
+        assert invoke_body["result"] == {
+            "contentType": "application/json",
+            "content": {"remembered": "hello"},
+        }
+        assert state_manager.get("user-http")["remembered"] == "hello"
+    finally:
+        conn.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)

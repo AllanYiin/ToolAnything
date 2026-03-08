@@ -233,7 +233,8 @@ class ToolRegistry:
             target is None and normalized_name in self._pipelines
         ):
             definition = self.get_pipeline(normalized_name)
-            ctx = self._build_context(user_id=user_id, state_manager=state_manager)
+            active_state_manager = state_manager or definition.state_manager
+            ctx = self._build_context(user_id=user_id, state_manager=active_state_manager)
             try:
                 return await self._execute_callable(definition.func, ctx, **arguments)
             except Exception:

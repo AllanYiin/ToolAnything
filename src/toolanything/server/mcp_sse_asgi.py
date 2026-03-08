@@ -33,7 +33,13 @@ security_manager: SecurityManager | None = None
 protocol_core: MCPProtocolCoreImpl | None = None
 protocol_deps: "_ProtocolDependencies" | None = None
 
-_sessions: Dict[str, asyncio.Queue] = {}
+@dataclass(slots=True)
+class SSESession:
+    queue: asyncio.Queue
+    user_id: str = "default"
+
+
+_sessions: Dict[str, SSESession] = {}
 _sessions_lock: asyncio.Lock | None = None
 
 _sessions_lock_guard = Lock()
@@ -180,12 +186,12 @@ async def startup() -> None:
         raise
 
 
-async def _register_session(session_id: str, queue: asyncio.Queue) -> None:
+async def _register_session(session_id: str, session: SSESession) -> None:
     async with _get_sessions_lock():
-        _sessions[session_id] = queue
+        _sessions[session_id] = session
 
 
-async def _get_session(session_id: str) -> asyncio.Queue | None:
+async def _get_session(session_id: str) -> SSESession | None:
     async with _get_sessions_lock():
         return _sessions.get(session_id)
 
@@ -207,15 +213,16 @@ async def sse(_: Request) -> StreamingResponse:
         return JSONResponse({"error": "origin_not_allowed"}, status_code=403)
 
     session_id = uuid.uuid4().hex
-    queue: asyncio.Queue = asyncio.Queue()
-    await _register_session(session_id, queue)
+    user_id = _.query_params.get("user_id", "default") or "default"
+    session = SSESession(queue=asyncio.Queue(), user_id=user_id)
+    await _register_session(session_id, session)
 
     async def event_stream():
         yield _sse(build_transport_ready_message(session_id))
 
         try:
             while True:
-                message = await queue.get()
+                message = await session.queue.get()
                 yield _sse(message)
         except asyncio.CancelledError:
             logger.info("MCP SSE 客戶端已中斷連線")
@@ -242,8 +249,8 @@ async def handle_message(session_id: str, request: Request) -> JSONResponse | Di
     if not _origin_allowed(request.headers.get("Origin")):
         return JSONResponse({"error": "origin_not_allowed"}, status_code=403)
 
-    queue = await _get_session(session_id)
-    if queue is None:
+    session = await _get_session(session_id)
+    if session is None:
         return JSONResponse({"error": "session_not_found"}, status_code=404)
 
     try:
@@ -253,7 +260,7 @@ async def handle_message(session_id: str, request: Request) -> JSONResponse | Di
         return JSONResponse({"error": "invalid_json"}, status_code=400)
 
     context = MCPRequestContext(
-        user_id="default",
+        user_id=session.user_id,
         session_id=session_id,
         transport="sse",
     )
@@ -263,7 +270,7 @@ async def handle_message(session_id: str, request: Request) -> JSONResponse | Di
         deps=protocol_deps,
     )
     if response is not None:
-        await queue.put(response)
+        await session.queue.put(response)
 
     return {"ok": True}
 

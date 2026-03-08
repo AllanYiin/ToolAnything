@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Dict
@@ -23,8 +24,6 @@ from ..protocol.mcp_jsonrpc import (
     build_transport_ready_message,
 )
 from ..utils.logger import configure_logging, logger
-
-app = FastAPI(title="ToolAnything MCP SSE (ASGI)")
 
 registry: ToolRegistry | None = None
 adapter: MCPAdapter | None = None
@@ -163,27 +162,35 @@ class _ProtocolDependencies:
     invoker: _ToolInvoker
 
 
-@app.on_event("startup")
-async def startup() -> None:
+async def _startup_state() -> None:
     global registry, adapter, serializer, security_manager, protocol_core, protocol_deps, _allowed_origins
     configure_logging()
+    host = os.getenv("TOOLANYTHING_HOST", "127.0.0.1")
+    port = int(os.getenv("TOOLANYTHING_PORT", "8080"))
+    _allowed_origins = _build_allowed_origins(host, port)
+    registry = ToolRegistry.global_instance()
+    adapter = MCPAdapter(registry)
+    serializer = ResultSerializer()
+    security_manager = SecurityManager()
+    protocol_core = MCPProtocolCoreImpl()
+    protocol_deps = _ProtocolDependencies(
+        capabilities=_CapabilitiesProvider(adapter),
+        tools=_ToolSchemaProvider(registry),
+        invoker=_ToolInvoker(registry, serializer, security_manager),
+    )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     try:
-        host = os.getenv("TOOLANYTHING_HOST", "127.0.0.1")
-        port = int(os.getenv("TOOLANYTHING_PORT", "8080"))
-        _allowed_origins = _build_allowed_origins(host, port)
-        registry = ToolRegistry.global_instance()
-        adapter = MCPAdapter(registry)
-        serializer = ResultSerializer()
-        security_manager = SecurityManager()
-        protocol_core = MCPProtocolCoreImpl()
-        protocol_deps = _ProtocolDependencies(
-            capabilities=_CapabilitiesProvider(adapter),
-            tools=_ToolSchemaProvider(registry),
-            invoker=_ToolInvoker(registry, serializer, security_manager),
-        )
+        await _startup_state()
+        yield
     except Exception:
         logger.exception("ASGI MCP SSE Server 初始化失敗")
         raise
+
+
+app = FastAPI(title="ToolAnything MCP SSE (ASGI)", lifespan=lifespan)
 
 
 async def _register_session(session_id: str, session: SSESession) -> None:

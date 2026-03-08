@@ -42,6 +42,7 @@ dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 where = ["src"]
 
 [tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "asyncio: 非同步測試用標記",
 ]

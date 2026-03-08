@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -12,8 +13,6 @@ from app.backend_daemon.logging_utils import get_logger
 LOG_DIR = Path(os.getenv("BACKEND_DAEMON_LOG_DIR", "logs"))
 logger = get_logger("backend_daemon.launcher", LOG_DIR, "backend_daemon_launcher.log")
 PID_FILE = LOG_DIR / "backend_daemon.pid"
-
-app = FastAPI(title="Backend Daemon API")
 
 
 def _is_process_running(pid: int) -> bool:
@@ -93,10 +92,13 @@ def _start_worker_process() -> None:
     except Exception:
         logger.exception("Backend daemon worker 啟動失敗")
 
-
-@app.on_event("startup")
-async def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     _start_worker_process()
+    yield
+
+
+app = FastAPI(title="Backend Daemon API", lifespan=lifespan)
 
 
 @app.get("/health")

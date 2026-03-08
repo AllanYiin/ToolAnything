@@ -13,7 +13,11 @@ from toolanything import ToolError, ToolRegistry, tool
 from toolanything.server.mcp_tool_server import run_server
 from toolanything.utils.logger import logger
 
-registry = ToolRegistry()
+# 這個範例同時支援：
+# 1. `toolanything serve examples.opencv_mcp_web.server`
+# 2. 直接呼叫 `start_server(...)`
+# 因此要和 CLI 使用同一個全域 registry，避免 tools 載入後 server 仍看到空清單。
+registry = ToolRegistry.global_instance()
 
 
 def _decode_image(image_base64: str) -> np.ndarray:

@@ -97,6 +97,24 @@ p {
   gap: 6px;
 }
 
+.action-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.inline-hint {
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.compact-hint {
+  margin-bottom: 8px;
+}
+
 .app-layout {
   display: grid;
   grid-template-columns: minmax(280px, 360px) 1fr;

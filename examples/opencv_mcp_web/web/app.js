@@ -1,3 +1,5 @@
+const STORAGE_KEY = "toolanything.opencv_mcp_web.v2";
+
 const serverUrlInput = document.getElementById("serverUrl");
 const connectionStatus = document.getElementById("connectionStatus");
 const connectionBadge = document.getElementById("connectionBadge");
@@ -5,12 +7,15 @@ const toolsList = document.getElementById("tools");
 const toolCount = document.getElementById("toolCount");
 const footerToolCount = document.getElementById("footerToolCount");
 const checkConnectionButton = document.getElementById("checkConnection");
+const useLocalServerButton = document.getElementById("useLocalServer");
+const useDemoImageButton = document.getElementById("useDemoImage");
 const uploadDrop = document.getElementById("uploadDrop");
 const fileInput = document.getElementById("fileInput");
 const previewImage = document.getElementById("previewImage");
 const resultImage = document.getElementById("resultImage");
 const resultPlaceholder = document.getElementById("resultPlaceholder");
 const toolSelect = document.getElementById("toolSelect");
+const toolDescription = document.getElementById("toolDescription");
 const resizeSettings = document.getElementById("resizeSettings");
 const cannySettings = document.getElementById("cannySettings");
 const resizeWidthInput = document.getElementById("resizeWidth");
@@ -34,6 +39,7 @@ const toast = document.getElementById("toast");
 let currentImageBase64 = "";
 let progressTimer = null;
 let zoomLevel = 1;
+let availableTools = [];
 const recordEntries = [];
 
 class SseNotSupportedError extends Error {
@@ -41,6 +47,31 @@ class SseNotSupportedError extends Error {
     super(payload?.reason || "SSE 不支援，已改用替代方案");
     this.name = "SseNotSupportedError";
     this.payload = payload;
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      serverUrl: serverUrlInput.value.trim(),
+      selectedTool: toolSelect.value,
+    }),
+  );
+}
+
+function restoreSettings() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return;
+  }
+  try {
+    const payload = JSON.parse(raw);
+    if (payload.serverUrl) {
+      serverUrlInput.value = payload.serverUrl;
+    }
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
   }
 }
 
@@ -73,7 +104,7 @@ function stopProgress() {
 }
 
 function getServerUrl() {
-  return serverUrlInput.value.trim();
+  return serverUrlInput.value.trim().replace(/\/$/, "");
 }
 
 function setConnectionBadge(state, label) {
@@ -98,7 +129,10 @@ async function fetchJson(url, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const errorMessage = data?.error?.message || "連線失敗，請稍後再試";
+    const errorMessage =
+      data?.error?.message ||
+      data?.error ||
+      "連線失敗，請稍後再試";
     throw new Error(errorMessage);
   }
   return data;
@@ -198,44 +232,58 @@ async function invokeToolJson(baseUrl, payload) {
   return data;
 }
 
-async function checkConnection() {
-  const baseUrl = getServerUrl();
-  if (!baseUrl) {
-    showToast("請輸入 MCP Server URL");
-    return;
-  }
-
-  connectionStatus.textContent = "連線中...";
-  setConnectionBadge("checking", "連線中");
-  try {
-    const health = await fetchJson(`${baseUrl}/health`);
-    connectionStatus.textContent = `連線成功：${health.status}`;
-    const tools = await fetchJson(`${baseUrl}/tools`);
-    renderTools(tools.tools || []);
-    setConnectionBadge("online", "已連線");
-  } catch (error) {
-    connectionStatus.textContent = "連線失敗";
-    showToast(error.message);
-    setConnectionBadge("offline", "未連線");
-  }
+function getToolDefinition(name) {
+  return availableTools.find((tool) => tool.name === name) || null;
 }
 
 function renderTools(tools) {
+  availableTools = tools;
   toolsList.innerHTML = "";
+  toolSelect.innerHTML = "";
+
   if (!tools.length) {
     toolsList.innerHTML = "<li>尚未取得工具</li>";
+    toolSelect.innerHTML = '<option value="">沒有可用工具</option>';
     toolCount.textContent = "0";
     footerToolCount.textContent = "0";
+    toolDescription.textContent = "目前 server 沒有回傳工具。";
+    toggleSettings();
     return;
   }
 
-  toolCount.textContent = tools.length;
-  footerToolCount.textContent = tools.length;
+  const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+  const preferredTool = stored.selectedTool || tools[0].name;
+
+  toolCount.textContent = String(tools.length);
+  footerToolCount.textContent = String(tools.length);
   tools.forEach((tool) => {
     const li = document.createElement("li");
-    li.textContent = `${tool.name} - ${tool.description}`;
+    li.textContent = `${tool.name} - ${tool.description || "沒有描述"}`;
     toolsList.appendChild(li);
+
+    const option = document.createElement("option");
+    option.value = tool.name;
+    option.textContent = tool.name;
+    toolSelect.appendChild(option);
   });
+
+  toolSelect.value = tools.some((tool) => tool.name === preferredTool)
+    ? preferredTool
+    : tools[0].name;
+  toggleSettings();
+}
+
+function updateToolDescription() {
+  const tool = getToolDefinition(toolSelect.value);
+  toolDescription.textContent = tool?.description || "請先檢查連線並取得工具。";
+}
+
+function toggleSettings() {
+  const toolName = toolSelect.value;
+  resizeSettings.style.display = toolName === "opencv.resize" ? "block" : "none";
+  cannySettings.style.display = toolName === "opencv.canny" ? "block" : "none";
+  updateToolDescription();
+  saveSettings();
 }
 
 function handleFileChange(event) {
@@ -258,10 +306,41 @@ function handleFileChange(event) {
   reader.readAsDataURL(file);
 }
 
-function toggleSettings() {
-  const toolName = toolSelect.value;
-  resizeSettings.style.display = toolName === "opencv.resize" ? "block" : "none";
-  cannySettings.style.display = toolName === "opencv.canny" ? "block" : "none";
+function createDemoImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 320;
+  canvas.height = 200;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("瀏覽器無法建立示範圖片");
+  }
+
+  const gradient = ctx.createLinearGradient(0, 0, 320, 200);
+  gradient.addColorStop(0, "#1d4ed8");
+  gradient.addColorStop(1, "#f97316");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 320, 200);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.92)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(18, 18, 284, 164);
+
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "bold 28px 'Microsoft JhengHei', sans-serif";
+  ctx.fillText("ToolAnything", 26, 110);
+  ctx.font = "16px 'Microsoft JhengHei', sans-serif";
+  ctx.fillText("OpenCV MCP Demo", 28, 138);
+
+  ctx.beginPath();
+  ctx.arc(250, 78, 34, 0, Math.PI * 2);
+  ctx.stroke();
+
+  currentImageBase64 = canvas.toDataURL("image/png");
+  previewImage.src = currentImageBase64;
+  resultImage.src = "";
+  resultPlaceholder.style.display = "grid";
+  resultOutput.textContent = "";
+  showToast("已載入示範圖片，可直接執行工具");
 }
 
 function applyResult(payload) {
@@ -284,13 +363,7 @@ function appendRecord({ toolName, status, message }) {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const record = {
-    toolName,
-    status,
-    message,
-    timestamp,
-  };
-  recordEntries.unshift(record);
+  recordEntries.unshift({ toolName, status, message, timestamp });
   if (recordEntries.length > 6) {
     recordEntries.pop();
   }
@@ -324,9 +397,33 @@ function switchTab(tabName) {
   });
 }
 
+async function checkConnection() {
+  const baseUrl = getServerUrl();
+  if (!baseUrl) {
+    showToast("請輸入 MCP Server URL");
+    return;
+  }
+
+  connectionStatus.textContent = "連線中...";
+  setConnectionBadge("checking", "連線中");
+  saveSettings();
+  try {
+    const health = await fetchJson(`${baseUrl}/health`);
+    connectionStatus.textContent = `連線成功：${health.status}`;
+    const tools = await fetchJson(`${baseUrl}/tools`);
+    renderTools(tools.tools || []);
+    setConnectionBadge("online", "已連線");
+    showToast("MCP Server 已接通，工具列表已更新");
+  } catch (error) {
+    connectionStatus.textContent = "連線失敗";
+    showToast(error.message);
+    setConnectionBadge("offline", "未連線");
+  }
+}
+
 async function runTool() {
   if (!currentImageBase64) {
-    showToast("請先上傳圖片");
+    showToast("請先上傳圖片或點擊「使用示範圖片」");
     return;
   }
 
@@ -337,8 +434,12 @@ async function runTool() {
   }
 
   const toolName = toolSelect.value;
-  const argumentsPayload = { image_base64: currentImageBase64 };
+  if (!toolName) {
+    showToast("請先檢查連線並選擇工具");
+    return;
+  }
 
+  const argumentsPayload = { image_base64: currentImageBase64 };
   if (toolName === "opencv.resize") {
     const width = resizeWidthInput.value ? Number(resizeWidthInput.value) : null;
     const height = resizeHeightInput.value ? Number(resizeHeightInput.value) : null;
@@ -354,13 +455,9 @@ async function runTool() {
   try {
     setProgress(5);
     runToolButton.disabled = true;
-
     await invokeToolSse(
       baseUrl,
-      {
-        name: toolName,
-        arguments: argumentsPayload,
-      },
+      { name: toolName, arguments: argumentsPayload },
       {
         progress: (payload) => {
           const progressValue = Math.min(100, Math.max(0, payload.progress || 0));
@@ -436,10 +533,19 @@ async function runTool() {
 }
 
 function init() {
-  serverUrlInput.value = window.location.origin;
+  const queryServer = new URLSearchParams(window.location.search).get("server");
+  serverUrlInput.value = queryServer || window.location.origin;
+  restoreSettings();
   toggleSettings();
   setConnectionBadge("offline", "未連線");
+
   checkConnectionButton.addEventListener("click", checkConnection);
+  useLocalServerButton.addEventListener("click", () => {
+    serverUrlInput.value = "http://127.0.0.1:9091";
+    saveSettings();
+  });
+  useDemoImageButton.addEventListener("click", createDemoImage);
+  serverUrlInput.addEventListener("change", saveSettings);
   fileInput.addEventListener("change", handleFileChange);
   toolSelect.addEventListener("change", toggleSettings);
   runToolButton.addEventListener("click", runTool);

@@ -40,6 +40,14 @@
             <label for="serverUrl">MCP Server URL</label>
             <input id="serverUrl" type="text" value="" />
           </div>
+          <div class="action-inline">
+            <button id="useLocalServer" type="button" class="ghost-button">使用本機 9091</button>
+            <button id="useDemoImage" type="button" class="ghost-button">使用示範圖片</button>
+          </div>
+          <p class="inline-hint">
+            若 Web UI 跟 MCP server 不同 origin，請先在 server 端設定
+            <code>TOOLANYTHING_ALLOWED_ORIGINS</code>。
+          </div>
           <div class="tool-list">
             <div class="tool-list-header">
               <h3>工具列表</h3>
@@ -51,12 +59,11 @@
 
         <div class="panel-card">
           <h2>選擇工具</h2>
+          <p id="toolDescription" class="hint compact-hint">先檢查連線並載入工具。</p>
           <div class="input-stack">
             <label for="toolSelect">工具類型</label>
             <select id="toolSelect">
-              <option value="opencv.info">取得圖片資訊</option>
-              <option value="opencv.resize">縮放圖片</option>
-              <option value="opencv.canny">邊緣偵測</option>
+              <option value="">請先取得工具</option>
             </select>
           </div>
 

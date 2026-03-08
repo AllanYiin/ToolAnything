@@ -28,6 +28,31 @@ def test_cli_run_mcp_and_stdio_dispatch(monkeypatch):
     assert called["stdio"] is True
 
 
+def test_cli_inspect_dispatch(monkeypatch):
+    called = {}
+
+    def fake_run_inspector_ui(*, host: str, port: int, timeout: float, no_open: bool) -> None:
+        called["inspect"] = {
+            "host": host,
+            "port": port,
+            "timeout": timeout,
+            "no_open": no_open,
+        }
+
+    monkeypatch.setattr("toolanything.cli._run_inspector_ui", fake_run_inspector_ui)
+    parser = _build_parser()
+
+    args = parser.parse_args(["inspect", "--port", "9061", "--host", "127.0.0.1", "--timeout", "5", "--no-open"])
+    args.func(args)
+
+    assert called["inspect"] == {
+        "host": "127.0.0.1",
+        "port": 9061,
+        "timeout": 5.0,
+        "no_open": True,
+    }
+
+
 def test_cli_init_claude(tmp_path):
     parser = _build_parser()
     output = tmp_path / "claude_config.json"

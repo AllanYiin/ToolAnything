@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ToolAnything MCP Test Client</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ToolAnything Built-in Inspector</p>
+          <h1>MCP Test Client</h1>
+          <p class="subtitle">在同一個介面完成連線檢查、工具手動呼叫與 LLM 工具調用 smoke test。</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="connectionBadge" class="badge badge-idle">尚未檢查</span>
+          <button id="resetStateButton" type="button" class="button button-secondary">重新開始</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel control-panel">
+          <div class="section-heading">
+            <h2>連線工作台</h2>
+            <p>先選 transport，再決定要做接通測試、工具探索或 LLM 測試。</p>
+          </div>
+
+          <div class="stack">
+            <label for="transportMode">通訊方式</label>
+            <select id="transportMode">
+              <option value="http">MCP HTTP SSE</option>
+              <option value="stdio">STDIO</option>
+            </select>
+          </div>
+
+          <div id="httpFields" class="stack">
+            <label for="serverUrl">Server URL</label>
+            <input id="serverUrl" type="text" placeholder="http://127.0.0.1:9090" />
+          </div>
+
+          <div id="stdioFields" class="stack hidden">
+            <label for="serverCommand">啟動命令</label>
+            <textarea
+              id="serverCommand"
+              rows="3"
+              placeholder="python -m toolanything.cli serve examples.quickstart.tools --stdio"
+            ></textarea>
+          </div>
+
+          <div class="grid-two">
+            <div class="stack">
+              <label for="userId">User ID</label>
+              <input id="userId" type="text" placeholder="可留空" />
+            </div>
+            <div class="stack">
+              <label for="timeoutSeconds">Timeout</label>
+              <input id="timeoutSeconds" type="number" min="1" step="1" value="8" />
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button id="testConnectionButton" type="button" class="button">檢查連線</button>
+            <button id="loadToolsButton" type="button" class="button button-secondary">載入工具</button>
+          </div>
+
+          <div class="report-block">
+            <div class="section-heading compact">
+              <h3>診斷報告</h3>
+              <p id="reportSummary">尚未執行</p>
+            </div>
+            <div id="reportSteps" class="report-steps empty-state">執行檢查後會顯示 initialize / tools/list / tools/call 結果。</div>
+          </div>
+
+          <div class="tool-block">
+            <div class="section-heading compact">
+              <h3>工具探索</h3>
+              <p id="toolSummary">尚未載入工具</p>
+            </div>
+            <div class="stack">
+              <label for="toolSelect">工具名稱</label>
+              <select id="toolSelect">
+                <option value="">請先載入工具</option>
+              </select>
+            </div>
+            <div id="toolDescription" class="muted"></div>
+            <div id="schemaForm" class="schema-form empty-state">選定工具後會根據 schema 產生輸入欄位。</div>
+            <div class="action-row">
+              <button id="callToolButton" type="button" class="button">執行工具</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel result-panel">
+          <div class="tabs">
+            <button class="tab is-active" type="button" data-tab="result">工具結果</button>
+            <button class="tab" type="button" data-tab="tools">工具清單</button>
+            <button class="tab" type="button" data-tab="llm">LLM 測試</button>
+          </div>
+
+          <section class="tab-panel is-active" data-panel="result">
+            <div class="section-heading compact">
+              <h2>工具結果</h2>
+              <p>回傳內容會以格式化 JSON 顯示。</p>
+            </div>
+            <pre id="resultViewer" class="viewer">{
+  "status": "idle"
+}</pre>
+          </section>
+
+          <section class="tab-panel" data-panel="tools">
+            <div class="section-heading compact">
+              <h2>工具清單</h2>
+              <p>顯示目前目標 server 回傳的 MCP tools/list。</p>
+            </div>
+            <div id="toolList" class="tool-list empty-state">尚未載入工具。</div>
+          </section>
+
+          <section class="tab-panel" data-panel="llm">
+            <div class="section-heading compact">
+              <h2>OpenAI 工具調用測試</h2>
+              <p>API key 不會寫入 localStorage，只存在單次請求記憶體。</p>
+            </div>
+            <div class="stack">
+              <label for="apiKey">OpenAI API Key</label>
+              <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
+            </div>
+            <div class="grid-two">
+              <div class="stack">
+                <label for="modelName">Model</label>
+                <input id="modelName" type="text" placeholder="例如 gpt-4.1-mini" />
+              </div>
+              <div class="stack">
+                <label for="temperature">Temperature</label>
+                <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.2" />
+              </div>
+            </div>
+            <div class="stack">
+              <label for="systemPrompt">System Prompt（選填）</label>
+              <textarea id="systemPrompt" rows="2" placeholder="例如：你是一個會精確使用工具的測試助理。"></textarea>
+            </div>
+            <div class="stack">
+              <label for="userPrompt">Prompt</label>
+              <textarea id="userPrompt" rows="5" placeholder="描述你要模型完成的任務，例如請模型用工具查詢目前已註冊的能力。"></textarea>
+            </div>
+            <div class="action-row">
+              <button id="runLlmButton" type="button" class="button">執行 LLM 測試</button>
+            </div>
+            <div id="llmTimeline" class="timeline empty-state">開始測試後會在這裡逐步顯示 assistant / tool 事件。</div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <template id="reportStepTemplate">
+      <article class="step-card">
+        <div class="step-head">
+          <strong class="step-name"></strong>
+          <span class="step-status"></span>
+        </div>
+        <p class="step-meta"></p>
+        <pre class="step-detail hidden"></pre>
+      </article>
+    </template>
+
+    <template id="schemaFieldTemplate">
+      <label class="schema-field">
+        <span class="schema-label"></span>
+        <input class="schema-input" type="text" />
+        <textarea class="schema-textarea hidden" rows="4"></textarea>
+        <span class="schema-hint"></span>
+      </label>
+    </template>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

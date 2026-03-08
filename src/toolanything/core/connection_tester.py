@@ -148,29 +148,34 @@ class _SseClient:
     def _read_events(self) -> None:
         event = None
         data_lines: List[str] = []
-        while True:
-            line = self.stream.readline()
-            if not line:
-                break
-            if isinstance(line, bytes):
-                line = line.decode("utf-8")
-            line = line.rstrip("\n")
-            if not line:
-                if data_lines:
-                    payload = "\n".join(data_lines)
-                    try:
-                        data = json.loads(payload)
-                        self._queue.put({"event": event or "message", "data": data})
-                    except json.JSONDecodeError:
-                        logger.warning("SSE payload 解析失敗: %s", payload)
-                event = None
-                data_lines = []
-                continue
-            if line.startswith("event:"):
-                event = line.split(":", 1)[1].strip()
-                continue
-            if line.startswith("data:"):
-                data_lines.append(line.split(":", 1)[1].strip())
+        try:
+            while True:
+                line = self.stream.readline()
+                if not line:
+                    break
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8")
+                line = line.rstrip("\n")
+                if not line:
+                    if data_lines:
+                        payload = "\n".join(data_lines)
+                        try:
+                            data = json.loads(payload)
+                            self._queue.put({"event": event or "message", "data": data})
+                        except json.JSONDecodeError:
+                            logger.warning("SSE payload 解析失敗: %s", payload)
+                    event = None
+                    data_lines = []
+                    continue
+                if line.startswith("event:"):
+                    event = line.split(":", 1)[1].strip()
+                    continue
+                if line.startswith("data:"):
+                    data_lines.append(line.split(":", 1)[1].strip())
+        except TimeoutError:
+            return
+        except Exception:
+            logger.debug("SSE 讀取已結束")
 
     def next_message(self) -> Dict[str, Any]:
         try:
@@ -413,7 +418,13 @@ class ConnectionTester:
             sse_client = _SseClient(stream, self.timeout)
             message = sse_client.next_message()
             payload = message.get("data", {})
-            transport = payload.get("transport", {}) if isinstance(payload, dict) else {}
+            transport = {}
+            if isinstance(payload, dict):
+                params = payload.get("params", {}) or {}
+                if isinstance(params, dict):
+                    transport = params.get("transport", {}) or {}
+                if not transport:
+                    transport = payload.get("transport", {}) or {}
             endpoint = transport.get("messageEndpoint")
             if not endpoint:
                 raise StepFailure(

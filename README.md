@@ -87,6 +87,36 @@ toolanything doctor --mode http --url http://localhost:9090
 
 輸出會包含每個步驟的 PASS/FAIL、耗時與錯誤建議，便於快速定位 transport、initialize、tools/list、tools/call 的問題。
 
+## Built-in MCP Test Client
+
+如果你需要互動式檢查，不想只看 CLI 報告，可以啟動內建 Web 版 `inspect`：
+
+```bash
+toolanything inspect
+```
+
+預設會在 `http://127.0.0.1:9060` 啟動本機測試介面並自動開啟瀏覽器。可用參數：
+
+```bash
+# 指定 host / port，且不要自動開瀏覽器
+toolanything inspect --host 127.0.0.1 --port 9061 --no-open
+
+# 調整 inspector 預設 timeout
+toolanything inspect --timeout 12
+```
+
+`inspect` 和 `doctor` 的定位不同：
+
+- `doctor`：偏 CLI smoke test，適合 CI、快速檢查 initialize / tools/list / tools/call。
+- `inspect`：偏互動式測試台，支援切換 `http` / `stdio`、瀏覽工具 schema、手動呼叫工具，並可選填 OpenAI API key 測試模型是否會正確調工具。
+
+目前 `inspect` v1 的限制：
+
+- 僅支援 `MCP HTTP SSE` 與 `STDIO`。
+- LLM 模式目前只支援 OpenAI API。
+- API key 不會存進 localStorage，只存在單次 request 記憶體中。
+- 這不是官方 MCP Inspector 的完整替代品，暫不提供 raw traffic replay、resources/prompts explorer。
+
 ## 快速範例
 
 ```python

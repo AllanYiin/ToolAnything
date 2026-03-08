@@ -81,6 +81,17 @@ def _serve_module(module: str, host: str, port: int, stdio: bool) -> None:
     run(module=module, host=host, port=port, stdio=stdio)
 
 
+def _run_inspector_ui(host: str, port: int, timeout: float, no_open: bool) -> None:
+    from .inspector import run_inspector
+
+    run_inspector(
+        host=host,
+        port=port,
+        default_timeout=timeout,
+        open_browser=not no_open,
+    )
+
+
 def _install_claude_config(path: Path, port: int, name: str, module: str | None) -> None:
     path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -563,6 +574,32 @@ def _build_parser() -> argparse.ArgumentParser:
         help="輸出 JSON 格式報告",
     )
     doctor_parser.set_defaults(func=_run_doctor)
+
+    inspect_parser = subparsers.add_parser(
+        "inspect",
+        help="啟動內建 Web 版 MCP Test Client",
+    )
+    inspect_parser.add_argument("--port", type=int, default=9060, help="監聽 port，預設 9060")
+    inspect_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
+    inspect_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=8.0,
+        help="Inspector 預設 timeout 秒數，預設 8 秒",
+    )
+    inspect_parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="不要自動開啟瀏覽器",
+    )
+    inspect_parser.set_defaults(
+        func=lambda args: _run_inspector_ui(
+            host=args.host,
+            port=args.port,
+            timeout=args.timeout,
+            no_open=args.no_open,
+        )
+    )
 
     return parser
 

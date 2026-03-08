@@ -6,3 +6,5 @@
 - [Tool Selection](../examples/tool_selection/README.md)：metadata / constraints / strategy 的搜尋示範。
 - [Protocol Boundary](../examples/protocol_boundary/README.md)：protocol/core 與 server/transport 邊界對照。
 - [Connection Tester / Doctor](../README.md#connection-tester--doctor)：快速驗證 transport、initialize、tools/list、tools/call。
+- [Built-in MCP Test Client](../README.md#built-in-mcp-test-client)：Web 版互動式 inspect 介面，支援工具探索與 OpenAI tool-calling smoke test。
+- [MCP Test Client Spec](mcp-test-client-spec.md)：內建 inspect 功能的規格、MVP 邊界與開發階段紀錄。

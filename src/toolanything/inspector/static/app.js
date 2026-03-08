@@ -19,6 +19,8 @@ const elements = {
   loadToolsButton: document.getElementById("loadToolsButton"),
   reportSummary: document.getElementById("reportSummary"),
   reportSteps: document.getElementById("reportSteps"),
+  capabilityServer: document.getElementById("capabilityServer"),
+  capabilityGrid: document.getElementById("capabilityGrid"),
   toolSummary: document.getElementById("toolSummary"),
   toolSelect: document.getElementById("toolSelect"),
   toolDescription: document.getElementById("toolDescription"),
@@ -143,9 +145,58 @@ function renderTrace(trace) {
   });
 }
 
+function renderCapabilities(initializePayload) {
+  if (!initializePayload || typeof initializePayload !== "object") {
+    elements.capabilityServer.textContent = "尚未取得 initialize 資訊";
+    elements.capabilityGrid.className = "capability-grid empty-state";
+    elements.capabilityGrid.textContent = "載入工具或完成連線檢查後，這裡會顯示 server capabilities。";
+    return;
+  }
+
+  const capabilities = initializePayload.capabilities || {};
+  const serverInfo = initializePayload.serverInfo || {};
+  const protocolVersion = initializePayload.protocolVersion || "unknown";
+  const dependencies = initializePayload.dependencies || {};
+  const rows = [
+    { key: "tools", title: "Tools", supported: !!capabilities.tools, detail: capabilities.tools || "未提供" },
+    { key: "resources", title: "Resources", supported: !!capabilities.resources, detail: capabilities.resources || "未提供" },
+    { key: "prompts", title: "Prompts", supported: !!capabilities.prompts, detail: capabilities.prompts || "未提供" },
+    { key: "logging", title: "Logging", supported: !!capabilities.logging, detail: capabilities.logging || "未提供" },
+    { key: "completions", title: "Completions", supported: !!capabilities.completions, detail: capabilities.completions || "未提供" },
+    {
+      key: "dependencies",
+      title: "Dependencies",
+      supported: true,
+      detail: {
+        runtime_count: (dependencies.runtime || []).length,
+        tool_count: (dependencies.tools || []).length,
+      },
+    },
+  ];
+
+  elements.capabilityServer.textContent = `${serverInfo.name || "Unknown Server"} ${serverInfo.version || ""} · protocol ${protocolVersion}`.trim();
+  elements.capabilityGrid.className = "capability-grid";
+  elements.capabilityGrid.innerHTML = "";
+
+  rows.forEach((row) => {
+    const article = document.createElement("article");
+    article.className = "capability-card";
+    article.innerHTML = `
+      <strong>${row.title}</strong>
+      <div class="capability-state ${row.supported ? "supported" : "unsupported"}">
+        ${row.supported ? "已提供" : "未提供"}
+      </div>
+      <pre>${JSON.stringify(row.detail, null, 2)}</pre>
+    `;
+    elements.capabilityGrid.appendChild(article);
+  });
+}
+
 function renderReport(report) {
   elements.reportSummary.textContent = `${report.ok ? "成功" : "失敗"}，總耗時 ${report.duration_ms}ms`;
   elements.reportSteps.innerHTML = "";
+  const initializeStep = report.steps.find((step) => step.name === "initialize" && step.status === "PASS");
+  renderCapabilities(initializeStep?.details || null);
   report.steps.forEach((step) => {
     const fragment = elements.reportStepTemplate.content.cloneNode(true);
     fragment.querySelector(".step-name").textContent = step.name;
@@ -446,6 +497,7 @@ async function handleLoadTools() {
     populateToolSelect(state.tools);
     renderToolList(state.tools);
     renderTrace(payload.trace || []);
+    renderCapabilities(payload.initialize || null);
     elements.toolSummary.textContent = `共 ${payload.count} 個工具`;
     setBadge("success", "工具已載入");
     activateTab("tools");
@@ -556,6 +608,7 @@ function init() {
   bindEvents();
   renderJson(elements.resultViewer, { status: "idle" });
   renderTrace([]);
+  renderCapabilities(null);
   renderSchemaForm(null);
 }
 

@@ -320,6 +320,36 @@ textarea {
   margin-top: 16px;
 }
 
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.capability-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 14px 16px;
+}
+
+.capability-card strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.capability-state {
+  font-weight: 700;
+}
+
+.capability-state.supported {
+  color: var(--success);
+}
+
+.capability-state.unsupported {
+  color: var(--text-muted);
+}
+
 .schema-field {
   display: grid;
   gap: 8px;
@@ -398,6 +428,10 @@ textarea {
   }
 
   .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-grid {
     grid-template-columns: 1fr;
   }
 }

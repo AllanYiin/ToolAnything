@@ -54,6 +54,8 @@ def test_inspector_service_lists_and_calls_http_tools():
         tools_result = service.list_tools(payload)
         assert tools_result["count"] == 2
         assert any(tool["name"] == "echo" for tool in tools_result["tools"])
+        assert tools_result["initialize"]["capabilities"]["tools"]["call"] is True
+        assert tools_result["initialize"]["serverInfo"]["name"] == "ToolAnything"
         assert any(entry["kind"] == "request" for entry in tools_result["trace"])
         assert any(entry["kind"] == "response" for entry in tools_result["trace"])
 
@@ -176,6 +178,7 @@ def test_inspector_app_tools_endpoints():
         )
         assert response.status_code == 200
         assert response.json()["count"] == 2
+        assert response.json()["initialize"]["capabilities"]["tools"]["describe"] is True
         assert response.json()["trace"]
 
         response = client.post(

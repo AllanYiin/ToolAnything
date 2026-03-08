@@ -83,6 +83,12 @@ function showToast(message) {
   }, 9000);
 }
 
+function setBusyState(isBusy) {
+  checkConnectionButton.disabled = isBusy;
+  useLocalServerButton.disabled = isBusy;
+  runToolButton.disabled = isBusy;
+}
+
 function setProgress(value) {
   progressBar.value = value;
 }
@@ -185,6 +191,7 @@ async function invokeToolSse(baseUrl, payload, handlers) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
+  let streamCompleted = false;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -207,10 +214,22 @@ async function invokeToolSse(baseUrl, payload, handlers) {
         if (handlers[event]) {
           handlers[event](parsedData);
         }
+        if (event === "done") {
+          streamCompleted = true;
+        }
       } catch (error) {
         console.warn("無法解析 SSE 資料", error);
       }
     });
+
+    if (streamCompleted) {
+      try {
+        await reader.cancel();
+      } catch (error) {
+        console.warn("結束 SSE reader 時發生問題", error);
+      }
+      break;
+    }
   }
 }
 
@@ -407,6 +426,7 @@ async function checkConnection() {
   connectionStatus.textContent = "連線中...";
   setConnectionBadge("checking", "連線中");
   saveSettings();
+  setBusyState(true);
   try {
     const health = await fetchJson(`${baseUrl}/health`);
     connectionStatus.textContent = `連線成功：${health.status}`;
@@ -425,6 +445,8 @@ async function checkConnection() {
     connectionStatus.textContent = "連線失敗";
     showToast(error.message);
     setConnectionBadge("offline", "未連線");
+  } finally {
+    setBusyState(false);
   }
 }
 
@@ -460,7 +482,7 @@ async function runTool() {
   }
 
   try {
-    setProgress(5);
+    startProgress();
     runToolButton.disabled = true;
     await invokeToolSse(
       baseUrl,
@@ -491,8 +513,7 @@ async function runTool() {
           });
         },
         done: () => {
-          setProgress(100);
-          setTimeout(() => setProgress(0), 500);
+          stopProgress();
         },
       },
     );
@@ -526,7 +547,6 @@ async function runTool() {
       }
       return;
     }
-    startProgress();
     stopProgress();
     showToast(error.message);
     appendRecord({
@@ -547,9 +567,10 @@ function init() {
   setConnectionBadge("offline", "未連線");
 
   checkConnectionButton.addEventListener("click", checkConnection);
-  useLocalServerButton.addEventListener("click", () => {
+  useLocalServerButton.addEventListener("click", async () => {
     serverUrlInput.value = "http://127.0.0.1:9091";
     saveSettings();
+    await checkConnection();
   });
   useDemoImageButton.addEventListener("click", createDemoImage);
   serverUrlInput.addEventListener("change", saveSettings);

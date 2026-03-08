@@ -166,6 +166,7 @@ def test_inspector_app_tools_endpoints():
         assert "MCP Test Client" in response.text
         assert "複製 Trace" in response.text
         assert "匯出 JSON" in response.text
+        assert "工具搜尋" in response.text
 
         response = client.post(
             "/api/connection/test",

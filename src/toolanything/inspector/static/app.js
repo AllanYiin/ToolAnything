@@ -5,6 +5,7 @@ const state = {
   selectedTool: null,
   lastTrace: [],
   traceFilter: "",
+  toolFilter: "",
 };
 
 const elements = {
@@ -23,6 +24,7 @@ const elements = {
   capabilityServer: document.getElementById("capabilityServer"),
   capabilityGrid: document.getElementById("capabilityGrid"),
   toolSummary: document.getElementById("toolSummary"),
+  toolFilterInput: document.getElementById("toolFilterInput"),
   toolSelect: document.getElementById("toolSelect"),
   toolDescription: document.getElementById("toolDescription"),
   schemaForm: document.getElementById("schemaForm"),
@@ -61,6 +63,7 @@ function saveSettings() {
     temperature: elements.temperature.value,
     system_prompt: elements.systemPrompt.value,
     user_prompt: elements.userPrompt.value,
+    tool_filter: elements.toolFilterInput.value,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 }
@@ -81,6 +84,7 @@ function restoreSettings() {
     elements.temperature.value = payload.temperature || "0.2";
     elements.systemPrompt.value = payload.system_prompt || "";
     elements.userPrompt.value = payload.user_prompt || "";
+    elements.toolFilterInput.value = payload.tool_filter || "";
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -285,7 +289,9 @@ function renderReport(report) {
 
 function renderToolList(tools) {
   if (!tools.length) {
-    elements.toolList.innerHTML = '<div class="empty-state">目標 server 沒有回傳任何工具。</div>';
+    elements.toolList.innerHTML = state.tools.length
+      ? '<div class="empty-state">目前的篩選條件沒有符合的工具。</div>'
+      : '<div class="empty-state">目標 server 沒有回傳任何工具。</div>';
     return;
   }
   elements.toolList.innerHTML = "";
@@ -309,7 +315,7 @@ function populateToolSelect(tools) {
   elements.toolSelect.innerHTML = "";
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = tools.length ? "請選擇工具" : "沒有可用工具";
+  placeholder.textContent = tools.length ? "請選擇工具" : "沒有符合篩選的工具";
   elements.toolSelect.appendChild(placeholder);
 
   tools.forEach((tool) => {
@@ -322,6 +328,42 @@ function populateToolSelect(tools) {
 
 function getToolByName(name) {
   return state.tools.find((tool) => tool.name === name) || null;
+}
+
+function getFilteredTools() {
+  const keyword = state.toolFilter.trim().toLowerCase();
+  if (!keyword) {
+    return state.tools;
+  }
+  return state.tools.filter((tool) => {
+    const haystack = JSON.stringify({
+      name: tool.name,
+      description: tool.description || "",
+      schema: tool.input_schema || {},
+    }).toLowerCase();
+    return haystack.includes(keyword);
+  });
+}
+
+function applyToolFilter() {
+  const filteredTools = getFilteredTools();
+  populateToolSelect(filteredTools);
+  renderToolList(filteredTools);
+
+  if (state.selectedTool && !filteredTools.some((tool) => tool.name === state.selectedTool.name)) {
+    elements.toolSelect.value = "";
+    renderSchemaForm(null);
+  } else if (state.selectedTool) {
+    elements.toolSelect.value = state.selectedTool.name;
+  }
+
+  if (!state.tools.length) {
+    elements.toolSummary.textContent = "尚未載入工具";
+    return;
+  }
+  elements.toolSummary.textContent = state.toolFilter.trim()
+    ? `顯示 ${filteredTools.length} / ${state.tools.length} 個工具`
+    : `共 ${state.tools.length} 個工具`;
 }
 
 function createSchemaField(name, schema, requiredNames) {
@@ -554,11 +596,9 @@ async function handleLoadTools() {
   try {
     const payload = await postJson("/api/tools/list", { connection: getConnectionPayload() });
     state.tools = payload.tools || [];
-    populateToolSelect(state.tools);
-    renderToolList(state.tools);
+    applyToolFilter();
     renderTrace(payload.trace || []);
     renderCapabilities(payload.initialize || null);
-    elements.toolSummary.textContent = `共 ${payload.count} 個工具`;
     setBadge("success", "工具已載入");
     activateTab("tools");
   } catch (error) {
@@ -618,6 +658,7 @@ function bindEvents() {
     elements.temperature,
     elements.systemPrompt,
     elements.userPrompt,
+    elements.toolFilterInput,
   ].forEach((el) => {
     el.addEventListener("change", saveSettings);
     el.addEventListener("blur", saveSettings);
@@ -639,6 +680,11 @@ function bindEvents() {
 
   elements.toolSelect.addEventListener("change", (event) => {
     renderSchemaForm(getToolByName(event.target.value));
+  });
+  elements.toolFilterInput.addEventListener("input", (event) => {
+    state.toolFilter = event.target.value || "";
+    applyToolFilter();
+    saveSettings();
   });
 
   elements.callToolButton.addEventListener("click", () => {
@@ -684,6 +730,7 @@ function init() {
   updateTransportFields();
   bindEvents();
   elements.traceFilterInput.value = "";
+  state.toolFilter = elements.toolFilterInput.value || "";
   renderJson(elements.resultViewer, { status: "idle" });
   renderTrace([]);
   renderCapabilities(null);

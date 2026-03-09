@@ -3,5 +3,6 @@
 from .base import Invoker
 from .callable_invoker import CallableInvoker
 from .http_invoker import HttpInvoker
+from .sql_invoker import SqlInvoker
 
-__all__ = ["Invoker", "CallableInvoker", "HttpInvoker"]
+__all__ = ["Invoker", "CallableInvoker", "HttpInvoker", "SqlInvoker"]

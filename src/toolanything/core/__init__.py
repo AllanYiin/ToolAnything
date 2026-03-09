@@ -2,10 +2,13 @@ from .credentials import CredentialResolver
 from .http_tools import build_http_input_schema, compile_http_tool, register_http_tool
 from .invokers import CallableInvoker, Invoker
 from .invokers import HttpInvoker
+from .invokers import SqlInvoker
 from .models import PipelineDefinition, ToolContract, ToolDefinition, ToolSpec
 from .registry import ToolRegistry
 from .runtime_types import ExecutionContext, InvocationResult, StreamEmitter
-from .source_specs import HttpFieldSpec, HttpSourceSpec, RetryPolicy
+from .source_specs import HttpFieldSpec, HttpSourceSpec, RetryPolicy, SqlSourceSpec
+from .sql_connections import InMemorySQLConnectionProvider, SQLConnectionProvider, SqlConnectionConfig
+from .sql_tools import build_sql_input_schema, compile_sql_tool, register_sql_tool
 from .tool_manager import ToolManager
 from .tool_search import ToolSearchTool, build_search_tool
 from .connection_tester import (
@@ -28,6 +31,7 @@ __all__ = [
     "Invoker",
     "CallableInvoker",
     "HttpInvoker",
+    "SqlInvoker",
     "ExecutionContext",
     "InvocationResult",
     "StreamEmitter",
@@ -38,6 +42,13 @@ __all__ = [
     "build_http_input_schema",
     "compile_http_tool",
     "register_http_tool",
+    "SqlSourceSpec",
+    "SqlConnectionConfig",
+    "SQLConnectionProvider",
+    "InMemorySQLConnectionProvider",
+    "build_sql_input_schema",
+    "compile_sql_tool",
+    "register_sql_tool",
     "ToolRegistry",
     "ToolManager",
     "ToolSearchTool",

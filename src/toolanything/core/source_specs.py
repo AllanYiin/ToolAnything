@@ -49,4 +49,22 @@ class HttpSourceSpec:
     strict: bool = True
 
 
-__all__ = ["HttpFieldSpec", "HttpSourceSpec", "RetryPolicy"]
+@dataclass(frozen=True)
+class SqlSourceSpec:
+    """宣告式 SQL tool 來源。"""
+
+    name: str
+    description: str
+    connection_ref: str
+    query_template: str
+    read_only: bool = True
+    timeout_sec: float = 5.0
+    max_rows: int = 100
+    adapters: Tuple[str, ...] | None = None
+    tags: Tuple[str, ...] = ()
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    strict: bool = True
+    param_schemas: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+
+__all__ = ["HttpFieldSpec", "HttpSourceSpec", "RetryPolicy", "SqlSourceSpec"]

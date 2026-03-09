@@ -8,7 +8,9 @@ from .http_tools import register_http_tool
 from .models import ToolSpec
 from .registry import ToolRegistry
 from .failure_log import FailureLogManager
-from .source_specs import HttpSourceSpec
+from .source_specs import HttpSourceSpec, SqlSourceSpec
+from .sql_connections import SQLConnectionProvider
+from .sql_tools import register_sql_tool
 from ..runtime.concurrency import ParallelOptions, RetryPolicy, parallel_map_async
 
 
@@ -61,6 +63,18 @@ class ToolManager:
             self.registry,
             source,
             credential_resolver=credential_resolver,
+        )
+
+    def register_sql_tool(
+        self,
+        source: SqlSourceSpec,
+        *,
+        connection_provider: SQLConnectionProvider | None = None,
+    ) -> ToolSpec:
+        return register_sql_tool(
+            self.registry,
+            source,
+            connection_provider=connection_provider,
         )
 
     def _filter_specs(self, adapter: str) -> List[ToolSpec]:

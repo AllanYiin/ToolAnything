@@ -2,7 +2,12 @@
 
 from toolanything.core import (
     FailureLogManager,
+    ExecutionContext,
+    InvocationResult,
+    Invoker,
+    CallableInvoker,
     PipelineDefinition,
+    ToolContract,
     ToolDefinition,
     ToolRegistry,
     ToolSearchTool,
@@ -37,9 +42,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .core import (
         BaseToolSelectionStrategy,
+        CallableInvoker,
+        ExecutionContext,
         FailureLogManager,
         HybridStrategy,
+        InvocationResult,
+        Invoker,
         PipelineDefinition,
+        ToolContract,
         RuleBasedStrategy,
         ToolDefinition,
         ToolManager,
@@ -67,9 +77,14 @@ if TYPE_CHECKING:
 
 _CORE_EXPORTS = [
     "PipelineDefinition",
+    "ToolContract",
     "ToolDefinition",
     "FailureLogManager",
     "ToolSpec",
+    "Invoker",
+    "CallableInvoker",
+    "ExecutionContext",
+    "InvocationResult",
     "ToolRegistry",
     "ToolManager",
     "ToolSearchTool",

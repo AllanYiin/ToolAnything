@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from ..state import StateManager
 from ..utils.docstring_parser import DocMetadata
 from ..utils.docstring_parser import parse_docstring
+from .invokers import CallableInvoker, Invoker
 from .schema import build_parameters_schema
 from .metadata import ToolMetadata, normalize_metadata
 
@@ -63,11 +64,10 @@ class DefinitionMixin:
 
 
 @dataclass(frozen=True)
-class ToolSpec(DefinitionMixin):
-    """標準化的工具描述，作為所有 adapter 的單一資料來源。"""
+class ToolContract(DefinitionMixin):
+    """工具契約：對外 schema 與 metadata 的穩定視圖。"""
 
     name: str
-    func: Callable[..., Any]
     description: str
     parameters: Dict[str, Any]
     adapters: Tuple[str, ...] | None = None
@@ -75,6 +75,49 @@ class ToolSpec(DefinitionMixin):
     strict: bool = True
     metadata: Dict[str, Any] = field(default_factory=dict)
     documentation: Optional[DocMetadata] = None
+    source_type: str = "callable"
+    invoker_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolSpec(ToolContract):
+    """標準化工具描述。
+
+    核心已改為 invoker-first；`func` 仍保留作為 compatibility layer。
+    """
+
+    func: Callable[..., Any] | None = field(default=None, repr=False, compare=False)
+    invoker: Invoker | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.invoker is None and self.func is None:
+            raise ValueError("ToolSpec 必須至少提供 func 或 invoker。")
+
+        if self.invoker is None and self.func is not None:
+            object.__setattr__(self, "invoker", CallableInvoker(self.func))
+
+        if self.func is None and isinstance(self.invoker, CallableInvoker):
+            object.__setattr__(self, "func", self.invoker.func)
+
+        if self.invoker_id is None and self.invoker is not None:
+            object.__setattr__(self, "invoker_id", self.name)
+
+    @property
+    def contract(self) -> ToolContract:
+        """回傳不含 execution body 的契約視圖。"""
+
+        return ToolContract(
+            name=self.name,
+            description=self.description,
+            parameters=self.parameters,
+            adapters=self.adapters,
+            tags=self.tags,
+            strict=self.strict,
+            metadata=dict(self.metadata),
+            documentation=self.documentation,
+            source_type=self.source_type,
+            invoker_id=self.invoker_id,
+        )
 
     @classmethod
     def from_function(
@@ -95,9 +138,9 @@ class ToolSpec(DefinitionMixin):
             raise ValueError("Tool description is required when strict mode is enabled.")
 
         params_schema = build_parameters_schema(normalized_func)
+        invoker = CallableInvoker(func)
         return cls(
             name=name or _derive_default_name(normalized_func),
-            func=func,
             description=derived_description or "",
             parameters=params_schema,
             adapters=tuple(adapters) if adapters is not None else None,
@@ -105,6 +148,10 @@ class ToolSpec(DefinitionMixin):
             strict=strict,
             metadata=dict(metadata or {}),
             documentation=documentation,
+            source_type="callable",
+            invoker_id=name or _derive_default_name(normalized_func),
+            func=func,
+            invoker=invoker,
         )
 
     @property

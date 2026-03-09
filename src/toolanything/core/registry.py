@@ -1,14 +1,13 @@
 """工具與 pipeline 註冊中心。"""
 from __future__ import annotations
 
-import asyncio
-import inspect
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .failure_log import FailureLogManager
+from .invokers import CallableInvoker, Invoker
 from .models import PipelineDefinition, ToolSpec
-from ..pipeline.context import PipelineContext, is_context_parameter
+from .runtime_types import ExecutionContext
 from ..state import StateManager
 
 
@@ -24,8 +23,12 @@ class ToolRegistry:
         enable_type_prefix: bool = True,
     ) -> None:
         self._tools: Dict[str, ToolSpec] = {}
+        self._invokers: Dict[str, Invoker] = {}
         self._pipelines: Dict[str, PipelineDefinition] = {}
-        self._lookup_cache: Dict[Tuple[str | None, str], Callable[..., Any]] = {}
+        self._pipeline_invokers: Dict[str, CallableInvoker] = {}
+        self._lookup_cache: Dict[
+            Tuple[str | None, str], Tuple[str, ToolSpec | PipelineDefinition]
+        ] = {}
 
         self.tool_prefix = tool_prefix
         self.pipeline_prefix = pipeline_prefix
@@ -51,6 +54,9 @@ class ToolRegistry:
 
         self._assert_not_duplicated(normalized_name, current_kind="tool")
         self._tools[normalized_name] = spec
+        if spec.invoker is None:
+            raise ValueError(f"工具 {spec.name} 缺少 invoker，無法註冊。")
+        self._invokers[normalized_name] = spec.invoker
         self._lookup_cache.clear()
 
     # 舊介面的相容別名
@@ -62,6 +68,7 @@ class ToolRegistry:
         if target not in (None, "tool") or normalized_name not in self._tools:
             raise KeyError(f"找不到工具 {name}")
         del self._tools[normalized_name]
+        self._invokers.pop(normalized_name, None)
         self._lookup_cache.clear()
 
     def get_tool(self, name: str) -> ToolSpec:
@@ -69,6 +76,18 @@ class ToolRegistry:
         if target not in (None, "tool") or normalized_name not in self._tools:
             raise KeyError(f"找不到工具 {name}")
         return self._tools[normalized_name]
+
+    def get_tool_contract(self, name: str) -> ToolSpec:
+        target, normalized_name = self._normalize_lookup_target(name)
+        if target not in (None, "tool") or normalized_name not in self._tools:
+            raise KeyError(f"找不到工具 {name}")
+        return self._tools[normalized_name]
+
+    def get_invoker(self, name: str) -> Invoker:
+        target, normalized_name = self._normalize_lookup_target(name)
+        if target not in (None, "tool") or normalized_name not in self._invokers:
+            raise KeyError(f"找不到工具 invoker {name}")
+        return self._invokers[normalized_name]
 
     def list(self, *, tags: Optional[List[str]] = None) -> List[ToolSpec]:
         specs = list(self._tools.values())
@@ -100,26 +119,39 @@ class ToolRegistry:
         return dict(self._pipelines)
 
     # Common API
-    def get(self, name: str) -> Callable[..., Any]:
+    def _resolve_lookup(self, name: str) -> Tuple[str, ToolSpec | PipelineDefinition]:
         target, normalized_name = self._normalize_lookup_target(name)
         cache_key = (target, normalized_name)
         if cache_key in self._lookup_cache:
             return self._lookup_cache[cache_key]
 
         if target in (None, "tool") and normalized_name in self._tools:
-            func = self._tools[normalized_name].func
-            self._lookup_cache[cache_key] = func
-            return func
+            lookup = ("tool", self._tools[normalized_name])
+            self._lookup_cache[cache_key] = lookup
+            return lookup
         if target in (None, "pipeline") and normalized_name in self._pipelines:
-            func = self._pipelines[normalized_name].func
-            self._lookup_cache[cache_key] = func
-            return func
+            lookup = ("pipeline", self._pipelines[normalized_name])
+            self._lookup_cache[cache_key] = lookup
+            return lookup
 
         raise KeyError(f"找不到 {name}")
 
+    def get(self, name: str) -> Any:
+        """向下相容：對 callable-backed tool/pipeline 回傳可呼叫物件。"""
+
+        lookup_kind, definition = self._resolve_lookup(name)
+
+        if lookup_kind == "tool":
+            func = definition.func
+            if func is None:
+                raise TypeError(f"工具 {definition.name} 並非 callable-backed tool，請改用 get_invoker().")
+            return func
+
+        return definition.func
+
     def to_openai_tools(self, *, adapter: str | None = None) -> list[dict[str, Any]]:
         entries = [
-            definition.to_openai()
+            definition.contract.to_openai()
             for definition in self._tools.values()
             if adapter is None
             or definition.adapters is None
@@ -130,7 +162,7 @@ class ToolRegistry:
 
     def to_mcp_tools(self, *, adapter: str | None = None) -> list[dict[str, Any]]:
         entries = [
-            definition.to_mcp()
+            definition.contract.to_mcp()
             for definition in self._tools.values()
             if adapter is None
             or definition.adapters is None
@@ -141,17 +173,8 @@ class ToolRegistry:
 
     def _build_context(
         self, *, user_id: str | None, state_manager: StateManager | None
-    ) -> PipelineContext:
-        return PipelineContext(state_manager=state_manager, user_id=user_id)
-
-    def _detect_context_argument(self, func: Callable[..., Any]) -> str | None:
-        """檢查函式是否需要 PipelineContext 並回傳對應參數名稱。"""
-
-        signature = inspect.signature(func)
-        for name, param in signature.parameters.items():
-            if is_context_parameter(param):
-                return name
-        return None
+    ) -> ExecutionContext:
+        return ExecutionContext(tool_name="", state_manager=state_manager, user_id=user_id)
 
     def _parse_lookup_name(self, name: str) -> Tuple[str | None, str]:
         if not self.enable_type_prefix:
@@ -203,16 +226,57 @@ class ToolRegistry:
                 f"名稱 {name} 已同時註冊為工具與 pipeline，請調整名稱或使用型別前綴分開管理。"
             )
 
-    async def _execute_callable(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        """在 async 環境下執行函數，必要時轉為 thread 以避免阻塞。"""
+    async def invoke_tool_async(
+        self,
+        name: str,
+        *,
+        arguments: Dict[str, Any] | None = None,
+        user_id: str | None = None,
+        state_manager: StateManager | None = None,
+        failure_log: FailureLogManager | None = None,
+        inject_context: bool = False,
+        context_arg: str = "context",
+    ) -> Any:
+        arguments = arguments or {}
+        lookup_kind, definition = self._resolve_lookup(name)
 
-        if inspect.iscoroutinefunction(func):
-            return await func(*args, **kwargs)
+        try:
+            if lookup_kind == "pipeline":
+                active_state_manager = state_manager or definition.state_manager
+                invoker = self._pipeline_invokers.setdefault(
+                    definition.name,
+                    CallableInvoker(definition.func),
+                )
+                context = ExecutionContext(
+                    tool_name=definition.name,
+                    user_id=user_id,
+                    state_manager=active_state_manager,
+                )
+                result = await invoker.invoke(
+                    arguments,
+                    context,
+                    inject_context=inject_context,
+                    context_arg=context_arg,
+                )
+                return result.output
 
-        result = await asyncio.to_thread(func, *args, **kwargs)
-        if inspect.isawaitable(result):
-            return await result
-        return result
+            invoker = self.get_invoker(definition.name)
+            context = ExecutionContext(
+                tool_name=definition.name,
+                user_id=user_id,
+                state_manager=state_manager,
+            )
+            result = await invoker.invoke(
+                arguments,
+                context,
+                inject_context=inject_context,
+                context_arg=context_arg,
+            )
+            return result.output
+        except Exception:
+            if failure_log:
+                failure_log.record_failure(definition.name)
+            raise
 
     async def execute_tool_async(
         self,
@@ -225,35 +289,15 @@ class ToolRegistry:
         inject_context: bool = False,
         context_arg: str = "context",
     ) -> Any:
-        arguments = arguments or {}
-
-        target, normalized_name = self._normalize_lookup_target(name)
-
-        if target == "pipeline" or (
-            target is None and normalized_name in self._pipelines
-        ):
-            definition = self.get_pipeline(normalized_name)
-            active_state_manager = state_manager or definition.state_manager
-            ctx = self._build_context(user_id=user_id, state_manager=active_state_manager)
-            try:
-                return await self._execute_callable(definition.func, ctx, **arguments)
-            except Exception:
-                if failure_log:
-                    failure_log.record_failure(definition.name)
-                raise
-
-        func = self.get(name)
-        try:
-            context_param = context_arg if inject_context else self._detect_context_argument(func)
-
-            if context_param and context_param not in arguments:
-                ctx = self._build_context(user_id=user_id, state_manager=state_manager)
-                arguments = {context_param: ctx, **arguments}
-            return await self._execute_callable(func, **arguments)
-        except Exception:
-            if failure_log:
-                failure_log.record_failure(normalized_name)
-            raise
+        return await self.invoke_tool_async(
+            name,
+            arguments=arguments,
+            user_id=user_id,
+            state_manager=state_manager,
+            failure_log=failure_log,
+            inject_context=inject_context,
+            context_arg=context_arg,
+        )
 
     def execute_tool(
         self,
@@ -269,10 +313,12 @@ class ToolRegistry:
         """同步介面：在未啟動事件迴圈時執行，否則要求使用 async 版本。"""
 
         try:
+            import asyncio
+
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(
-                self.execute_tool_async(
+                self.invoke_tool_async(
                     name,
                     arguments=arguments,
                     user_id=user_id,

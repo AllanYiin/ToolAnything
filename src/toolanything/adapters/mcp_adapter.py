@@ -31,7 +31,7 @@ class MCPAdapter(BaseAdapter):
         masked_args = self.security_manager.mask_keys_in_log(normalized_args)
 
         try:
-            result = await self.registry.execute_tool_async(
+            result = await self.registry.invoke_tool_async(
                 name,
                 arguments=normalized_args,
                 user_id=user_id,

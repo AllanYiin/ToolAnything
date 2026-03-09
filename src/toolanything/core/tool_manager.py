@@ -77,7 +77,7 @@ class ToolManager:
 
         # context 可作為未來擴充，暫不強制注入。
         context = context or {}
-        return await self.registry.execute_tool_async(
+        return await self.registry.invoke_tool_async(
             name,
             arguments=args,
             user_id=context.get("user_id"),

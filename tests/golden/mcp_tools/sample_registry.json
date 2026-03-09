@@ -1,0 +1,42 @@
+[
+  {
+    "name": "math.add",
+    "description": "兩數相加",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "integer"
+        },
+        "b": {
+          "type": "integer",
+          "default": 1
+        }
+      },
+      "required": [
+        "a"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "math.workflow",
+    "description": "示範 pipeline 串接",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "integer"
+        },
+        "b": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

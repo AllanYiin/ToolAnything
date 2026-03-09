@@ -12,7 +12,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse
 
-from ..adapters.mcp_adapter import MCPAdapter
 from ..core.registry import ToolRegistry
 from ..core.result_serializer import ResultSerializer
 from ..core.security_manager import SecurityManager
@@ -22,6 +21,7 @@ from ..protocol.mcp_jsonrpc import (
     MCPRequestContext,
     build_transport_ready_message,
 )
+from .mcp_runtime import build_protocol_dependencies
 from ..utils.logger import configure_logging, logger
 
 
@@ -163,78 +163,6 @@ def _write_sse_event_locked(session: SSESession, event: str, data: Dict[str, Any
         logger.exception("MCP SSE 寫入失敗")
         return False
 
-class _CapabilitiesProvider:
-    def __init__(self, adapter: MCPAdapter):
-        self._adapter = adapter
-
-    def get_capabilities(self) -> Dict[str, Any]:
-        return self._adapter.to_capabilities()
-
-
-class _ToolSchemaProvider:
-    def __init__(self, registry: ToolRegistry):
-        self._registry = registry
-
-    def list_tools(self) -> list[Dict[str, Any]]:
-        return self._registry.to_mcp_tools()
-
-
-class _ToolInvoker:
-    def __init__(
-        self,
-        registry: ToolRegistry,
-        serializer: ResultSerializer,
-        security_manager: SecurityManager,
-    ):
-        self._registry = registry
-        self._serializer = serializer
-        self._security_manager = security_manager
-
-    def _audit(self, name: str, arguments: Dict[str, Any], user_id: str) -> Dict[str, Any]:
-        return self._security_manager.audit_call(name or "", arguments, user_id)
-
-    def _mask(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        return self._security_manager.mask_keys_in_log(arguments)
-
-    def call_tool(
-        self,
-        name: str,
-        arguments: Dict[str, Any],
-        *,
-        context: MCPRequestContext,
-    ) -> Dict[str, Any]:
-        user_id = context.user_id or "default"
-        masked_args = self._mask(arguments)
-        audit_log = self._audit(name or "", arguments, user_id)
-
-        result = self._registry.execute_tool(
-            name,
-            arguments=arguments,
-            user_id=user_id,
-            state_manager=None,
-        )
-        serialized = self._serializer.to_mcp(result)
-        text_content = (
-            json.dumps(serialized["content"], ensure_ascii=False)
-            if serialized.get("contentType") == "application/json"
-            else str(serialized.get("content"))
-        )
-        return {
-            "content": [{"type": "text", "text": text_content}],
-            "meta": {"contentType": serialized.get("contentType")},
-            "arguments": masked_args,
-            "audit": audit_log,
-            "raw_result": result,
-        }
-
-
-@dataclass(frozen=True)
-class _ProtocolDependencies:
-    capabilities: _CapabilitiesProvider
-    tools: _ToolSchemaProvider
-    invoker: _ToolInvoker
-
-
 def _build_handler(
     registry: ToolRegistry,
     *,
@@ -248,12 +176,11 @@ def _build_handler(
     active_serializer = serializer or ResultSerializer()
     active_security_manager = security_manager or SecurityManager()
     allowed_origins = _build_allowed_origins(host, port)
-    mcp_adapter = MCPAdapter(registry)
     protocol_core = MCPProtocolCoreImpl()
-    protocol_deps = _ProtocolDependencies(
-        capabilities=_CapabilitiesProvider(mcp_adapter),
-        tools=_ToolSchemaProvider(registry),
-        invoker=_ToolInvoker(registry, active_serializer, active_security_manager),
+    mcp_adapter, active_serializer, active_security_manager, protocol_deps = build_protocol_dependencies(
+        registry,
+        serializer=active_serializer,
+        security_manager=active_security_manager,
     )
 
     class MCPToolHandler(BaseHTTPRequestHandler):
@@ -512,7 +439,7 @@ def run_server(port: int, host: str = "127.0.0.1", registry: ToolRegistry | None
     server = ThreadingHTTPServer((host, port), handler_cls)
     print(f"[ToolAnything] MCP Tool Server 已啟動：http://{host}:{port}")
     print("健康檢查：/health，工具列表：/tools")
-    print("MCP SSE：GET /sse（回傳 endpoint 供 POST /messages/{session_id} 使用）")
+    print("Legacy MCP SSE：GET /sse（回傳 endpoint 供 POST /messages/{session_id} 使用）")
     print("工具呼叫：POST /invoke，SSE 呼叫工具：POST /invoke/stream（text/event-stream）")
     print("預設僅允許 localhost Origin；可用 TOOLANYTHING_ALLOWED_ORIGINS 覆寫。")
 

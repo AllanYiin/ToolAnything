@@ -5,10 +5,12 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from .credentials import CredentialResolver
 from .http_tools import register_http_tool
+from .model_runtime import ModelHookRegistry, ModelSessionCache
+from .model_tools import register_model_tool
 from .models import ToolSpec
 from .registry import ToolRegistry
 from .failure_log import FailureLogManager
-from .source_specs import HttpSourceSpec, SqlSourceSpec
+from .source_specs import HttpSourceSpec, ModelSourceSpec, SqlSourceSpec
 from .sql_connections import SQLConnectionProvider
 from .sql_tools import register_sql_tool
 from ..runtime.concurrency import ParallelOptions, RetryPolicy, parallel_map_async
@@ -75,6 +77,20 @@ class ToolManager:
             self.registry,
             source,
             connection_provider=connection_provider,
+        )
+
+    def register_model_tool(
+        self,
+        source: ModelSourceSpec,
+        *,
+        session_cache: ModelSessionCache | None = None,
+        hook_registry: ModelHookRegistry | None = None,
+    ) -> ToolSpec:
+        return register_model_tool(
+            self.registry,
+            source,
+            session_cache=session_cache,
+            hook_registry=hook_registry,
         )
 
     def _filter_specs(self, adapter: str) -> List[ToolSpec]:

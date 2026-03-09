@@ -67,4 +67,31 @@ class SqlSourceSpec:
     param_schemas: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
-__all__ = ["HttpFieldSpec", "HttpSourceSpec", "RetryPolicy", "SqlSourceSpec"]
+@dataclass(frozen=True)
+class ModelSourceSpec:
+    """宣告式 model inference tool 來源。"""
+
+    name: str
+    description: str
+    model_type: str
+    input_spec: Dict[str, Dict[str, Any]]
+    output_spec: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    artifact_path: str | None = None
+    model_ref: str | None = None
+    preprocessor_ref: str | None = None
+    postprocessor_ref: str | None = None
+    device: str = "cpu"
+    timeout_sec: float = 5.0
+    adapters: Tuple[str, ...] | None = None
+    tags: Tuple[str, ...] = ()
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    strict: bool = True
+
+
+__all__ = [
+    "HttpFieldSpec",
+    "HttpSourceSpec",
+    "RetryPolicy",
+    "SqlSourceSpec",
+    "ModelSourceSpec",
+]

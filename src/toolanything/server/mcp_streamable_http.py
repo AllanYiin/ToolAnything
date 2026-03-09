@@ -131,6 +131,7 @@ def _write_sse_event(handler: BaseHTTPRequestHandler, event: str, data: Dict[str
 @dataclass(slots=True)
 class StreamableSession:
     user_id: str
+    protocol_version: str
 
 
 def _extract_bearer_token(header_value: str | None) -> str | None:
@@ -229,6 +230,55 @@ def _build_handler(
                 return session_id, session.user_id
             return None, user_id
 
+        def _protocol_error(self, error: str, *, status_code: int = 400, session_id: str | None = None) -> None:
+            _json_response(
+                self,
+                status_code,
+                {"error": error},
+                allowed_origins=allowed_origins,
+                protocol_version=protocol_version,
+                session_id=session_id,
+            )
+
+        def _validate_protocol_version(
+            self,
+            *,
+            session_id: str | None,
+            method: str | None,
+            payload: Dict[str, Any] | None = None,
+        ) -> str | None:
+            header_version = self.headers.get(MCP_PROTOCOL_VERSION_HEADER)
+
+            if method == "initialize":
+                params = (payload or {}).get("params", {}) or {}
+                requested_version = params.get("protocolVersion")
+                if requested_version and requested_version != protocol_version:
+                    self._protocol_error("unsupported_protocol_version")
+                    return None
+                if header_version and header_version != protocol_version:
+                    self._protocol_error("unsupported_protocol_version")
+                    return None
+                return protocol_version
+
+            if session_id is None:
+                if header_version and header_version != protocol_version:
+                    self._protocol_error("unsupported_protocol_version")
+                    return None
+                return header_version or protocol_version
+
+            with sessions_lock:
+                session = sessions.get(session_id)
+            if session is None:
+                self._protocol_error("session_not_found", status_code=404)
+                return None
+
+            effective_version = header_version or session.protocol_version
+            if effective_version != session.protocol_version:
+                self._protocol_error("protocol_version_mismatch", session_id=session_id)
+                return None
+
+            return effective_version
+
         def do_OPTIONS(self) -> None:  # noqa: N802
             if not self._origin_allowed():
                 self._reject_disallowed_origin()
@@ -279,10 +329,17 @@ def _build_handler(
                 )
                 return
 
+            effective_version = self._validate_protocol_version(
+                session_id=session_id,
+                method=None,
+            )
+            if effective_version is None:
+                return
+
             _send_sse_headers(
                 self,
                 allowed_origins=allowed_origins,
-                protocol_version=protocol_version,
+                protocol_version=effective_version,
                 session_id=session_id,
             )
             _write_sse_event(self, "ready", {"session_id": session_id, "transport": "streamable_http"})
@@ -332,10 +389,28 @@ def _build_handler(
 
             method = payload.get("method")
             if method == "initialize" and session_id is None:
+                effective_version = self._validate_protocol_version(
+                    session_id=None,
+                    method=method,
+                    payload=payload,
+                )
+                if effective_version is None:
+                    return
                 session_id = uuid.uuid4().hex
                 with sessions_lock:
-                    sessions[session_id] = StreamableSession(user_id=user_id)
+                    sessions[session_id] = StreamableSession(
+                        user_id=user_id,
+                        protocol_version=effective_version,
+                    )
                 session_user_id = user_id
+            else:
+                effective_version = self._validate_protocol_version(
+                    session_id=session_id,
+                    method=method,
+                    payload=payload,
+                )
+                if effective_version is None:
+                    return
 
             context = MCPRequestContext(
                 user_id=session_user_id,
@@ -353,7 +428,7 @@ def _build_handler(
                 _send_sse_headers(
                     self,
                     allowed_origins=allowed_origins,
-                    protocol_version=protocol_version,
+                    protocol_version=effective_version,
                     session_id=session_id,
                 )
                 if response is not None:
@@ -367,8 +442,56 @@ def _build_handler(
                 200,
                 response or {"ok": True},
                 allowed_origins=allowed_origins,
-                protocol_version=protocol_version,
+                protocol_version=effective_version,
                 session_id=session_id,
+            )
+
+        def do_DELETE(self) -> None:  # noqa: N802
+            if not self._origin_allowed():
+                self._reject_disallowed_origin()
+                return
+
+            if self.path != "/mcp":
+                _json_response(
+                    self,
+                    404,
+                    {"error": "not_found"},
+                    allowed_origins=allowed_origins,
+                    protocol_version=protocol_version,
+                )
+                return
+
+            user_id = self._require_auth()
+            if user_id is None:
+                _drain_request_body(self)
+                return
+
+            try:
+                session_id, _ = self._resolve_session(user_id)
+            except KeyError:
+                self._protocol_error("session_not_found", status_code=404)
+                return
+
+            if session_id is None:
+                self._protocol_error("missing_session")
+                return
+
+            effective_version = self._validate_protocol_version(
+                session_id=session_id,
+                method=None,
+            )
+            if effective_version is None:
+                return
+
+            with sessions_lock:
+                sessions.pop(session_id, None)
+
+            _json_response(
+                self,
+                200,
+                {"ok": True, "session_closed": True},
+                allowed_origins=allowed_origins,
+                protocol_version=effective_version,
             )
 
     return MCPStreamableHTTPHandler

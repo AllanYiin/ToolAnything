@@ -14,7 +14,7 @@ from .base_adapter import BaseAdapter
 class MCPAdapter(BaseAdapter):
     """提供 MCP 工具列表與統一呼叫介面。"""
 
-    PROTOCOL_VERSION = "2024-11-05"
+    PROTOCOL_VERSION = "2025-11-25"
     SERVER_NAME = "ToolAnything"
 
     def to_schema(self) -> List[Dict[str, Any]]:

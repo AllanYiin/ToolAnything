@@ -62,9 +62,9 @@ def test_streamable_http_initialize_list_call_and_stream():
         protocol_version = resp.getheader(MCP_PROTOCOL_VERSION_HEADER)
 
         assert resp.status == 200
-        assert initialize_body["result"]["protocolVersion"]
+        assert initialize_body["result"]["protocolVersion"] == "2025-11-25"
         assert session_id
-        assert protocol_version
+        assert protocol_version == "2025-11-25"
 
         conn.request(
             "POST",
@@ -73,6 +73,7 @@ def test_streamable_http_initialize_list_call_and_stream():
             headers={
                 "Content-Type": "application/json",
                 MCP_SESSION_ID_HEADER: session_id,
+                MCP_PROTOCOL_VERSION_HEADER: protocol_version,
             },
         )
         resp = conn.getresponse()
@@ -94,6 +95,7 @@ def test_streamable_http_initialize_list_call_and_stream():
             headers={
                 "Content-Type": "application/json",
                 MCP_SESSION_ID_HEADER: session_id,
+                MCP_PROTOCOL_VERSION_HEADER: protocol_version,
             },
         )
         resp = conn.getresponse()
@@ -117,6 +119,7 @@ def test_streamable_http_initialize_list_call_and_stream():
                 "Content-Type": "application/json",
                 "Accept": "text/event-stream",
                 MCP_SESSION_ID_HEADER: session_id,
+                MCP_PROTOCOL_VERSION_HEADER: protocol_version,
             },
         )
         resp = conn.getresponse()
@@ -204,3 +207,70 @@ def test_streamable_http_get_requires_session_and_legacy_sse_still_available():
         legacy_server.shutdown()
         legacy_server.server_close()
         legacy_thread.join(timeout=3)
+
+
+def test_streamable_http_rejects_protocol_mismatch_and_supports_delete():
+    registry = _build_registry()
+    server, thread = _start_server(build_streamable_handler(registry, host="127.0.0.1", port=0))
+    port = server.server_address[1]
+    conn = http.client.HTTPConnection("localhost", port, timeout=5)
+
+    try:
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = conn.getresponse()
+        _ = json.loads(resp.read())
+        session_id = resp.getheader(MCP_SESSION_ID_HEADER)
+        protocol_version = resp.getheader(MCP_PROTOCOL_VERSION_HEADER)
+
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            headers={
+                "Content-Type": "application/json",
+                MCP_SESSION_ID_HEADER: session_id,
+                MCP_PROTOCOL_VERSION_HEADER: "2025-03-26",
+            },
+        )
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        assert resp.status == 400
+        assert body["error"] == "protocol_version_mismatch"
+
+        conn.request(
+            "DELETE",
+            "/mcp",
+            headers={
+                MCP_SESSION_ID_HEADER: session_id,
+                MCP_PROTOCOL_VERSION_HEADER: protocol_version,
+            },
+        )
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        assert resp.status == 200
+        assert body == {"ok": True, "session_closed": True}
+
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}),
+            headers={
+                "Content-Type": "application/json",
+                MCP_SESSION_ID_HEADER: session_id,
+                MCP_PROTOCOL_VERSION_HEADER: protocol_version,
+            },
+        )
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        assert resp.status == 404
+        assert body["error"] == "session_not_found"
+    finally:
+        conn.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)

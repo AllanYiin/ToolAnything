@@ -13,11 +13,16 @@ from urllib import error as url_error
 from urllib import request as url_request
 from urllib.parse import urljoin
 
+from ..adapters.mcp_adapter import MCPAdapter
 from ..protocol.mcp_jsonrpc import (
     MCP_METHOD_INITIALIZE,
     MCP_METHOD_TOOLS_CALL,
     MCP_METHOD_TOOLS_LIST,
     build_request,
+)
+from ..server.mcp_streamable_http import (
+    MCP_PROTOCOL_VERSION_HEADER,
+    MCP_SESSION_ID_HEADER,
 )
 from ..utils.logger import logger
 
@@ -341,6 +346,10 @@ class ConnectionTester:
         start_time = time.monotonic()
         steps: List[StepReport] = []
         tools_payload: List[Dict[str, Any]] = []
+        streamable_endpoint: str | None = None
+        streamable_session_id: str | None = None
+        streamable_protocol_version: str | None = None
+        streamable_initialize_response: Dict[str, Any] | None = None
         sse_client: _SseClient | None = None
         message_endpoint: str | None = None
 
@@ -382,7 +391,28 @@ class ConnectionTester:
                 )
 
         def connect_transport() -> Dict[str, Any]:
-            nonlocal sse_client, message_endpoint
+            nonlocal sse_client
+            nonlocal message_endpoint
+            nonlocal streamable_endpoint
+            nonlocal streamable_session_id
+            nonlocal streamable_protocol_version
+            nonlocal streamable_initialize_response
+            try:
+                (
+                    streamable_endpoint,
+                    streamable_session_id,
+                    streamable_protocol_version,
+                    streamable_initialize_response,
+                ) = _initialize_streamable_http(url, timeout=self.timeout)
+                return {
+                    "transport": "streamable_http",
+                    "endpoint": streamable_endpoint,
+                    "session_id": streamable_session_id,
+                }
+            except StepFailure as exc:
+                if not _should_fallback_to_legacy(exc):
+                    raise
+
             health_url = urljoin(url, "/health")
             try:
                 with url_request.urlopen(health_url, timeout=self.timeout) as response:
@@ -433,9 +463,14 @@ class ConnectionTester:
                     details={"payload": payload},
                 )
             message_endpoint = urljoin(url, endpoint)
-            return {"message_endpoint": message_endpoint}
+            return {"transport": "legacy_http_sse", "message_endpoint": message_endpoint}
 
         def http_initialize() -> Dict[str, Any]:
+            if streamable_endpoint is not None:
+                if streamable_initialize_response is None:
+                    raise StepFailure("Streamable HTTP initialize 尚未建立")
+                return _validate_response(streamable_initialize_response, 1)
+
             if message_endpoint is None or sse_client is None:
                 raise StepFailure("SSE 尚未建立")
             payload = build_request(MCP_METHOD_INITIALIZE, 1)
@@ -445,6 +480,18 @@ class ConnectionTester:
 
         def http_tools_list() -> Dict[str, Any]:
             nonlocal tools_payload
+            if streamable_endpoint is not None:
+                response, _, _ = _post_streamable_json(
+                    streamable_endpoint,
+                    build_request(MCP_METHOD_TOOLS_LIST, 2),
+                    timeout=self.timeout,
+                    session_id=streamable_session_id,
+                    protocol_version=streamable_protocol_version,
+                )
+                result = _validate_response(response, 2)
+                tools_payload = result.get("tools", []) if isinstance(result, dict) else []
+                return {"tools_count": len(tools_payload)}
+
             if message_endpoint is None or sse_client is None:
                 raise StepFailure("SSE 尚未建立")
             payload = build_request(MCP_METHOD_TOOLS_LIST, 2)
@@ -455,6 +502,27 @@ class ConnectionTester:
             return {"tools_count": len(tools_payload)}
 
         def http_tools_call() -> Dict[str, Any]:
+            if streamable_endpoint is not None:
+                tool_name, arguments = _pick_callable_tool(tools_payload)
+                if tool_name is None:
+                    raise StepFailure(
+                        "找不到可穩定呼叫的工具",
+                        suggestion="建議註冊 __ping__ 或無必填參數的工具",
+                    )
+                response, _, _ = _post_streamable_json(
+                    streamable_endpoint,
+                    build_request(
+                        MCP_METHOD_TOOLS_CALL,
+                        3,
+                        params={"name": tool_name, "arguments": arguments},
+                    ),
+                    timeout=self.timeout,
+                    session_id=streamable_session_id,
+                    protocol_version=streamable_protocol_version,
+                )
+                _validate_response(response, 3)
+                return {"tool": tool_name}
+
             if message_endpoint is None or sse_client is None:
                 raise StepFailure("SSE 尚未建立")
             tool_name, arguments = _pick_callable_tool(tools_payload)
@@ -580,3 +648,119 @@ def render_report(report: ConnectionReport) -> str:
 
 def parse_cmd(cmd: str) -> List[str]:
     return shlex.split(cmd)
+
+
+def _build_streamable_initialize_request() -> Dict[str, Any]:
+    return build_request(
+        MCP_METHOD_INITIALIZE,
+        1,
+        params={"protocolVersion": MCPAdapter.PROTOCOL_VERSION},
+    )
+
+
+def _build_streamable_headers(
+    *,
+    session_id: str | None = None,
+    protocol_version: str | None = None,
+) -> Dict[str, str]:
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if session_id:
+        headers[MCP_SESSION_ID_HEADER] = session_id
+    if protocol_version:
+        headers[MCP_PROTOCOL_VERSION_HEADER] = protocol_version
+    return headers
+
+
+def _post_streamable_json(
+    url: str,
+    payload: Dict[str, Any],
+    *,
+    timeout: float,
+    session_id: str | None = None,
+    protocol_version: str | None = None,
+) -> tuple[Dict[str, Any], str | None, str | None]:
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = url_request.Request(
+        url,
+        data=data,
+        headers=_build_streamable_headers(
+            session_id=session_id,
+            protocol_version=protocol_version,
+        ),
+    )
+    try:
+        with url_request.urlopen(req, timeout=timeout) as response:
+            raw_body = response.read().decode("utf-8") or "{}"
+            body = json.loads(raw_body)
+            return (
+                body,
+                response.headers.get(MCP_SESSION_ID_HEADER),
+                response.headers.get(MCP_PROTOCOL_VERSION_HEADER),
+            )
+    except url_error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", errors="replace")
+        details: Dict[str, Any] = {"status": exc.code, "url": url}
+        try:
+            details["body"] = json.loads(raw_body)
+        except json.JSONDecodeError:
+            details["body_text"] = raw_body
+        raise StepFailure(
+            "Streamable HTTP request 失敗",
+            suggestion="請確認 /mcp 端點、header 與 session 狀態",
+            details=details,
+        ) from exc
+    except url_error.URLError as exc:
+        raise StepFailure(
+            "HTTP 連線失敗",
+            suggestion="請確認 URL 或 server 是否啟動",
+            details={"reason": str(exc.reason), "url": url},
+        ) from exc
+    except OSError as exc:
+        raise StepFailure(
+            "HTTP 連線失敗",
+            suggestion="請確認 URL 或 server 是否啟動",
+            details={"reason": str(exc), "url": url},
+        ) from exc
+
+
+def _initialize_streamable_http(
+    base_url: str,
+    *,
+    timeout: float,
+) -> tuple[str, str, str, Dict[str, Any]]:
+    endpoint = base_url.rstrip("/")
+    if not endpoint.endswith("/mcp"):
+        endpoint = urljoin(f"{endpoint}/", "mcp")
+
+    response, session_id, protocol_version = _post_streamable_json(
+        endpoint,
+        _build_streamable_initialize_request(),
+        timeout=timeout,
+        protocol_version=MCPAdapter.PROTOCOL_VERSION,
+    )
+    if not session_id:
+        raise StepFailure(
+            "Streamable HTTP initialize 未回傳 session id",
+            suggestion="請確認 /mcp 是否為支援 session 的 Streamable HTTP 端點",
+            details={"response": response, "url": endpoint},
+        )
+    if not protocol_version:
+        raise StepFailure(
+            "Streamable HTTP initialize 未回傳 protocol version",
+            suggestion="請確認 /mcp 是否正確實作 MCP headers",
+            details={"response": response, "url": endpoint},
+        )
+    return endpoint, session_id, protocol_version, response
+
+
+def _should_fallback_to_legacy(exc: StepFailure) -> bool:
+    status = exc.details.get("status")
+    if status in {404, 405}:
+        return True
+    body = exc.details.get("body")
+    if isinstance(body, dict) and body.get("error") == "not_found":
+        return True
+    return status is None and bool(exc.details.get("reason"))

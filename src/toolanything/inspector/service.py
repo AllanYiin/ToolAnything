@@ -8,11 +8,13 @@ import time
 import webbrowser
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 from urllib import error as url_error
 from urllib import request as url_request
 from urllib.parse import urlencode, urljoin
 
+from ..adapters.mcp_adapter import MCPAdapter
 from ..core.connection_tester import (
     ConnectionTester,
     StepFailure,
@@ -27,6 +29,10 @@ from ..protocol.mcp_jsonrpc import (
     MCP_METHOD_TOOLS_LIST,
     build_notification,
     build_request,
+)
+from ..server.mcp_streamable_http import (
+    MCP_PROTOCOL_VERSION_HEADER,
+    MCP_SESSION_ID_HEADER,
 )
 
 
@@ -83,6 +89,26 @@ class TraceEntry:
         }
 
 
+@dataclass(slots=True)
+class SkillEntry:
+    name: str
+    description: str
+    summary: str
+    scope: str
+    source: str
+    path: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "summary": self.summary,
+            "scope": self.scope,
+            "source": self.source,
+            "path": self.path,
+        }
+
+
 def _normalize_config(payload: Mapping[str, Any]) -> ConnectionConfig:
     mode = str(payload.get("mode") or "").strip().lower()
     timeout = float(payload.get("timeout") or 8.0)
@@ -133,6 +159,87 @@ def _unwrap_response(response: Dict[str, Any], request_id: int) -> Dict[str, Any
         )
 
     return response.get("result", {}) or {}
+
+
+def _build_streamable_initialize_request(request_id: int) -> Dict[str, Any]:
+    return build_request(
+        MCP_METHOD_INITIALIZE,
+        request_id,
+        params={"protocolVersion": MCPAdapter.PROTOCOL_VERSION},
+    )
+
+
+def _build_streamable_headers(
+    *,
+    session_id: str | None = None,
+    protocol_version: str | None = None,
+) -> Dict[str, str]:
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if session_id:
+        headers[MCP_SESSION_ID_HEADER] = session_id
+    if protocol_version:
+        headers[MCP_PROTOCOL_VERSION_HEADER] = protocol_version
+    return headers
+
+
+def _post_streamable_json(
+    url: str,
+    payload: Dict[str, Any],
+    *,
+    timeout: float,
+    session_id: str | None = None,
+    protocol_version: str | None = None,
+) -> tuple[Dict[str, Any], str | None, str | None, int]:
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = url_request.Request(
+        url,
+        data=data,
+        headers=_build_streamable_headers(
+            session_id=session_id,
+            protocol_version=protocol_version,
+        ),
+    )
+    try:
+        with url_request.urlopen(req, timeout=timeout) as response:
+            raw_body = response.read().decode("utf-8")
+            body = json.loads(raw_body or "{}") if raw_body else {}
+            return (
+                body,
+                response.headers.get(MCP_SESSION_ID_HEADER),
+                response.headers.get(MCP_PROTOCOL_VERSION_HEADER),
+                response.status,
+            )
+    except url_error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", errors="replace")
+        details: Dict[str, Any] = {"status": exc.code, "url": url}
+        try:
+            details["response"] = json.loads(raw_body)
+        except json.JSONDecodeError:
+            details["response_text"] = raw_body
+        raise InspectorError("Streamable HTTP request 失敗", details=details) from exc
+    except url_error.URLError as exc:
+        raise InspectorError(
+            "HTTP 連線失敗",
+            details={"reason": str(getattr(exc, "reason", exc)), "url": url},
+        ) from exc
+    except OSError as exc:
+        raise InspectorError(
+            "HTTP 連線失敗",
+            details={"reason": str(exc), "url": url},
+        ) from exc
+
+
+def _should_fallback_to_legacy_http(exc: InspectorError) -> bool:
+    status = exc.details.get("status")
+    if status in {404, 405}:
+        return True
+    response = exc.details.get("response")
+    if isinstance(response, dict) and response.get("error") == "not_found":
+        return True
+    return status is None and bool(exc.details.get("reason"))
 
 
 class _BaseInspectorSession(AbstractContextManager["_BaseInspectorSession"]):
@@ -285,27 +392,56 @@ class _HttpInspectorSession(_BaseInspectorSession):
     def __init__(self, config: ConnectionConfig) -> None:
         super().__init__()
         self.config = config
+        self.transport_kind: str | None = None
+        self.streamable_endpoint: str | None = None
+        self.streamable_session_id: str | None = None
+        self.streamable_protocol_version: str | None = None
+        self.streamable_initialize_response: Dict[str, Any] | None = None
         self.stream = None
         self.sse_client: _SseClient | None = None
         self.message_endpoint: str | None = None
 
     def __enter__(self) -> "_HttpInspectorSession":
         super().__enter__()
-        health_url = urljoin(f"{self.config.url}/", "health")
-        try:
-            with url_request.urlopen(health_url, timeout=self.config.timeout) as response:
-                if response.status >= 400:
-                    raise InspectorError(
-                        "health check 失敗",
-                        details={"status": response.status, "url": health_url},
-                    )
-        except url_error.URLError as exc:
-            raise InspectorError(
-                "HTTP 連線失敗",
-                details={"reason": str(getattr(exc, "reason", exc)), "url": self.config.url},
-            ) from exc
+        streamable_endpoint = str(self.config.url or "").rstrip("/")
+        if not streamable_endpoint.endswith("/mcp"):
+            streamable_endpoint = urljoin(f"{streamable_endpoint}/", "mcp")
 
-        sse_url = urljoin(f"{self.config.url}/", "sse")
+        try:
+            request_id = self._next_id()
+            payload = _build_streamable_initialize_request(request_id)
+            self._record(direction="outbound", kind="request", transport="streamable_http", payload=payload)
+            (
+                response,
+                session_id,
+                protocol_version,
+                _,
+            ) = _post_streamable_json(
+                streamable_endpoint,
+                payload,
+                timeout=self.config.timeout,
+                protocol_version=MCPAdapter.PROTOCOL_VERSION,
+            )
+            self._record(direction="inbound", kind="response", transport="streamable_http", payload=response)
+            if not session_id or not protocol_version:
+                raise InspectorError(
+                    "Streamable HTTP initialize 未回傳必要 headers",
+                    details={"response": response, "url": streamable_endpoint},
+                )
+            self.transport_kind = "streamable_http"
+            self.streamable_endpoint = streamable_endpoint
+            self.streamable_session_id = session_id
+            self.streamable_protocol_version = protocol_version
+            self.streamable_initialize_response = response
+            return self
+        except InspectorError as exc:
+            if not _should_fallback_to_legacy_http(exc):
+                raise
+
+        base_url = str(self.config.url or "").rstrip("/")
+        if base_url.endswith("/mcp"):
+            base_url = base_url[: -len("/mcp")]
+        sse_url = urljoin(f"{base_url}/", "sse")
         if self.config.user_id:
             sse_url = f"{sse_url}?{urlencode({'user_id': self.config.user_id})}"
         try:
@@ -328,15 +464,38 @@ class _HttpInspectorSession(_BaseInspectorSession):
                 status_code=502,
                 details={"payload": transport_message},
             )
-        self.message_endpoint = urljoin(f"{self.config.url}/", endpoint.lstrip("/"))
+        self.transport_kind = "legacy_http_sse"
+        self.message_endpoint = urljoin(f"{base_url}/", endpoint.lstrip("/"))
         return self
 
     def close(self) -> None:
+        if self.transport_kind == "streamable_http" and self.streamable_endpoint and self.streamable_session_id:
+            try:
+                req = url_request.Request(
+                    self.streamable_endpoint,
+                    method="DELETE",
+                    headers=_build_streamable_headers(
+                        session_id=self.streamable_session_id,
+                        protocol_version=self.streamable_protocol_version,
+                    ),
+                )
+                with url_request.urlopen(req, timeout=self.config.timeout):
+                    pass
+            except Exception:
+                pass
         if self.stream is not None:
             try:
                 self.stream.close()
             except Exception:
                 pass
+
+    def initialize(self) -> Dict[str, Any]:
+        if self.transport_kind == "streamable_http" and self.streamable_initialize_response is not None:
+            result = _unwrap_response(self.streamable_initialize_response, 1)
+            self.streamable_initialize_response = None
+            self._send_notification(build_notification(MCP_METHOD_NOTIFICATIONS_INITIALIZED, {}))
+            return result
+        return super().initialize()
 
     def _next_transport_ready(self) -> Dict[str, Any]:
         if self.sse_client is None:
@@ -377,6 +536,20 @@ class _HttpInspectorSession(_BaseInspectorSession):
         )
 
     def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.transport_kind == "streamable_http":
+            if self.streamable_endpoint is None:
+                raise InspectorError("Streamable HTTP endpoint 尚未建立", status_code=500)
+            self._record(direction="outbound", kind="request", transport="streamable_http", payload=payload)
+            response, _, _, _ = _post_streamable_json(
+                self.streamable_endpoint,
+                payload,
+                timeout=self.config.timeout,
+                session_id=self.streamable_session_id,
+                protocol_version=self.streamable_protocol_version,
+            )
+            self._record(direction="inbound", kind="response", transport="streamable_http", payload=response)
+            return response
+
         if self.message_endpoint is None:
             raise InspectorError("message endpoint 尚未建立", status_code=500)
         self._record(direction="outbound", kind="request", transport="http", payload=payload)
@@ -406,6 +579,24 @@ class _HttpInspectorSession(_BaseInspectorSession):
         return self._next_response(int(payload["id"]))
 
     def _send_notification(self, payload: Dict[str, Any]) -> None:
+        if self.transport_kind == "streamable_http":
+            if self.streamable_endpoint is None:
+                raise InspectorError("Streamable HTTP endpoint 尚未建立", status_code=500)
+            self._record(direction="outbound", kind="notification", transport="streamable_http", payload=payload)
+            _, _, _, status_code = _post_streamable_json(
+                self.streamable_endpoint,
+                payload,
+                timeout=self.config.timeout,
+                session_id=self.streamable_session_id,
+                protocol_version=self.streamable_protocol_version,
+            )
+            if status_code != 202:
+                raise InspectorError(
+                    "notification 未被接受",
+                    details={"status": status_code, "endpoint": self.streamable_endpoint},
+                )
+            return
+
         if self.message_endpoint is None:
             raise InspectorError("message endpoint 尚未建立", status_code=500)
         self._record(direction="outbound", kind="notification", transport="http", payload=payload)
@@ -428,8 +619,18 @@ class _HttpInspectorSession(_BaseInspectorSession):
 class MCPInspectorService:
     """Service layer for the built-in MCP test client."""
 
-    def __init__(self, *, default_timeout: float = 8.0) -> None:
+    def __init__(
+        self,
+        *,
+        default_timeout: float = 8.0,
+        skill_roots: Optional[list[Path | str]] = None,
+    ) -> None:
         self.default_timeout = default_timeout
+        roots = skill_roots or [
+            Path.home() / ".codex" / "skills",
+            Path.home() / ".agents" / "skills",
+        ]
+        self.skill_roots = [Path(root).expanduser() for root in roots]
 
     def _build_config(self, payload: Mapping[str, Any]) -> ConnectionConfig:
         normalized = dict(payload)
@@ -462,6 +663,28 @@ class MCPInspectorService:
             "tools": tools,
             "count": len(tools),
             "trace": session.export_trace(),
+        }
+
+    def list_skills(self) -> Dict[str, Any]:
+        skills: list[SkillEntry] = []
+        seen_paths: set[str] = set()
+        for root in self.skill_roots:
+            if not root.exists() or not root.is_dir():
+                continue
+            for skill_file in sorted(root.rglob("SKILL.md")):
+                resolved = str(skill_file.resolve())
+                if resolved in seen_paths:
+                    continue
+                seen_paths.add(resolved)
+                entry = self._read_skill_file(skill_file, root)
+                if entry is not None:
+                    skills.append(entry)
+
+        skills.sort(key=lambda item: (item.scope, item.name.lower(), item.path.lower()))
+        return {
+            "count": len(skills),
+            "roots": [str(root) for root in self.skill_roots],
+            "skills": [skill.to_dict() for skill in skills],
         }
 
     def call_tool(
@@ -678,6 +901,70 @@ class MCPInspectorService:
     ) -> None:
         if event_sink is not None:
             event_sink(event, payload)
+
+    def _read_skill_file(self, skill_file: Path, root: Path) -> Optional[SkillEntry]:
+        try:
+            content = skill_file.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+        metadata = self._parse_front_matter(content)
+        name = metadata.get("name") or skill_file.parent.name
+        description = metadata.get("description") or self._extract_heading(content) or "沒有描述"
+        summary = metadata.get("short-description") or description
+        return SkillEntry(
+            name=name,
+            description=description,
+            summary=summary,
+            scope=self._infer_skill_scope(skill_file, root),
+            source=self._infer_skill_source(root),
+            path=str(skill_file),
+        )
+
+    @staticmethod
+    def _parse_front_matter(content: str) -> Dict[str, str]:
+        lines = content.splitlines()
+        if not lines or lines[0].strip() != "---":
+            return {}
+
+        result: Dict[str, str] = {}
+        for line in lines[1:]:
+            stripped = line.strip()
+            if stripped == "---":
+                break
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            normalized_key = key.strip().lower()
+            if normalized_key in {"name", "description", "short-description"}:
+                result[normalized_key] = value.strip().strip("'\"")
+        return result
+
+    @staticmethod
+    def _extract_heading(content: str) -> str:
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("# "):
+                return stripped[2:].strip()
+        return ""
+
+    @staticmethod
+    def _infer_skill_source(root: Path) -> str:
+        root_text = str(root).lower()
+        if ".agents" in root_text:
+            return "agents"
+        if ".codex" in root_text:
+            return "codex"
+        return "custom"
+
+    @staticmethod
+    def _infer_skill_scope(skill_file: Path, root: Path) -> str:
+        relative_parts = tuple(part.lower() for part in skill_file.relative_to(root).parts[:-1])
+        if ".system" in relative_parts:
+            return "system"
+        if ".agents" in str(root).lower():
+            return "custom"
+        return "global"
 
 
 def maybe_open_browser(url: str, *, delay_seconds: float = 0.6) -> None:

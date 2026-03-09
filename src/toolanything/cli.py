@@ -69,16 +69,34 @@ def _run_mcp_server(port: int, host: str) -> None:
     run_server(port=port, host=host)
 
 
+def _run_streamable_http_server(port: int, host: str) -> None:
+    from .server.mcp_streamable_http import run_server
+
+    run_server(port=port, host=host)
+
+
 def _run_stdio_server() -> None:
     from .server.mcp_stdio_server import run_stdio_server
 
     run_stdio_server()
 
 
-def _serve_module(module: str, host: str, port: int, stdio: bool) -> None:
+def _serve_module(
+    module: str,
+    host: str,
+    port: int,
+    stdio: bool,
+    streamable_http: bool,
+) -> None:
     from .runtime import run
 
-    run(module=module, host=host, port=port, stdio=stdio)
+    run(
+        module=module,
+        host=host,
+        port=port,
+        stdio=stdio,
+        streamable_http=streamable_http,
+    )
 
 
 def _run_inspector_ui(host: str, port: int, timeout: float, no_open: bool) -> None:
@@ -128,7 +146,7 @@ def _install_claude_opencv_config(path: Path, port: int, name: str) -> None:
             "-m",
             "toolanything.cli",
             "serve",
-            "examples.opencv_mcp_web.server",
+            "toolanything.examples.opencv_mcp_web.server",
             "--stdio",
             "--port",
             str(port),
@@ -376,11 +394,24 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
     run_parser.set_defaults(func=lambda args: _run_mcp_server(port=args.port, host=args.host))
 
+    streamable_parser = subparsers.add_parser(
+        "run-streamable-http",
+        help="啟動 MCP Streamable HTTP transport",
+    )
+    streamable_parser.add_argument("--port", type=int, default=9092, help="監聽 port，預設 9092")
+    streamable_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
+    streamable_parser.set_defaults(
+        func=lambda args: _run_streamable_http_server(port=args.port, host=args.host)
+    )
+
     stdio_parser = subparsers.add_parser("run-stdio", help="啟動 MCP Stdio Server (供 Claude Desktop 使用)")
     stdio_parser.set_defaults(func=lambda args: _run_stdio_server())
 
     serve_parser = subparsers.add_parser("serve", help="載入工具模組並啟動伺服器")
-    serve_parser.add_argument("module", help="工具模組路徑（例如 examples.opencv_mcp_web.server）")
+    serve_parser.add_argument(
+        "module",
+        help="工具模組路徑（例如 toolanything.examples.opencv_mcp_web.server）",
+    )
     serve_parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
     serve_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
     serve_parser.add_argument(
@@ -388,12 +419,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="改用 stdio 啟動（供 MCP Desktop 類型使用）",
     )
+    serve_parser.add_argument(
+        "--streamable-http",
+        action="store_true",
+        help="改用 MCP Streamable HTTP 啟動（/mcp）",
+    )
     serve_parser.set_defaults(
         func=lambda args: _serve_module(
             module=args.module,
             host=args.host,
             port=args.port,
             stdio=args.stdio,
+            streamable_http=args.streamable_http,
         )
     )
 
@@ -402,7 +439,7 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--port", type=int, default=9090, help="MCP server port，預設 9090")
     init_parser.add_argument(
         "--module",
-        help="工具模組路徑（例如 examples.opencv_mcp_web.server），提供時會使用 serve 模式",
+        help="工具模組路徑（例如 toolanything.examples.opencv_mcp_web.server），提供時會使用 serve 模式",
     )
     init_parser.add_argument("--force", action="store_true", help="已存在時覆寫輸出檔案")
     init_parser.set_defaults(
@@ -424,7 +461,7 @@ def _build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument("--port", type=int, default=9090, help="MCP server port，預設 9090")
     install_parser.add_argument(
         "--module",
-        help="工具模組路徑（例如 examples.opencv_mcp_web.server），提供時會使用 serve 模式",
+        help="工具模組路徑（例如 toolanything.examples.opencv_mcp_web.server），提供時會使用 serve 模式",
     )
     install_parser.add_argument(
         "--name",
@@ -471,7 +508,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  toolanything search --query weather --max-cost 0.1 --latency-budget-ms 200\n"
             "  toolanything search --tags finance realtime --allow-side-effects\n"
             "  toolanything search --category routing --category search\n"
-            "  策略示例：python examples/tool_selection/03_custom_strategy.py (strategy 比較)\n\n"
+            "  策略示例：python -m toolanything.examples.tool_selection.custom_strategy\n\n"
             "See also: examples/tool_selection/README.md"
         ),
     )

@@ -36,11 +36,13 @@
 ## 進階延伸（完成 Quickstart 後再看）
 
 - `examples/demo_mcp_stdio.py`：最小 MCP stdio demo。
+- `examples/streamable_http/`：用 3 支小範例看懂新版 `/mcp` transport 的 handshake、response mode 與 session lifecycle。
+- `examples/demo_mcp_streamable_http.py`：最小 Streamable HTTP server demo。
 - `examples/http_tool.py`：把 HTTP API 直接註冊成 tool，不再手寫 wrapper function。
 - `examples/sql_tool.py`：把參數化 SQL 查詢直接註冊成 tool。
-- `examples/onnx_tool.py`：把 ONNX 模型直接註冊成 tool。
-- `examples/pytorch_tool.py`：把 PyTorch 模型直接註冊成 tool。
+- `examples/onnx_tool.py`：看 VAD 前置門控如何用 ONNX model tool 表達。
+- `examples/pytorch_tool.py`：看 VAD 前置門控如何用 PyTorch model tool 表達。
 - `examples/protocol_boundary/`：看 MCP runtime 與 transport 的分工。
 - `examples/opencv_mcp_web/`：較完整的 Web 範例。
 
-如果你準備讓其他服務透過網路呼叫 MCP server，請優先看 Streamable HTTP transport；SSE 屬於相容舊 client 的 legacy 路徑。
+如果你準備讓其他服務透過網路呼叫 MCP server，請先跑 `examples/streamable_http/`，再決定你的 client 要吃 JSON 還是 stream；SSE 屬於相容舊 client 的 legacy 路徑。

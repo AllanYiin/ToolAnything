@@ -11,10 +11,13 @@
 
 ## 建議步驟
 
-1. 對照 `src/toolanything/protocol/mcp_jsonrpc.py` 的 `handle()` 與 method routing。
-2. 對照 `src/toolanything/server/mcp_runtime.py`，理解 request 進來之後如何分派到 runtime。
-3. 對照 `src/toolanything/server/mcp_streamable_http.py` 與 `src/toolanything/server/mcp_stdio_server.py`，確認 transport 如何轉交 request。
-4. 參考 `docs/architecture-walkthrough.md`，確認 source、contract、invoker、runtime、transport 的分層。
+1. 先跑 `examples/streamable_http/01_handshake_and_list.py`，建立 `/mcp` session 與 headers 的直覺。
+2. 再跑 `examples/streamable_http/02_response_modes.py`，看 `Accept` 如何改變 transport 行為。
+3. 接著跑 `examples/streamable_http/03_resume_and_close.py`，理解 `GET /mcp`、`Last-Event-ID` 與 `DELETE /mcp`。
+4. 對照 `src/toolanything/protocol/mcp_jsonrpc.py` 的 `handle()` 與 method routing。
+5. 對照 `src/toolanything/server/mcp_runtime.py`，理解 request 進來之後如何分派到 runtime。
+6. 對照 `src/toolanything/server/mcp_streamable_http.py` 與 `src/toolanything/server/mcp_stdio_server.py`，確認 transport 如何轉交 request。
+7. 參考 `docs/architecture-walkthrough.md`，確認 source、contract、invoker、runtime、transport 的分層。
 
 ## 預期輸出（節錄）
 
@@ -30,6 +33,7 @@
 
 ## 延伸閱讀
 
+- [`examples/streamable_http/README.md`](../streamable_http/README.md)
 - [`docs/architecture-walkthrough.md`](../../docs/architecture-walkthrough.md)
 - [`src/toolanything/protocol/mcp_jsonrpc.py`](../../src/toolanything/protocol/mcp_jsonrpc.py)
 - [`src/toolanything/server/mcp_runtime.py`](../../src/toolanything/server/mcp_runtime.py)

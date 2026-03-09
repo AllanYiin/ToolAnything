@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
 from types import UnionType
-from typing import Any, Dict, get_args, get_origin
+from typing import Any, Dict, get_args, get_origin, get_type_hints
 
 from ..pipeline.context import is_context_parameter
 
@@ -106,6 +106,10 @@ def build_parameters_schema(func: Any) -> Dict[str, Any]:
     signature = inspect.signature(func)
     properties: Dict[str, Any] = {}
     required = []
+    try:
+        resolved_hints = get_type_hints(func)
+    except Exception:
+        resolved_hints = {}
 
     for name, param in signature.parameters.items():
         if name in {"self", "cls"}:
@@ -114,7 +118,10 @@ def build_parameters_schema(func: Any) -> Dict[str, Any]:
         if is_context_parameter(param):
             continue
 
-        annotation = param.annotation if param.annotation is not inspect._empty else str
+        annotation = resolved_hints.get(
+            name,
+            param.annotation if param.annotation is not inspect._empty else str,
+        )
         schema = python_type_to_schema(annotation)
         if param.default is not inspect._empty:
             schema = {**schema, "default": param.default}

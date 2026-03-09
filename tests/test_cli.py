@@ -14,8 +14,12 @@ def test_cli_run_mcp_and_stdio_dispatch(monkeypatch):
     def fake_run_stdio_server() -> None:
         called["stdio"] = True
 
+    def fake_run_streamable_http_server(*, port: int, host: str) -> None:
+        called["streamable_http"] = {"port": port, "host": host}
+
     monkeypatch.setattr("toolanything.cli._run_mcp_server", fake_run_mcp_server)
     monkeypatch.setattr("toolanything.cli._run_stdio_server", fake_run_stdio_server)
+    monkeypatch.setattr("toolanything.cli._run_streamable_http_server", fake_run_streamable_http_server)
 
     parser = _build_parser()
 
@@ -26,6 +30,10 @@ def test_cli_run_mcp_and_stdio_dispatch(monkeypatch):
     args = parser.parse_args(["run-stdio"])
     args.func(args)
     assert called["stdio"] is True
+
+    args = parser.parse_args(["run-streamable-http", "--port", "1235", "--host", "127.0.0.1"])
+    args.func(args)
+    assert called["streamable_http"] == {"port": 1235, "host": "127.0.0.1"}
 
 
 def test_cli_inspect_dispatch(monkeypatch):

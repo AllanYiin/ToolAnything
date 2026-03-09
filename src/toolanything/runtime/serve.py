@@ -9,7 +9,8 @@ from typing import Optional
 
 from ..core.registry import ToolRegistry
 from ..server.mcp_stdio_server import run_stdio_server
-from ..server.mcp_tool_server import run_server
+from ..server.mcp_streamable_http import run_server as run_streamable_http_server
+from ..server.mcp_tool_server import run_server as run_legacy_http_server
 from ..utils.logger import configure_logging, logger
 
 
@@ -37,6 +38,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 9090,
     stdio: bool = False,
+    streamable_http: bool = False,
     registry: Optional[ToolRegistry] = None,
 ) -> None:
     """啟動 ToolAnything 伺服器。"""
@@ -50,8 +52,10 @@ def serve(
 
     if stdio:
         run_stdio_server(active_registry)
+    elif streamable_http:
+        run_streamable_http_server(port=port, host=host, registry=active_registry)
     else:
-        run_server(port=port, host=host, registry=active_registry)
+        run_legacy_http_server(port=port, host=host, registry=active_registry)
 
 
 def run(
@@ -60,12 +64,20 @@ def run(
     host: str = "127.0.0.1",
     port: int = 9090,
     stdio: bool = False,
+    streamable_http: bool = False,
     registry: Optional[ToolRegistry] = None,
 ) -> None:
     """安全啟動入口，內建錯誤處理與 log。"""
 
     try:
-        serve(module=module, host=host, port=port, stdio=stdio, registry=registry)
+        serve(
+            module=module,
+            host=host,
+            port=port,
+            stdio=stdio,
+            streamable_http=streamable_http,
+            registry=registry,
+        )
     except Exception:
         logger.exception("ToolAnything 伺服器啟動失敗")
         print("[ToolAnything] 伺服器啟動失敗，請查看 logs/toolanything.log")

@@ -9,8 +9,9 @@ import argparse
 import json
 import os
 import threading
+import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict
 
@@ -23,6 +24,66 @@ from .mcp_runtime import build_protocol_dependencies
 
 MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version"
 MCP_SESSION_ID_HEADER = "Mcp-Session-Id"
+_STREAM_HEARTBEAT_SEC = 15.0
+_STREAM_HISTORY_LIMIT = 256
+
+
+@dataclass(frozen=True, slots=True)
+class StreamEvent:
+    event_id: int
+    name: str
+    payload: Dict[str, Any]
+
+
+@dataclass(slots=True)
+class StreamableSession:
+    user_id: str
+    protocol_version: str
+    history_limit: int = _STREAM_HISTORY_LIMIT
+    last_seen_monotonic: float = field(default_factory=time.monotonic)
+    events: list[StreamEvent] = field(default_factory=list)
+    next_event_id: int = 0
+    closed: bool = False
+    condition: threading.Condition = field(default_factory=threading.Condition)
+
+    def touch(self) -> None:
+        with self.condition:
+            self.last_seen_monotonic = time.monotonic()
+
+    def append_event(self, name: str, payload: Dict[str, Any]) -> StreamEvent:
+        with self.condition:
+            self.next_event_id += 1
+            event = StreamEvent(self.next_event_id, name, payload)
+            self.events.append(event)
+            if len(self.events) > self.history_limit:
+                self.events = self.events[-self.history_limit :]
+            self.last_seen_monotonic = time.monotonic()
+            self.condition.notify_all()
+            return event
+
+    def replay_events_after(self, after_event_id: int) -> list[StreamEvent]:
+        with self.condition:
+            if self.events and after_event_id < self.events[0].event_id - 1:
+                raise ValueError("event_history_unavailable")
+            return [event for event in self.events if event.event_id > after_event_id]
+
+    def wait_for_events(self, after_event_id: int, *, timeout_sec: float) -> bool:
+        deadline = time.monotonic() + timeout_sec
+        with self.condition:
+            while True:
+                has_new_event = any(event.event_id > after_event_id for event in self.events)
+                if has_new_event or self.closed:
+                    return True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self.condition.wait(timeout=remaining)
+
+    def close(self) -> None:
+        with self.condition:
+            self.closed = True
+            self.last_seen_monotonic = time.monotonic()
+            self.condition.notify_all()
 
 
 def _build_allowed_origins(host: str, port: int) -> set[str]:
@@ -47,10 +108,13 @@ def _send_cors_headers(handler: BaseHTTPRequestHandler, *, allowed_origins: set[
     if origin and ("*" in allowed_origins or origin in allowed_origins):
         handler.send_header("Access-Control-Allow-Origin", origin)
         handler.send_header("Vary", "Origin")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
     handler.send_header(
         "Access-Control-Allow-Headers",
-        f"Content-Type, Authorization, {MCP_PROTOCOL_VERSION_HEADER}, {MCP_SESSION_ID_HEADER}",
+        (
+            "Accept, Content-Type, Authorization, Last-Event-ID, "
+            f"{MCP_PROTOCOL_VERSION_HEADER}, {MCP_SESSION_ID_HEADER}"
+        ),
     )
     handler.send_header("Access-Control-Max-Age", "600")
 
@@ -77,6 +141,24 @@ def _json_response(
     handler.wfile.write(body)
 
 
+def _empty_response(
+    handler: BaseHTTPRequestHandler,
+    status_code: int,
+    *,
+    allowed_origins: set[str],
+    protocol_version: str | None = None,
+    session_id: str | None = None,
+) -> None:
+    handler.send_response(status_code)
+    _send_cors_headers(handler, allowed_origins=allowed_origins)
+    handler.send_header("Content-Length", "0")
+    if protocol_version:
+        handler.send_header(MCP_PROTOCOL_VERSION_HEADER, protocol_version)
+    if session_id:
+        handler.send_header(MCP_SESSION_ID_HEADER, session_id)
+    handler.end_headers()
+
+
 def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
     try:
         content_length = int(handler.headers.get("Content-Length", 0))
@@ -85,9 +167,10 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
 
     raw_body = handler.rfile.read(content_length) if content_length > 0 else b"{}"
     try:
-        return json.loads(raw_body.decode("utf-8") or "{}")
+        payload = json.loads(raw_body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
         return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _drain_request_body(handler: BaseHTTPRequestHandler) -> None:
@@ -119,8 +202,16 @@ def _send_sse_headers(
     handler.end_headers()
 
 
-def _write_sse_event(handler: BaseHTTPRequestHandler, event: str, data: Dict[str, Any]) -> None:
+def _write_sse_event(
+    handler: BaseHTTPRequestHandler,
+    event: str,
+    data: Dict[str, Any],
+    *,
+    event_id: int | None = None,
+) -> None:
     payload = json.dumps(data, ensure_ascii=False)
+    if event_id is not None:
+        handler.wfile.write(f"id: {event_id}\n".encode("utf-8"))
     handler.wfile.write(f"event: {event}\n".encode("utf-8"))
     for line in payload.splitlines():
         handler.wfile.write(f"data: {line}\n".encode("utf-8"))
@@ -128,10 +219,15 @@ def _write_sse_event(handler: BaseHTTPRequestHandler, event: str, data: Dict[str
     handler.wfile.flush()
 
 
-@dataclass(slots=True)
-class StreamableSession:
-    user_id: str
-    protocol_version: str
+def _parse_accept_header(header_value: str | None) -> set[str]:
+    if not header_value:
+        return set()
+    tokens: set[str] = set()
+    for part in header_value.split(","):
+        token = part.split(";", 1)[0].strip().lower()
+        if token:
+            tokens.add(token)
+    return tokens
 
 
 def _extract_bearer_token(header_value: str | None) -> str | None:
@@ -141,6 +237,18 @@ def _extract_bearer_token(header_value: str | None) -> str | None:
     if header_value.startswith(prefix):
         return header_value[len(prefix) :].strip() or None
     return None
+
+
+def _parse_last_event_id(header_value: str | None) -> int | None:
+    if header_value is None or header_value.strip() == "":
+        return None
+    try:
+        value = int(header_value)
+    except ValueError as exc:
+        raise ValueError("invalid_last_event_id") from exc
+    if value < 0:
+        raise ValueError("invalid_last_event_id")
+    return value
 
 
 def _build_handler(
@@ -184,15 +292,6 @@ def _build_handler(
                 protocol_version=protocol_version,
             )
 
-        def _resolve_user_id(self) -> str | None:
-            if auth_verifier is None:
-                return None
-
-            token = _extract_bearer_token(self.headers.get("Authorization"))
-            if token is None:
-                return None
-            return auth_verifier.verify(token)
-
         def _require_auth(self) -> str | None:
             if auth_verifier is None:
                 return "default"
@@ -220,17 +319,43 @@ def _build_handler(
                 return None
             return user_id
 
-        def _resolve_session(self, user_id: str) -> tuple[str | None, str]:
-            session_id = self.headers.get(MCP_SESSION_ID_HEADER)
-            if session_id:
-                with sessions_lock:
-                    session = sessions.get(session_id)
-                if session is None:
-                    raise KeyError("session_not_found")
-                return session_id, session.user_id
-            return None, user_id
+        def _get_session(self, session_id: str) -> StreamableSession | None:
+            with sessions_lock:
+                return sessions.get(session_id)
 
-        def _protocol_error(self, error: str, *, status_code: int = 400, session_id: str | None = None) -> None:
+        def _store_session(self, session_id: str, session: StreamableSession) -> None:
+            with sessions_lock:
+                sessions[session_id] = session
+
+        def _remove_session(self, session_id: str) -> StreamableSession | None:
+            with sessions_lock:
+                return sessions.pop(session_id, None)
+
+        def _resolve_session(
+            self,
+            user_id: str,
+        ) -> tuple[str | None, StreamableSession | None]:
+            session_id = self.headers.get(MCP_SESSION_ID_HEADER)
+            if not session_id:
+                return None, None
+
+            session = self._get_session(session_id)
+            if session is None:
+                raise KeyError("session_not_found")
+
+            if auth_verifier is not None and session.user_id != user_id:
+                raise PermissionError("session_owner_mismatch")
+
+            session.touch()
+            return session_id, session
+
+        def _protocol_error(
+            self,
+            error: str,
+            *,
+            status_code: int = 400,
+            session_id: str | None = None,
+        ) -> None:
             _json_response(
                 self,
                 status_code,
@@ -266,8 +391,7 @@ def _build_handler(
                     return None
                 return header_version or protocol_version
 
-            with sessions_lock:
-                session = sessions.get(session_id)
+            session = self._get_session(session_id)
             if session is None:
                 self._protocol_error("session_not_found", status_code=404)
                 return None
@@ -278,6 +402,77 @@ def _build_handler(
                 return None
 
             return effective_version
+
+        def _validate_post_accept(self) -> str | None:
+            accepts = _parse_accept_header(self.headers.get("Accept"))
+            if not accepts:
+                self._protocol_error("not_acceptable", status_code=406)
+                return None
+
+            accepts_json = "*/*" in accepts or "application/json" in accepts
+            accepts_stream = "text/event-stream" in accepts
+            if not accepts_json and not accepts_stream:
+                self._protocol_error("not_acceptable", status_code=406)
+                return None
+            if accepts_stream and not accepts_json:
+                return "stream"
+            return "json"
+
+        def _validate_get_accept(self) -> bool:
+            accepts = _parse_accept_header(self.headers.get("Accept"))
+            if "*/*" in accepts or "text/event-stream" in accepts:
+                return True
+            self._protocol_error("not_acceptable", status_code=406)
+            return False
+
+        def _validate_json_content_type(self) -> bool:
+            content_type = (self.headers.get("Content-Type") or "").lower()
+            if not content_type:
+                self._protocol_error("unsupported_media_type", status_code=415)
+                return False
+            if "application/json" not in content_type:
+                self._protocol_error("unsupported_media_type", status_code=415)
+                return False
+            return True
+
+        def _write_stream_events(
+            self,
+            *,
+            session: StreamableSession,
+            session_id: str,
+            effective_version: str,
+            after_event_id: int,
+        ) -> None:
+            _send_sse_headers(
+                self,
+                allowed_origins=allowed_origins,
+                protocol_version=effective_version,
+                session_id=session_id,
+            )
+
+            last_sent_event_id = after_event_id
+            while True:
+                for event in session.replay_events_after(last_sent_event_id):
+                    _write_sse_event(
+                        self,
+                        event.name,
+                        event.payload,
+                        event_id=event.event_id,
+                    )
+                    last_sent_event_id = event.event_id
+
+                if session.closed:
+                    self.close_connection = True
+                    return
+
+                has_new_event = session.wait_for_events(
+                    last_sent_event_id,
+                    timeout_sec=_STREAM_HEARTBEAT_SEC,
+                )
+                if has_new_event:
+                    continue
+
+                _write_sse_event(self, "ping", {"ts": time.time()})
 
         def do_OPTIONS(self) -> None:  # noqa: N802
             if not self._origin_allowed():
@@ -292,6 +487,26 @@ def _build_handler(
                 self._reject_disallowed_origin()
                 return
 
+            if self.path in {"/", "/health"}:
+                _json_response(
+                    self,
+                    200,
+                    {"status": "ok", "transport": "streamable_http"},
+                    allowed_origins=allowed_origins,
+                    protocol_version=protocol_version,
+                )
+                return
+
+            if self.path == "/tools":
+                _json_response(
+                    self,
+                    200,
+                    {"tools": registry.to_mcp_tools()},
+                    allowed_origins=allowed_origins,
+                    protocol_version=protocol_version,
+                )
+                return
+
             if self.path != "/mcp":
                 _json_response(
                     self,
@@ -302,31 +517,24 @@ def _build_handler(
                 )
                 return
 
+            if not self._validate_get_accept():
+                return
+
             user_id = self._require_auth()
             if user_id is None:
                 return
 
-            session_id = self.headers.get(MCP_SESSION_ID_HEADER)
-            if not session_id:
-                _json_response(
-                    self,
-                    400,
-                    {"error": "missing_session"},
-                    allowed_origins=allowed_origins,
-                    protocol_version=protocol_version,
-                )
+            try:
+                session_id, session = self._resolve_session(user_id)
+            except KeyError:
+                self._protocol_error("session_not_found", status_code=404)
+                return
+            except PermissionError:
+                self._protocol_error("session_owner_mismatch", status_code=403)
                 return
 
-            with sessions_lock:
-                session = sessions.get(session_id)
-            if session is None:
-                _json_response(
-                    self,
-                    404,
-                    {"error": "session_not_found"},
-                    allowed_origins=allowed_origins,
-                    protocol_version=protocol_version,
-                )
+            if session_id is None or session is None:
+                self._protocol_error("missing_session")
                 return
 
             effective_version = self._validate_protocol_version(
@@ -336,13 +544,34 @@ def _build_handler(
             if effective_version is None:
                 return
 
-            _send_sse_headers(
-                self,
-                allowed_origins=allowed_origins,
-                protocol_version=effective_version,
-                session_id=session_id,
-            )
-            _write_sse_event(self, "ready", {"session_id": session_id, "transport": "streamable_http"})
+            try:
+                last_event_id = _parse_last_event_id(self.headers.get("Last-Event-ID"))
+            except ValueError:
+                self._protocol_error("invalid_last_event_id")
+                return
+
+            after_event_id = last_event_id or 0
+            try:
+                session.replay_events_after(after_event_id)
+            except ValueError:
+                self._protocol_error(
+                    "event_history_unavailable",
+                    status_code=409,
+                    session_id=session_id,
+                )
+                return
+
+            try:
+                self._write_stream_events(
+                    session=session,
+                    session_id=session_id,
+                    effective_version=effective_version,
+                    after_event_id=after_event_id,
+                )
+            except BrokenPipeError:
+                self.close_connection = True
+            except ConnectionResetError:
+                self.close_connection = True
 
         def do_POST(self) -> None:  # noqa: N802
             if not self._origin_allowed():
@@ -357,6 +586,15 @@ def _build_handler(
                     allowed_origins=allowed_origins,
                     protocol_version=protocol_version,
                 )
+                return
+
+            response_mode = self._validate_post_accept()
+            if response_mode is None:
+                _drain_request_body(self)
+                return
+
+            if not self._validate_json_content_type():
+                _drain_request_body(self)
                 return
 
             user_id = self._require_auth()
@@ -375,8 +613,11 @@ def _build_handler(
                 )
                 return
 
+            method = payload.get("method")
+            is_jsonrpc_response = "method" not in payload and "id" in payload
+
             try:
-                session_id, session_user_id = self._resolve_session(user_id)
+                session_id, session = self._resolve_session(user_id)
             except KeyError:
                 _json_response(
                     self,
@@ -386,8 +627,16 @@ def _build_handler(
                     protocol_version=protocol_version,
                 )
                 return
+            except PermissionError:
+                _json_response(
+                    self,
+                    403,
+                    {"error": "session_owner_mismatch"},
+                    allowed_origins=allowed_origins,
+                    protocol_version=protocol_version,
+                )
+                return
 
-            method = payload.get("method")
             if method == "initialize" and session_id is None:
                 effective_version = self._validate_protocol_version(
                     session_id=None,
@@ -396,13 +645,20 @@ def _build_handler(
                 )
                 if effective_version is None:
                     return
+
                 session_id = uuid.uuid4().hex
-                with sessions_lock:
-                    sessions[session_id] = StreamableSession(
-                        user_id=user_id,
-                        protocol_version=effective_version,
-                    )
-                session_user_id = user_id
+                session = StreamableSession(
+                    user_id=user_id,
+                    protocol_version=effective_version,
+                )
+                session.append_event(
+                    "ready",
+                    {
+                        "session_id": session_id,
+                        "transport": "streamable_http",
+                    },
+                )
+                self._store_session(session_id, session)
             else:
                 effective_version = self._validate_protocol_version(
                     session_id=session_id,
@@ -412,8 +668,18 @@ def _build_handler(
                 if effective_version is None:
                     return
 
+            if is_jsonrpc_response:
+                _empty_response(
+                    self,
+                    202,
+                    allowed_origins=allowed_origins,
+                    protocol_version=effective_version,
+                    session_id=session_id,
+                )
+                return
+
             context = MCPRequestContext(
-                user_id=session_user_id,
+                user_id=user_id,
                 session_id=session_id,
                 transport="streamable_http",
             )
@@ -423,16 +689,25 @@ def _build_handler(
                 deps=protocol_deps,
             )
 
-            wants_stream = "text/event-stream" in (self.headers.get("Accept") or "")
-            if wants_stream:
+            is_notification = payload.get("id") is None or response is None
+            if is_notification:
+                _empty_response(
+                    self,
+                    202,
+                    allowed_origins=allowed_origins,
+                    protocol_version=effective_version,
+                    session_id=session_id,
+                )
+                return
+
+            if response_mode == "stream":
                 _send_sse_headers(
                     self,
                     allowed_origins=allowed_origins,
                     protocol_version=effective_version,
                     session_id=session_id,
                 )
-                if response is not None:
-                    _write_sse_event(self, "message", response)
+                _write_sse_event(self, "message", response)
                 _write_sse_event(self, "done", {"status": "done"})
                 self.close_connection = True
                 return
@@ -440,7 +715,7 @@ def _build_handler(
             _json_response(
                 self,
                 200,
-                response or {"ok": True},
+                response,
                 allowed_origins=allowed_origins,
                 protocol_version=effective_version,
                 session_id=session_id,
@@ -467,12 +742,15 @@ def _build_handler(
                 return
 
             try:
-                session_id, _ = self._resolve_session(user_id)
+                session_id, session = self._resolve_session(user_id)
             except KeyError:
                 self._protocol_error("session_not_found", status_code=404)
                 return
+            except PermissionError:
+                self._protocol_error("session_owner_mismatch", status_code=403)
+                return
 
-            if session_id is None:
+            if session_id is None or session is None:
                 self._protocol_error("missing_session")
                 return
 
@@ -483,8 +761,9 @@ def _build_handler(
             if effective_version is None:
                 return
 
-            with sessions_lock:
-                sessions.pop(session_id, None)
+            removed_session = self._remove_session(session_id)
+            if removed_session is not None:
+                removed_session.close()
 
             _json_response(
                 self,
@@ -513,6 +792,10 @@ def run_server(
     )
     server = ThreadingHTTPServer((host, port), handler_cls)
     print(f"[ToolAnything] MCP Streamable HTTP 已啟動：http://{host}:{port}/mcp")
+    print("健康檢查：/health，工具列表：/tools")
+    print("GET /mcp：建立或恢復 server->client stream（需帶 Mcp-Session-Id）")
+    print("POST /mcp：JSON-RPC request/notification")
+    print("DELETE /mcp：關閉 session")
     print("Legacy SSE transport 仍保留於既有 mcp_tool_server。")
     try:
         server.serve_forever()

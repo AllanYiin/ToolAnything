@@ -10,11 +10,20 @@ from toolanything import tool
 from toolanything.core.registry import ToolRegistry
 from toolanything.inspector.app import create_app
 from toolanything.inspector.service import MCPInspectorService
+from toolanything.server.mcp_streamable_http import _build_handler as _build_streamable_handler
 from toolanything.server.mcp_tool_server import _build_handler
 
 
 def _start_http_server(registry: ToolRegistry):
     handler_cls = _build_handler(registry, host="127.0.0.1", port=0)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def _start_streamable_http_server(registry: ToolRegistry):
+    handler_cls = _build_streamable_handler(registry, host="127.0.0.1", port=0)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -68,6 +77,43 @@ def test_inspector_service_lists_and_calls_http_tools():
             entry["payload"].get("method") == "tools/call"
             for entry in call_result["trace"]
             if entry["direction"] == "outbound"
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_inspector_service_auto_detects_streamable_http_tools():
+    registry = ToolRegistry()
+
+    @tool(name="ping", description="Ping", registry=registry)
+    def ping():
+        return {"pong": True}
+
+    @tool(name="echo", description="Echo message", registry=registry)
+    def echo(message: str):
+        return {"echo": message}
+
+    server, thread = _start_streamable_http_server(registry)
+    port = server.server_address[1]
+    service = MCPInspectorService()
+
+    try:
+        payload = {"mode": "http", "url": f"http://127.0.0.1:{port}"}
+        tools_result = service.list_tools(payload)
+        assert tools_result["count"] == 2
+        assert any(tool["name"] == "echo" for tool in tools_result["tools"])
+        assert any(
+            entry["transport"] == "streamable_http"
+            for entry in tools_result["trace"]
+        )
+
+        call_result = service.call_tool(payload, name="echo", arguments={"message": "hi"})
+        assert json.loads(call_result["result"]["content"][0]["text"]) == {"echo": "hi"}
+        assert any(
+            entry["transport"] == "streamable_http"
+            for entry in call_result["trace"]
         )
     finally:
         server.shutdown()
@@ -196,6 +242,35 @@ def test_inspector_app_tools_endpoints():
         payload = response.json()
         assert json.loads(payload["result"]["content"][0]["text"]) == {"echo": "from-app"}
         assert payload["trace"]
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_inspector_app_connection_test_supports_streamable_http():
+    registry = ToolRegistry()
+
+    @tool(name="ping", description="Ping", registry=registry)
+    def ping():
+        return {"pong": True}
+
+    server, thread = _start_streamable_http_server(registry)
+    port = server.server_address[1]
+    client = TestClient(create_app())
+
+    try:
+        response = client.post(
+            "/api/connection/test",
+            json={"connection": {"mode": "http", "url": f"http://127.0.0.1:{port}"}},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["ok"] is True
+        steps = {step["name"]: step for step in payload["steps"]}
+        assert steps["transport"]["status"] == "PASS"
+        assert steps["transport"]["details"]["transport"] == "streamable_http"
     finally:
         client.close()
         server.shutdown()

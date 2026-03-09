@@ -8,5 +8,6 @@
 - [Connection Tester / Doctor](../README.md#connection-tester--doctor)：快速驗證 transport、initialize、tools/list、tools/call。
 - [Built-in MCP Test Client](../README.md#built-in-mcp-test-client)：Web 版互動式 inspect 介面，支援工具探索與 OpenAI tool-calling smoke test。
 - [MCP Test Client Spec](mcp-test-client-spec.md)：內建 inspect 功能的規格、MVP 邊界與開發階段紀錄。
+- [Migration Guide](migration-guide.md)：callable-first 舊用法、source-based 新用法與 compatibility layer 說明。
 - [Refactor: Callable Coupling Baseline](refactor/callable-coupling-baseline.md)：invoker-first 重構前的 callable-first 耦合盤點與風險邊界。
 - [Refactor: Migration Baseline](refactor/migration-baseline.md)：Phase 0 相容承諾、compatibility layer 定位與後續 phase 邊界。

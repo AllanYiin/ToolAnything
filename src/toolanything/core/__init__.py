@@ -1,7 +1,11 @@
+from .credentials import CredentialResolver
+from .http_tools import build_http_input_schema, compile_http_tool, register_http_tool
 from .invokers import CallableInvoker, Invoker
+from .invokers import HttpInvoker
 from .models import PipelineDefinition, ToolContract, ToolDefinition, ToolSpec
 from .registry import ToolRegistry
 from .runtime_types import ExecutionContext, InvocationResult, StreamEmitter
+from .source_specs import HttpFieldSpec, HttpSourceSpec, RetryPolicy
 from .tool_manager import ToolManager
 from .tool_search import ToolSearchTool, build_search_tool
 from .connection_tester import (
@@ -23,9 +27,17 @@ __all__ = [
     "PipelineDefinition",
     "Invoker",
     "CallableInvoker",
+    "HttpInvoker",
     "ExecutionContext",
     "InvocationResult",
     "StreamEmitter",
+    "CredentialResolver",
+    "HttpFieldSpec",
+    "HttpSourceSpec",
+    "RetryPolicy",
+    "build_http_input_schema",
+    "compile_http_tool",
+    "register_http_tool",
     "ToolRegistry",
     "ToolManager",
     "ToolSearchTool",

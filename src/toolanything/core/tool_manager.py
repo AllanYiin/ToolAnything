@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
+from .credentials import CredentialResolver
+from .http_tools import register_http_tool
 from .models import ToolSpec
 from .registry import ToolRegistry
 from .failure_log import FailureLogManager
+from .source_specs import HttpSourceSpec
 from ..runtime.concurrency import ParallelOptions, RetryPolicy, parallel_map_async
 
 
@@ -47,6 +50,18 @@ class ToolManager:
             return decorator(func)
 
         return decorator
+
+    def register_http_tool(
+        self,
+        source: HttpSourceSpec,
+        *,
+        credential_resolver: CredentialResolver | None = None,
+    ) -> ToolSpec:
+        return register_http_tool(
+            self.registry,
+            source,
+            credential_resolver=credential_resolver,
+        )
 
     def _filter_specs(self, adapter: str) -> List[ToolSpec]:
         return [

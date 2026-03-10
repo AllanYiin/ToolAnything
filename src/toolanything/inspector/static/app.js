@@ -45,11 +45,20 @@ const elements = {
   resetStateButton: document.getElementById("resetStateButton"),
   reportStepTemplate: document.getElementById("reportStepTemplate"),
   schemaFieldTemplate: document.getElementById("schemaFieldTemplate"),
+  statusTransport: document.getElementById("statusTransport"),
+  statusCapabilities: document.getElementById("statusCapabilities"),
+  statusTools: document.getElementById("statusTools"),
 };
 
 function setBadge(kind, text) {
   elements.connectionBadge.textContent = text;
   elements.connectionBadge.className = `badge badge-${kind}`;
+}
+
+function setOptionalText(element, text) {
+  if (element) {
+    element.textContent = text;
+  }
 }
 
 function saveSettings() {
@@ -147,8 +156,9 @@ function renderTrace(trace) {
   filteredTrace.forEach((entry, index) => {
     const article = document.createElement("article");
     article.className = `trace-entry ${entry.direction}`;
+    const title = entry.payload?.method || `${entry.direction} / ${entry.kind}`;
     article.innerHTML = `
-      <strong>#${index + 1} ${entry.direction} / ${entry.kind}</strong>
+      <strong>#${index + 1} ${title}</strong>
       <p class="entry-meta">${entry.transport} · ${entry.at_ms}ms</p>
       <pre>${JSON.stringify(entry.payload, null, 2)}</pre>
     `;
@@ -212,8 +222,9 @@ function handleExportTrace() {
 function renderCapabilities(initializePayload) {
   if (!initializePayload || typeof initializePayload !== "object") {
     elements.capabilityServer.textContent = "尚未取得 initialize 資訊";
-    elements.capabilityGrid.className = "capability-grid empty-state";
+    elements.capabilityGrid.className = "cap-grid empty-state";
     elements.capabilityGrid.textContent = "載入工具或完成連線檢查後，這裡會顯示 server capabilities。";
+    setOptionalText(elements.statusCapabilities, "尚未初始化");
     return;
   }
 
@@ -239,8 +250,9 @@ function renderCapabilities(initializePayload) {
   ];
 
   elements.capabilityServer.textContent = `${serverInfo.name || "Unknown Server"} ${serverInfo.version || ""} · protocol ${protocolVersion}`.trim();
-  elements.capabilityGrid.className = "capability-grid";
+  elements.capabilityGrid.className = "cap-grid";
   elements.capabilityGrid.innerHTML = "";
+  setOptionalText(elements.statusCapabilities, `protocol ${protocolVersion}`);
 
   rows.forEach((row) => {
     const article = document.createElement("article");
@@ -258,12 +270,17 @@ function renderCapabilities(initializePayload) {
 
 function renderReport(report) {
   elements.reportSummary.textContent = `${report.ok ? "成功" : "失敗"}，總耗時 ${report.duration_ms}ms`;
+  elements.reportSummary.style.color = report.ok ? "var(--green)" : "var(--red)";
   elements.reportSteps.innerHTML = "";
+  elements.reportSteps.className = "diag-list";
   const initializeStep = report.steps.find((step) => step.name === "initialize" && step.status === "PASS");
   renderCapabilities(initializeStep?.details || null);
   report.steps.forEach((step) => {
     const fragment = elements.reportStepTemplate.content.cloneNode(true);
-    fragment.querySelector(".step-name").textContent = step.name;
+    const card = fragment.querySelector(".diag-card");
+    const head = fragment.querySelector(".diag-head");
+    const body = fragment.querySelector(".diag-body");
+    fragment.querySelector(".diag-name").textContent = step.name;
     const statusEl = fragment.querySelector(".step-status");
     statusEl.textContent = step.status;
     statusEl.classList.add(step.status === "PASS" ? "status-pass" : "status-fail");
@@ -281,7 +298,15 @@ function renderReport(report) {
     }
     if (Object.keys(details).length) {
       detailEl.textContent = JSON.stringify(details, null, 2);
-      detailEl.classList.remove("hidden");
+      body.classList.remove("hidden");
+      card.classList.add("open");
+      head.addEventListener("click", () => {
+        body.classList.toggle("hidden");
+        card.classList.toggle("open", !body.classList.contains("hidden"));
+      });
+    } else {
+      head.disabled = true;
+      head.style.cursor = "default";
     }
     elements.reportSteps.appendChild(fragment);
   });
@@ -307,6 +332,11 @@ function renderToolList(tools) {
       <p class="entry-meta">${description}</p>
       <pre>${JSON.stringify(tool.input_schema || {}, null, 2)}</pre>
     `;
+    article.addEventListener("click", () => {
+      elements.toolSelect.value = tool.name;
+      renderSchemaForm(tool);
+      activateTab("result");
+    });
     elements.toolList.appendChild(article);
   });
 }
@@ -359,11 +389,13 @@ function applyToolFilter() {
 
   if (!state.tools.length) {
     elements.toolSummary.textContent = "尚未載入工具";
+    setOptionalText(elements.statusTools, "0 工具已載入");
     return;
   }
   elements.toolSummary.textContent = state.toolFilter.trim()
     ? `顯示 ${filteredTools.length} / ${state.tools.length} 個工具`
     : `共 ${state.tools.length} 個工具`;
+  setOptionalText(elements.statusTools, `${state.tools.length} 工具已載入`);
 }
 
 function createSchemaField(name, schema, requiredNames) {
@@ -484,7 +516,7 @@ function collectArguments() {
 
 function appendTimelineEntry(kind, title, payload) {
   if (elements.llmTimeline.classList.contains("empty-state")) {
-    elements.llmTimeline.classList.remove("empty-state");
+    elements.llmTimeline.className = "llm-timeline";
     elements.llmTimeline.innerHTML = "";
   }
   const article = document.createElement("article");
@@ -579,20 +611,28 @@ async function streamLlmTest(payload) {
 async function handleConnectionTest() {
   saveSettings();
   setBadge("running", "檢查中");
+  setOptionalText(elements.statusTransport, "檢查連線中");
   try {
     const report = await postJson("/api/connection/test", { connection: getConnectionPayload() });
     renderReport(report);
     setBadge(report.ok ? "success" : "failed", report.ok ? "已接通" : "檢查失敗");
+    setOptionalText(
+      elements.statusTransport,
+      report.ok ? `${elements.transportMode.value.toUpperCase()} 已接通` : "連線檢查失敗",
+    );
   } catch (error) {
     elements.reportSummary.textContent = "檢查失敗";
+    elements.reportSummary.style.color = "var(--red)";
     elements.reportSteps.innerHTML = `<div class="empty-state">${error.message}</div>`;
     setBadge("failed", "檢查失敗");
+    setOptionalText(elements.statusTransport, "連線檢查失敗");
   }
 }
 
 async function handleLoadTools() {
   saveSettings();
   setBadge("running", "載入中");
+  setOptionalText(elements.statusTransport, "工具載入中");
   try {
     const payload = await postJson("/api/tools/list", { connection: getConnectionPayload() });
     state.tools = payload.tools || [];
@@ -600,11 +640,13 @@ async function handleLoadTools() {
     renderTrace(payload.trace || []);
     renderCapabilities(payload.initialize || null);
     setBadge("success", "工具已載入");
+    setOptionalText(elements.statusTransport, "工具已載入");
     activateTab("tools");
   } catch (error) {
     elements.toolSummary.textContent = "工具載入失敗";
     elements.toolList.innerHTML = `<div class="empty-state">${error.message}</div>`;
     setBadge("failed", "載入失敗");
+    setOptionalText(elements.statusTransport, "工具載入失敗");
   }
 }
 
@@ -628,7 +670,7 @@ async function handleToolCall() {
 
 async function handleLlmRun() {
   saveSettings();
-  elements.llmTimeline.className = "timeline empty-state";
+  elements.llmTimeline.className = "llm-timeline empty-state";
   elements.llmTimeline.textContent = "開始執行...";
   activateTab("llm");
   setBadge("running", "LLM 測試中");
@@ -735,6 +777,9 @@ function init() {
   renderTrace([]);
   renderCapabilities(null);
   renderSchemaForm(null);
+  setOptionalText(elements.statusTransport, "等待連線");
+  setOptionalText(elements.statusCapabilities, "尚未初始化");
+  setOptionalText(elements.statusTools, "0 工具已載入");
 }
 
 init();

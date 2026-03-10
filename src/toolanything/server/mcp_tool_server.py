@@ -24,6 +24,12 @@ from ..protocol.mcp_jsonrpc import (
 from .mcp_runtime import build_protocol_dependencies
 from ..utils.logger import configure_logging, logger
 
+_CLIENT_DISCONNECT_ERRORS = (
+    BrokenPipeError,
+    ConnectionAbortedError,
+    ConnectionResetError,
+)
+
 
 def _build_allowed_origins(host: str, port: int) -> set[str]:
     configured = os.getenv("TOOLANYTHING_ALLOWED_ORIGINS")
@@ -156,7 +162,7 @@ def _write_sse_event_locked(session: SSESession, event: str, data: Dict[str, Any
             session.handler.wfile.write(message.encode("utf-8"))
             session.handler.wfile.flush()
         return True
-    except BrokenPipeError:
+    except _CLIENT_DISCONNECT_ERRORS:
         logger.warning("MCP SSE client disconnected")
         return False
     except Exception:
@@ -186,6 +192,14 @@ def _build_handler(
     class MCPToolHandler(BaseHTTPRequestHandler):
         server_version = "ToolAnythingMCP/0.1"
         protocol_version = "HTTP/1.1"
+
+        def handle(self) -> None:  # noqa: D401 - stdlib hook
+            """處理單一 HTTP 連線，忽略 client 主動中止造成的例外。"""
+
+            try:
+                super().handle()
+            except _CLIENT_DISCONNECT_ERRORS:
+                logger.warning("MCP HTTP client disconnected")
 
         def log_message(self, format: str, *args: Any) -> None:  # pragma: no cover - 使用預設 logging 行為
             super().log_message(format, *args)

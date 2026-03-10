@@ -1,79 +1,120 @@
 # ToolAnything
 
-ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫一次函數即可同時被 OpenAI Tool Calling 與 MCP 使用。專案核心特色包含：
+> **ToolAnything for Modern AI Toolchains**  
+> **One Tool. Two Protocols. Zero Glue Code.**
 
-- 單一函數、雙協議兼容：使用 `@tool` decorator 註冊後即可直接輸出 OpenAI/MCP schema。
-- invoker-first 核心：工具 contract、source、invoker、runtime、transport 已分層，不再把 Python callable 當成唯一來源。
-- source-based API：可直接把 HTTP API、SQL query、PyTorch / ONNX inference 註冊成 tool，不需要再手寫 wrapper function。
-- 語法糖簡潔：依據 type hints 生成 JSON Schema，降低心智負擔。
-- 支援 pipeline 與多使用者 state：透過 `@pipeline` decorator 組裝跨工具流程並維持使用者上下文。
+ToolAnything 是給 AI 開發工程師的工具層。你定義一次 tool，就可以同時接上 **MCP** 與 **OpenAI tool calling**，不用自己再維護兩套 schema、兩套名稱映射、兩套執行迴圈。
 
-👉 建議先閱讀 [Architecture Walkthrough](docs/architecture-walkthrough.md) 了解協議邊界與擴充方式。
-👉 若你要從舊 `@tool` / callable-first API 遷移，先看 [Migration Guide](docs/migration-guide.md)。
+它的目標不是再做一個 agent framework，而是把最麻煩、最重複的那層 **tool integration glue code** 抽掉：
 
-## Learning Path（學習路徑）
+- 把 Python function 直接變成 MCP / OpenAI 可用的 tool
+- 把 HTTP API、SQL、PyTorch / ONNX inference 直接註冊成 tool
+- 內建 `serve`、`doctor`、`inspect`，方便你啟動、診斷、驗證
+- 內建 `OpenAIChatRuntime`，不只輸出 schema，還能直接跑 OpenAI tool loop
 
-### 1) 初學者路線：從 0 到第一個 Tool
+如果你正在做：
 
-**對應 examples 入口**：[`examples/quickstart/README.md`](examples/quickstart/README.md)
+- AI agent / assistant 的工具層
+- MCP server 或 MCP-compatible integration
+- OpenAI function calling / tool calling 整合
+- 把既有 API、SQL 或 model inference 封裝成可呼叫工具
 
-**閱讀順序**
-1. [`examples/quickstart/README.md`](examples/quickstart/README.md) → `00_setup.md` → `01_define_tools.py` → `02_run_server.py` → `03_search_and_call.py`：最小可跑流程。  
-2. [`src/toolanything/decorators/tool.py`](src/toolanything/decorators/tool.py)：`tool()` decorator 註冊入口。  
-3. [`src/toolanything/core/models.py`](src/toolanything/core/models.py)：`ToolSpec` 的工具描述結構。  
-4. [`src/toolanything/cli.py`](src/toolanything/cli.py)：`toolanything search` 與 `toolanything serve`。  
+這個 repo 值得你看。
 
-**讀完能做到什麼**
-- 可以新增第一個 tool，透過 CLI search 找到它，並用 MCP `tools/call` 呼叫。
+## 為什麼用 ToolAnything
 
-### 2) 已懂 MCP/JSON-RPC 的路線：掌握協議邊界
+### 你實際省掉的是什麼
 
-**對應 examples 入口**：[`examples/protocol_boundary/README.md`](examples/protocol_boundary/README.md)
+不用 ToolAnything 時，你通常要自己做：
 
-**閱讀順序**
-1. [`src/toolanything/server/mcp_tool_server.py`](src/toolanything/server/mcp_tool_server.py) 與 [`src/toolanything/server/mcp_stdio_server.py`](src/toolanything/server/mcp_stdio_server.py)：看 transport 如何注入依賴。  
-2. [`src/toolanything/protocol/mcp_jsonrpc.py`](src/toolanything/protocol/mcp_jsonrpc.py)：`MCPJSONRPCProtocolCore.handle()` 的 method routing。  
-3. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md#為什麼-protocol-要獨立指出-protocol-core-的入口與責任)：對照協議邊界與責任切割。  
+1. 定義 Python function 或外部 API wrapper
+2. 產生 OpenAI tool schema
+3. 產生 MCP tool schema
+4. 處理名稱合法化與映射
+5. 寫 tool execution runtime
+6. 補 `stdio` / HTTP transport
+7. 再做 smoke test、inspector 與 Claude Desktop 設定
 
-**讀完能做到什麼**
-- 能判斷應該在 protocol core、server/transport 或工具層擴充功能，而不改動核心路由。
+ToolAnything 把這些常見重工收斂成一套。
 
-### 3) 進階路線：工具搜尋與策略化選擇
+### 核心價值
 
-**對應 examples 入口**：[`examples/tool_selection/README.md`](examples/tool_selection/README.md)
+| 能力 | 對開發者的價值 |
+| --- | --- |
+| 一次定義，同時輸出 MCP 與 OpenAI | 少維護兩套 integration，避免 schema 漂移 |
+| Source-based tools | 可以直接包 HTTP、SQL、model，不必再手寫 wrapper function |
+| `OpenAIChatRuntime` | 不只「能 export tools」，而是可以直接跑 tool loop |
+| MCP transports | 同時支援 `stdio`、Streamable HTTP 與 legacy SSE/HTTP |
+| `doctor` / `inspect` | 導入時更快驗證 initialize、tools/list、tools/call |
+| Tool search / metadata / strategy | 工具數量增加後仍能做篩選與策略化選擇 |
 
-**閱讀順序**
-1. [`src/toolanything/core/tool_search.py`](src/toolanything/core/tool_search.py)：`ToolSearchTool.search()` 入口。  
-2. [`src/toolanything/core/selection_strategies.py`](src/toolanything/core/selection_strategies.py)：`BaseToolSelectionStrategy`、`RuleBasedStrategy`。  
-3. [`src/toolanything/core/metadata.py`](src/toolanything/core/metadata.py)：`ToolMetadata` 與 `normalize_metadata()`。  
-4. [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md#tool-metadata-設計costlatency_hint_msside_effectcategorytagsextra與向下相容策略)：metadata 與策略章節整理。  
+## 這個專案適合誰
 
-**讀完能做到什麼**
-- 能自訂策略、限制 metadata 條件搜尋，並透過 `ToolSearchTool` 實作策略化工具選擇。  
+適合：
 
-## 協議對應方式（MCP STDIO / Streamable HTTP / SSE / OpenAI Tool Calling）
+- 想把既有 Python function 快速暴露成 AI tools 的工程師
+- 要同時支援 MCP 與 OpenAI tool calling 的產品 / 平台團隊
+- 想把 REST API、SQL query、model inference 變成正式 tool source 的團隊
+- 想要一套帶有 CLI、診斷與測試工具的 tool runtime
 
-專案內同時支援 MCP STDIO、MCP Streamable HTTP、legacy MCP SSE / HTTP 與 OpenAI Tool Calling，其對應方式如下：
+不適合：
 
-- **MCP STDIO**
-  - 走 `MCPStdioServer`，透過 stdin/stdout 的 JSON-RPC 2.0 傳輸。
-  - 與 URL 無關，屬於非 HTTP 通道。
-  - 實作位置：`src/toolanything/server/mcp_stdio_server.py`
-- **MCP Streamable HTTP**
-  - 走 `POST /mcp` 與 `GET /mcp`，transport 只負責 HTTP/SSE 串流與 session/auth headers。
-  - 為目前建議的 HTTP transport。
-  - 實作位置：`src/toolanything/server/mcp_streamable_http.py`
-- **MCP SSE / HTTP**
-  - 走 HTTP 伺服器，MCP SSE 入口為 `GET /sse`，並透過 `POST /messages/{session_id}` 傳送 JSON-RPC。
-  - 另提供簡化的 `POST /invoke/stream`（SSE）與 `POST /invoke` 介面，方便開發測試。
-  - 已保留為 legacy compatibility layer。
-  - 實作位置：`src/toolanything/server/mcp_tool_server.py`
-- **OpenAI Tool Calling**
-  - 可用 `OpenAIAdapter` 只做 schema 轉換，也可用 `OpenAIChatRuntime` 直接執行 Chat Completions tool loop。
-  - 不依賴 URL，屬於資料格式與呼叫封裝的對接。
-  - 實作位置：`src/toolanything/adapters/openai_adapter.py`、`src/toolanything/openai_runtime.py`
+- 你只需要一次性的單一 OpenAI schema 輸出
+- 你要的是完整 agent orchestration / memory / workflow platform
+- 你只想要 UI，不想碰 Python tool runtime
 
-最小 OpenAI tool-calling 範例如下：
+## 5 分鐘看懂它怎麼用
+
+### 1. 安裝
+
+目前最穩定的使用方式是直接從 repo 安裝：
+
+```bash
+git clone <your-fork-or-this-repo>
+cd ToolAnything
+pip install -e .
+```
+
+需要測試工具時：
+
+```bash
+pip install -e .[dev]
+```
+
+需求：
+
+- Python `>=3.10`
+
+### 2. 定義一個 tool
+
+```python
+from toolanything import tool
+
+
+@tool(name="weather.query", description="取得城市天氣")
+def get_weather(city: str, unit: str = "c") -> dict:
+    return {"city": city, "unit": unit, "temp": 25}
+```
+
+### 3. 啟動 MCP server
+
+```bash
+toolanything serve examples/quickstart/tools.py --stdio
+```
+
+或啟動 HTTP transport：
+
+```bash
+toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
+```
+
+### 4. 驗證 transport 與 tool call
+
+```bash
+toolanything doctor --mode stdio --tools examples.quickstart.tools
+```
+
+### 5. 直接跑 OpenAI tool loop
 
 ```python
 from toolanything import OpenAIChatRuntime
@@ -86,207 +127,236 @@ result = runtime.run(
 print(result["final_text"])
 ```
 
-## Source-Based Tools
+## 產品輪廓
 
-除了既有 `@tool` callable 用法，現在也支援 source-based API。這組範例集中放在 [`examples/non_function_tools/`](examples/non_function_tools/)：
+ToolAnything 可以分成四層理解：
 
-- HTTP：[`examples/non_function_tools/http_tool.py`](examples/non_function_tools/http_tool.py)
-- SQL：[`examples/non_function_tools/sql_tool.py`](examples/non_function_tools/sql_tool.py)
-- ONNX：[`examples/non_function_tools/onnx_tool.py`](examples/non_function_tools/onnx_tool.py)
-- PyTorch：[`examples/non_function_tools/pytorch_tool.py`](examples/non_function_tools/pytorch_tool.py)
+1. **Tool definition layer**
+   你用 `@tool` 或 source-based API 宣告工具。
+2. **Runtime layer**
+   ToolAnything 負責 schema、執行、名稱映射與 tool loop。
+3. **Transport layer**
+   同一份工具可透過 MCP `stdio`、Streamable HTTP、legacy SSE/HTTP 暴露。
+4. **Developer tooling**
+   `serve`、`doctor`、`inspect`、Claude Desktop 設定安裝與 examples。
 
-新 API 的核心是：
+這個分層的重點是：**你在寫的是 tool，不是在重複寫整合。**
 
-- `ToolContract`：對外 schema / metadata
-- `SourceSpec`：來源設定
-- `Invoker`：執行體
-- `ExecutionContext`：runtime 注入上下文
+## 主要功能
 
-## Connection Tester / Doctor
+### 1. 一份工具，同時支援 MCP 與 OpenAI
 
-ToolAnything 提供 `doctor` 子命令，用來快速確認 transport 與 MCP 基本流程是否可用：
+ToolAnything 內建：
+
+- MCP schema export
+- OpenAI tool schema export
+- OpenAI-safe tool name mapping
+- Tool invocation runtime
+- OpenAI tool-calling roundtrip runtime
+
+對應實作：
+
+- [openai_adapter.py](src/toolanything/adapters/openai_adapter.py)
+- [mcp_adapter.py](src/toolanything/adapters/mcp_adapter.py)
+- [openai_runtime.py](src/toolanything/openai_runtime.py)
+
+### 2. 不只 function，也支援外部來源
+
+你可以直接把下面這些來源變成 tool：
+
+- HTTP API
+- SQL query
+- PyTorch model inference
+- ONNX model inference
+
+相關範例：
+
+- [http_tool.py](examples/non_function_tools/http_tool.py)
+- [sql_tool.py](examples/non_function_tools/sql_tool.py)
+- [onnx_tool.py](examples/non_function_tools/onnx_tool.py)
+- [pytorch_tool.py](examples/non_function_tools/pytorch_tool.py)
+
+### 3. MCP transport 不只一種
+
+目前支援：
+
+| Transport | 用途 |
+| --- | --- |
+| `stdio` | Claude Desktop、IDE、本機 agent host 最直接 |
+| Streamable HTTP | 新版 MCP HTTP transport，建議做網路型整合時使用 |
+| legacy SSE / HTTP | 舊 client 相容層 |
+
+### 4. 內建診斷與檢查工具
+
+#### `doctor`
+
+快速驗證：
+
+- transport 是否接通
+- `initialize`
+- `tools/list`
+- `tools/call`
 
 ```bash
-# stdio 模式：自動啟動 doctor 專用 server，含 __ping__ 工具
-toolanything doctor --mode stdio --tools examples.quickstart.tools
-
-# 自訂 stdio 啟動指令
-toolanything doctor --mode stdio --cmd "python -m toolanything.cli run-stdio"
-
-
-# http 模式：自動啟動 serve（SSE + JSON-RPC）
-toolanything doctor --mode http --tools examples.quickstart.tools
-
-# 連線既有 HTTP server
-
 toolanything doctor --mode http --url http://localhost:9090
 ```
 
-輸出會包含每個步驟的 PASS/FAIL、耗時與錯誤建議，便於快速定位 transport、initialize、tools/list、tools/call 的問題。
+#### `inspect`
 
-## Built-in MCP Test Client
-
-如果你需要互動式檢查，不想只看 CLI 報告，可以啟動內建 Web 版 `inspect`：
+啟動內建 Web inspector：
 
 ```bash
 toolanything inspect
 ```
 
-預設會在 `http://127.0.0.1:9060` 啟動本機測試介面並自動開啟瀏覽器。可用參數：
+它適合：
 
-```bash
-# 指定 host / port，且不要自動開瀏覽器
-toolanything inspect --host 127.0.0.1 --port 9061 --no-open
+- 探索工具 schema
+- 手動測 tool arguments
+- 看 MCP transcript
+- 做 OpenAI tool-calling smoke test
 
-# 調整 inspector 預設 timeout
-toolanything inspect --timeout 12
-```
+## OpenAI tool calling
 
-`inspect` 和 `doctor` 的定位不同：
+這裡是 ToolAnything 跟一般「只會吐 schema 的 helper」最大差異之一。
 
-- `doctor`：偏 CLI smoke test，適合 CI、快速檢查 initialize / tools/list / tools/call。
-- `inspect`：偏互動式測試台，支援切換 `http` / `stdio`、瀏覽工具 schema、手動呼叫工具，並可選填 OpenAI API key 測試模型是否會正確調工具。
-
-目前 `inspect` v1 的限制：
-
-- 僅支援 `MCP HTTP SSE` 與 `STDIO`。
-- LLM 模式目前只支援 OpenAI API。
-- API key 不會存進 localStorage，只存在單次 request 記憶體中。
-- 這不是官方 MCP Inspector 的完整替代品，暫不提供 raw traffic replay、resources/prompts explorer。
-
-## 快速範例
+你可以只拿 schema：
 
 ```python
-from toolanything import tool, pipeline, ToolRegistry, StateManager
+from toolanything.adapters import OpenAIAdapter
+from toolanything.core.registry import ToolRegistry
 
-state_manager = StateManager()
-
-# 不需額外指定 registry，會自動使用全域預設註冊表
-@tool(name="weather.query", description="取得城市天氣")
-def get_weather(city: str, unit: str = "c") -> dict:
-    return {"city": city, "unit": unit, "temp": 25}
-
-# Pipeline 同樣自動註冊
-@pipeline(name="trip.plan", description="簡易行程規劃")
-def trip_plan(ctx, city: str):
-    registry = ToolRegistry.global_instance()
-    weather = registry.get("weather.query")
-    ctx.set("latest_city", city)
-    return weather(city=city)
+adapter = OpenAIAdapter(ToolRegistry.global_instance())
+tools = adapter.to_schema()
 ```
 
-預設會使用惰性初始化的全域 Registry，進階使用者仍可手動建立 `ToolRegistry()`，並透過 decorator 的 `registry` 參數覆寫使用的實例。
+也可以直接用內建 runtime 跑完整 tool loop：
 
-## Examples（情境入口清單）
+```python
+from toolanything import OpenAIChatRuntime
 
-- **Quickstart：從零跑通 MCP 基本流程**  
-  入口：[`examples/quickstart/README.md`](examples/quickstart/README.md)  
-  目標：定義工具 → 啟動 server → tools/list → CLI search → tools/call。  
+runtime = OpenAIChatRuntime()
+result = runtime.run(
+    model="gpt-4.1-mini",
+    prompt="請用工具回答問題",
+    system_prompt="如果工具可以回答，就優先使用工具。",
+)
+```
 
-- **Tool Selection：metadata 與策略化搜尋**  
-  入口：[`examples/tool_selection/README.md`](examples/tool_selection/README.md)  
-  目標：用 metadata 建立工具目錄、練習搜尋條件與自訂策略。  
+相關範例：
 
-- **Protocol Boundary：協議邊界與 transport 對照**  
-  入口：[`examples/protocol_boundary/README.md`](examples/protocol_boundary/README.md)  
-  目標：理解 protocol/core 與 server/transport 的責任分界。  
+- [dual_protocol_demo.py](examples/opencv_mcp_web/dual_protocol_demo.py)
 
-- **進階示例（閱讀時機：完成 Quickstart 後）**  
-  - `examples/demo_mcp.py`：最小 MCP HTTP server demo。  
-  - `examples/demo_mcp_stdio.py`：MCP stdio demo。  
-  - `examples/non_function_tools/http_tool.py`：宣告式 HTTP tool。  
-  - `examples/non_function_tools/sql_tool.py`：宣告式 SQL tool。  
-  - `examples/non_function_tools/onnx_tool.py`：ONNX model tool。  
-  - `examples/non_function_tools/pytorch_tool.py`：PyTorch model tool。  
-  - `examples/weather_tool/`：天氣工具模組。  
-  - `examples/opencv_mcp_web/`：OpenCV MCP Web 外部範例（檔案路徑工作流）。  
+## MCP 使用方式
 
-## 工具介面類型支援與規範
+### 啟動 stdio
 
-Schema 引擎會依據函數的 type hints 生成 JSON Schema，支援項目如下：
+```bash
+toolanything serve examples/quickstart/tools.py --stdio
+```
 
-- 基本型別：`str`、`int`、`float`、`bool`、`list`、`dict` 會映射到對應的 JSON Schema `type`。
-- 容器型別：`list[T]`、`tuple[T]` 會產生 `items`，`dict[key, value]` 會以 `additionalProperties` 描述 value 類型。
-- 合併型別：`Union[...]` 或 `Optional[T]` 會轉成 `oneOf`，同時保留 `null` 以表示可選值。
-- 限定值：`Literal[...]` 與 `Enum` 會輸出 `enum` 陣列；若 Enum 值為基本型別，會附帶對應的 `type` 方便驗證。
+### 啟動 Streamable HTTP
 
-若使用未支援或自訂類別，Schema 會回退為字串型別。建議在工具內自行序列化複雜物件，或改用基本型別、巢狀 `dict/list` 來描述資料結構，以確保工具在各協議下的可攜性與檢驗一致性。
+```bash
+toolanything serve examples/quickstart/tools.py --streamable-http --host 127.0.0.1 --port 9092
+```
 
-## 目錄結構
+### 啟動 legacy HTTP / SSE
 
-- `src/toolanything/core/`：核心資料模型與 Schema 生成邏輯。
-- `src/toolanything/decorators/`：`@tool` 與 `@pipeline` 語法糖。
-- `src/toolanything/adapters/`：OpenAI/MCP 協議轉換。
-- `src/toolanything/state/`：多使用者 session 管理。
-- `src/toolanything/pipeline/`：流程執行輔助。
-- `src/toolanything/utils/`：共用工具函數。
+```bash
+toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
+```
 
-## 下一步（Roadmap）
+更多 transport 細節請看：
 
-- [ ] **擴充 CLI（tool search / strategy / metadata）**
-  - [ ] `toolanything search` 新增 `--strategy` 參數，能選擇 `rule-based` / `weighted` 等策略，並明確指出會影響 metadata 條件篩選的行為。
-  - [ ] 增加 `toolanything search --metadata` 範例輸出說明（例如 `max-cost`、`latency-budget-ms`、`allow-side-effects`、`category` 與 tags），並補齊與 ToolSelection strategy 的關聯。
-  - [ ] `toolanything explain-search`（非破壞性子命令）輸出當前搜尋條件與策略、metadata 的對應說明，便於除錯。
-  - [ ] `toolanything examples` 提供 examples 入口導覽（連結與簡介）。
-- [ ] **擴充文件（docs/）**
-  - [ ] 補齊 [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md) 的「Tool Search 與 Strategy」章節，連到 metadata 與策略實作。
-  - [ ] 新增 `docs/cli-reference.md`：列出所有子命令、flag、使用情境與 `See also` 對應 examples。
-  - [ ] 更新 [`docs/README.md`](docs/README.md) 索引，補上 Learning Path 與 examples 導覽。
-- [ ] **擴充 examples 目錄**
-  - [ ] [`examples/quickstart/README.md`](examples/quickstart/README.md)：補上一步步執行指令與預期輸出片段。
-  - [ ] [`examples/tool_selection/README.md`](examples/tool_selection/README.md)：新增 metadata/constraints/strategy 三條路徑的差異示範。
-  - [ ] [`examples/protocol_boundary/README.md`](examples/protocol_boundary/README.md)：整理 protocol/core 與 server/transport 的對照清單與示意。
-- [ ] 撰寫更多自動化測試涵蓋 decorator 與 adapter。
-- [ ] 引入 SecurityManager、ResultSerializer 等擴展點的實際應用範例。
-- [ ] `skill as tool` 的 source / contract / runtime 設計。
+- [architecture-walkthrough.md](docs/architecture-walkthrough.md)
+- [examples/streamable_http/README.md](examples/streamable_http/README.md)
 
-## 相依套件說明
+## Examples
 
-- 執行與測試時會隨套件一併安裝 `tenacity`、`pytest` 與 `pytest-asyncio`，確保非同步測試所需外掛始終可用（詳見 `requirements.txt` 與 `pyproject.toml`）。
-- `http.server`、`urllib`、`asyncio`、`dataclasses` 等皆為 Python 標準庫模組，隨 CPython 內建提供，無需額外安裝或列入 requirements。
+如果你第一次接觸這個 repo，建議照這個順序看：
 
-## 與 Claude Desktop 的自動註冊整合
+| 路線 | 入口 | 你會學到什麼 |
+| --- | --- | --- |
+| Quickstart | [examples/quickstart/README.md](examples/quickstart/README.md) | 最短路徑跑通 tool 定義、serve、search、call |
+| Streamable HTTP | [examples/streamable_http/README.md](examples/streamable_http/README.md) | 新版 MCP HTTP transport 的 handshake 與 session lifecycle |
+| Tool Selection | [examples/tool_selection/README.md](examples/tool_selection/README.md) | metadata、constraints、strategy 與 semantic retrieval |
+| Protocol Boundary | [examples/protocol_boundary/README.md](examples/protocol_boundary/README.md) | protocol core 與 transport 的責任切割 |
+| Non-function Tools | [examples/non_function_tools/README.md](examples/non_function_tools/README.md) | 直接把 API、SQL、model 變成 tool |
+| OpenCV Web Demo | [examples/opencv_mcp_web/README.md](examples/opencv_mcp_web/README.md) | 較完整的 MCP + OpenAI 雙協議範例 |
 
-ToolAnything 內建輕量伺服器，可透過 CLI 載入 `@tool` 模組或外部 Python 檔案，並生成 Claude Desktop 設定：
+## Claude Desktop 整合
 
-- 啟動工具伺服器（載入工具模組）：
+ToolAnything 內建兩種方式：
 
-  ```bash
-  toolanything serve your_module --port 9090
-  toolanything serve examples/opencv_mcp_web/server.py --port 9091
-  ```
+### 產生設定片段
 
-  伺服器提供 `/health`、`/tools`、`GET /sse`、`POST /messages/{session_id}`、`POST /invoke` 與 `POST /invoke/stream` 等端點，預設監聽 `127.0.0.1`，可透過 `--host` 覆寫。
-  HTTP transport 會驗證 `Origin`；如需自訂允許來源，可設定 `TOOLANYTHING_ALLOWED_ORIGINS`（逗號分隔）。
-  若要讓 SSE session 維持特定使用者狀態，可用 `GET /sse?user_id=your-user-id` 建立 session；STDIO 模式可用 `TOOLANYTHING_USER_ID` 指定預設使用者。
+```bash
+toolanything init-claude --module examples/opencv_mcp_web/server.py --port 9091
+```
 
-- 產生 Claude Desktop 設定片段：
+### 直接寫入設定檔
 
-  ```bash
-  toolanything init-claude --module your_module
-  toolanything init-claude --module examples/opencv_mcp_web/server.py --port 9091
-  ```
+```bash
+toolanything install-claude --config "~/Library/Application Support/Claude/config.json" --port 9090 --module examples/opencv_mcp_web/server.py
+```
 
-  指令會在當前路徑生成 `claude_desktop_config.json`（如需覆寫可加上 `--force`），內容如下：
+如果你的目標是讓 MCP Desktop 類型 host 直接吃 stdio，這會比手動抄設定穩定很多。
 
-  ```json
-  {
-    "mcpServers": {
-      "toolanything": {
-        "command": "python",
-        "args": ["-m", "toolanything.cli", "serve", "your_module", "--stdio", "--port", "9090"],
-        "autoStart": true
-      }
-    }
-  }
-  ```
+## 遷移與相容性
 
-將此片段加入 Claude Desktop 設定檔（例如 macOS 的 `~/Library/Application Support/Claude/config.json`）並重新啟動，即可自動載入 ToolAnything 所提供的所有工具。
+如果你已經在用舊的 callable-first 方式，現在仍然可以繼續用：
 
-- 直接安裝 MCP 設定到 Claude Desktop：
+- `@tool`
+- `ToolSpec.from_function()`
+- `ToolRegistry.get() -> callable`
+- `ToolRegistry.execute_tool_async()`
 
-  ```bash
-  toolanything install-claude --config "~/Library/Application Support/Claude/config.json" --port 9090 --module your_module
-  ```
+但新功能建議優先採用 source-based API。
 
-  指令會讀取（或建立）指定的 Claude Desktop 設定檔，將 `mcpServers.toolanything` 自動寫入，重新啟動 Claude Desktop 後即可套用，無需手動複製貼上。若你要安裝 repo 內範例，直接把 `--module` 指向外部檔案路徑即可，例如 `examples/opencv_mcp_web/server.py`。
+詳細說明：
+
+- [migration-guide.md](docs/migration-guide.md)
+
+## 架構與設計
+
+如果你正在評估「這東西能不能撐長期維護」，再往下讀這份文件：
+
+- [architecture-walkthrough.md](docs/architecture-walkthrough.md)
+
+你會看到：
+
+- 為什麼 protocol core 與 transport 分開
+- 為什麼從 callable-first 轉向 invoker-first
+- 如何新增 transport
+- 如何新增 source
+- 如何新增 tool search strategy
+
+這些內容應該放在第二層閱讀，而不是 README 首屏；但如果你在乎可擴充性，這份文件很重要。
+
+## 專案狀態
+
+目前 `pyproject.toml` 中的版本是 `0.1.0`，定位仍偏早期，但已具備完整可跑的：
+
+- tool definition
+- MCP transports
+- OpenAI tool runtime
+- doctor / inspect
+- examples 與 migration 文件
+
+如果你是要評估導入，最合理的方式不是先看 roadmap，而是先跑：
+
+1. [examples/quickstart/README.md](examples/quickstart/README.md)
+2. `toolanything doctor`
+3. [examples/opencv_mcp_web/dual_protocol_demo.py](examples/opencv_mcp_web/dual_protocol_demo.py)
+
+## 文件索引
+
+- [docs/README.md](docs/README.md)
+- [architecture-walkthrough.md](docs/architecture-walkthrough.md)
+- [migration-guide.md](docs/migration-guide.md)
+- [mcp-test-client-spec.md](docs/mcp-test-client-spec.md)
+
+## License
+
+MIT

@@ -96,6 +96,30 @@ def get_weather(city: str, unit: str = "c") -> dict:
     return {"city": city, "unit": unit, "temp": 25}
 ```
 
+### `@tool` 的語法糖到底省了什麼
+
+`@tool` 的價值不是幫你少打一份 JSON，而是把「Python function 變成 MCP tool」這件事裡，大部分重複且低價值的整合工作自動化。
+
+以這段函式為例：
+
+```python
+@tool(name="weather.query", description="取得城市天氣")
+def get_weather(city: str, unit: str = "c") -> dict:
+    """查詢指定城市的即時天氣。"""
+    return {"city": city, "unit": unit, "temp": 25}
+```
+
+ToolAnything 目前會自動把它映射到 MCP tool definition 的核心部分：
+
+| Python 宣告 | ToolAnything 自動處理 | 對應到 MCP |
+| --- | --- | --- |
+| `name="weather.query"` | 註冊穩定 tool name | `name` |
+| `description=...` 或 docstring 摘要 | 組合對外描述文字 | `description` |
+| `city: str`, `unit: str = "c"` | 由 type hints 與 default 產生 JSON Schema | `input_schema`（tool input schema） |
+| 函式本體 | 包成可被 registry / runtime 呼叫的 invoker | `tools/call` 的執行目標 |
+
+換句話說，`@tool` 不是把 Python function 生硬包成字典，而是把「定義、註冊、schema、執行入口」一次接好。
+
 ### 3. 啟動 MCP server
 
 ```bash
@@ -126,6 +150,33 @@ result = runtime.run(
 )
 print(result["final_text"])
 ```
+
+## 從 Python function 到 MCP tool：隱形成本與可見責任
+
+### ToolAnything 幫你隱形處理掉的技術議題
+
+- 解析函式簽名與 type hints，產生 MCP / OpenAI 共用的 JSON Schema
+- 根據 default 值區分 required / optional 參數
+- 自動略過 `self`、`cls` 與 context 參數，避免把內部實作細節暴露成 tool input
+- 從 `description` 或 docstring 摘要補齊對外說明
+- 把函式註冊進 registry，接上 MCP `tools/list` 與 `tools/call`
+- 將 Python 回傳值序列化成 MCP 可回傳的內容格式
+- 統一處理工具執行錯誤與未預期例外，避免每個 tool 各寫一套錯誤外殼
+- 在 `serve` 模式下補上 MCP capability / server info / transport plumbing
+- 在 OpenAI 路徑下同步輸出 tool schema，並可直接接到內建 tool-calling runtime
+
+### 開發者仍然要自己處理的可見議題
+
+- 工具的業務邏輯是否正確，回傳結果是否真的能支撐 agent 決策
+- tool name、description、參數命名是否清楚且穩定
+- 外部 API、資料庫、模型權限與金鑰管理
+- 重試、超時、rate limit、成本控制與副作用管理
+- 工具輸出的資料結構設計，尤其是給 LLM 消費時的穩定性與可讀性
+- 部署策略與 host 整合選擇，例如要用 `stdio` 還是 HTTP transport
+- 若走 OpenAI tool calling，system prompt、tool policy 與模型選型仍需自己負責
+
+重點是：**ToolAnything 幫你消掉的是 integration glue，不是業務判斷。**  
+你應該把心力放在「這個 tool 該不該存在、契約怎麼設計、結果怎麼讓模型可靠使用」，而不是反覆手刻 schema、registry 與 protocol plumbing。
 
 ## 產品輪廓
 

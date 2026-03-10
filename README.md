@@ -1,7 +1,6 @@
 # ToolAnything
 
-> **ToolAnything for Modern AI Toolchains**  
-> **One Tool. Two Protocols. Zero Glue Code.**
+> **ToolAnything for Modern AI Toolchains**
 
 ToolAnything 是給 AI 開發工程師的工具層。你定義一次 tool，就可以同時接上 **MCP** 與 **OpenAI tool calling**，不用自己再維護兩套 schema、兩套名稱映射、兩套執行迴圈。
 
@@ -65,6 +64,39 @@ ToolAnything 把這些常見重工收斂成一套。
 
 ## 5 分鐘看懂它怎麼用
 
+### 先看最極端版本：1 分鐘做出一個 MCP server
+
+如果你已經裝好 Python 與 ToolAnything，做一個可被 MCP host 呼叫的 server，最短可以只要一個檔案加一條命令。
+
+```python
+from toolanything import tool
+
+
+@tool(name="calculator.add", description="加總兩個整數")
+def add(a: int, b: int) -> int:
+    return a + b
+```
+
+```bash
+toolanything serve tools.py --stdio
+```
+
+這樣就已經不是「只有一個 Python function」，而是一個有 `tools/list`、`tools/call`、schema 匯出與 stdio transport 的 MCP server。
+
+你沒有手寫的部分包括：
+
+- tool registration
+- input schema 生成
+- MCP tool definition 匯出
+- `tools/call` 路由
+- 回傳值序列化
+- stdio server plumbing
+
+如果要更誠實地說：
+
+- `1 分鐘`：你已經裝好環境，只是在把一個函式暴露成 MCP tool
+- `3 分鐘`：你從 clone repo 到第一次本機跑通 `serve`
+
 ### 1. 安裝
 
 目前最穩定的使用方式是直接從 repo 安裝：
@@ -103,6 +135,7 @@ def get_weather(city: str, unit: str = "c") -> dict:
 以這段函式為例：
 
 ```python
+import toolanything
 @tool(name="weather.query", description="取得城市天氣")
 def get_weather(city: str, unit: str = "c") -> dict:
     """查詢指定城市的即時天氣。"""

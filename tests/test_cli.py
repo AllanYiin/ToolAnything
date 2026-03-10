@@ -1,4 +1,7 @@
+import importlib
 import json
+
+import pytest
 
 from toolanything import tool
 from toolanything.cli import _build_parser
@@ -208,3 +211,47 @@ def test_load_tool_module_accepts_external_file_path(tmp_path, monkeypatch):
 
     names = [spec.name for spec in registry.list()]
     assert "external.echo" in names
+
+
+def test_load_tool_module_resolves_relative_file_path_from_repo_root(tmp_path, monkeypatch):
+    runtime_serve = importlib.import_module("toolanything.runtime.serve")
+    registry = ToolRegistry()
+    monkeypatch.setattr(
+        "toolanything.core.registry.ToolRegistry.global_instance",
+        staticmethod(lambda: registry),
+    )
+
+    repo_root = tmp_path / "repo"
+    script_path = repo_root / "examples" / "opencv_mcp_web" / "server.py"
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text(
+        "from toolanything import tool\n\n"
+        "@tool(name='repo.echo', description='Repo 工具')\n"
+        "def repo_echo(message: str) -> str:\n"
+        "    return message\n",
+        encoding="utf-8",
+    )
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    monkeypatch.chdir(outside_dir)
+    monkeypatch.setattr(runtime_serve, "_REPO_ROOT", repo_root)
+
+    load_tool_module("examples/opencv_mcp_web/server.py")
+
+    names = [spec.name for spec in registry.list()]
+    assert "repo.echo" in names
+
+
+def test_load_tool_module_reports_clear_error_for_missing_pathlike_input(tmp_path, monkeypatch):
+    runtime_serve = importlib.import_module("toolanything.runtime.serve")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(runtime_serve, "_REPO_ROOT", tmp_path / "repo")
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        load_tool_module("examples/opencv_mcp_web/server.py")
+
+    message = str(exc_info.value)
+    assert "examples/opencv_mcp_web/server.py" in message
+    assert str(tmp_path) in message
+    assert "repo root" in message

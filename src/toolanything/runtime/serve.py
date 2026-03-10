@@ -13,13 +13,38 @@ from ..server.mcp_streamable_http import run_server as run_streamable_http_serve
 from ..server.mcp_tool_server import run_server as run_legacy_http_server
 from ..utils.logger import configure_logging, logger
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _looks_like_file_path(module: str) -> bool:
+    return module.endswith(".py") or "/" in module or "\\" in module
+
+
+def _resolve_tool_module_path(module: str) -> Path | None:
+    module_path = Path(module)
+    candidates: list[Path] = []
+    if module_path.is_absolute():
+        candidates.append(module_path)
+    else:
+        candidates.append(Path.cwd() / module_path)
+        candidates.append(_REPO_ROOT / module_path)
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        normalized = candidate.resolve(strict=False)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if normalized.exists() and normalized.is_file():
+            return normalized
+    return None
+
 
 def load_tool_module(module: str) -> None:
     """載入使用者工具模組，觸發 @tool 註冊。"""
 
-    module_path = Path(module)
-    if module_path.exists() and module_path.is_file():
-        resolved = module_path.resolve()
+    resolved = _resolve_tool_module_path(module)
+    if resolved is not None:
         module_name = resolved.stem
         spec = importlib.util.spec_from_file_location(module_name, resolved)
         if spec is None or spec.loader is None:
@@ -28,6 +53,13 @@ def load_tool_module(module: str) -> None:
         sys.modules[module_name] = loaded
         spec.loader.exec_module(loaded)
         return
+
+    if _looks_like_file_path(module):
+        raise FileNotFoundError(
+            f"找不到工具模組檔案：{module}。"
+            f" 目前工作目錄：{Path.cwd()}。"
+            f" 請改用絕對路徑，或切到 repo root：{_REPO_ROOT}"
+        )
 
     importlib.import_module(module)
 

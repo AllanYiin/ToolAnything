@@ -61,30 +61,44 @@ def _schema_type_name(definition: Mapping[str, Any]) -> str:
 class ToolSearchDocumentBuilder:
     """Builds a multi-field text view from tool metadata and schema."""
 
+    def __init__(
+        self,
+        *,
+        include_description: bool = True,
+        include_tags: bool = True,
+        include_metadata: bool = True,
+        include_parameters: bool = True,
+    ) -> None:
+        self.include_description = include_description
+        self.include_tags = include_tags
+        self.include_metadata = include_metadata
+        self.include_parameters = include_parameters
+
     def build(self, spec: ToolSpec) -> ToolSearchDocument:
         metadata = normalize_metadata(spec.metadata, tags=spec.tags)
-        payload: list[str] = [
-            f"Tool name: {spec.name}",
-            f"Description: {spec.description}",
-        ]
+        payload: list[str] = [f"Tool name: {spec.name}"]
 
-        if spec.tags:
+        if self.include_description and spec.description:
+            payload.append(f"Description: {spec.description}")
+        if self.include_tags and spec.tags:
             payload.append(f"Tags: {', '.join(spec.tags)}")
-        if metadata.category:
-            payload.append(f"Category: {metadata.category}")
-        if metadata.cost is not None:
-            payload.append(f"Cost: {metadata.cost}")
-        if metadata.latency_hint_ms is not None:
-            payload.append(f"Latency hint ms: {metadata.latency_hint_ms}")
-        if metadata.side_effect is not None:
-            payload.append(f"Side effect: {metadata.side_effect}")
-        if metadata.extra:
-            payload.append(
-                "Extra metadata: "
-                + json.dumps(metadata.extra, ensure_ascii=False, sort_keys=True)
-            )
+        if self.include_metadata:
+            if metadata.category:
+                payload.append(f"Category: {metadata.category}")
+            if metadata.cost is not None:
+                payload.append(f"Cost: {metadata.cost}")
+            if metadata.latency_hint_ms is not None:
+                payload.append(f"Latency hint ms: {metadata.latency_hint_ms}")
+            if metadata.side_effect is not None:
+                payload.append(f"Side effect: {metadata.side_effect}")
+            if metadata.extra:
+                payload.append(
+                    "Extra metadata: "
+                    + json.dumps(metadata.extra, ensure_ascii=False, sort_keys=True)
+                )
 
-        payload.extend(self._format_parameters(spec.parameters))
+        if self.include_parameters:
+            payload.extend(self._format_parameters(spec.parameters))
         text = "\n".join(line for line in payload if line).strip()
         fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()
         return ToolSearchDocument(name=spec.name, text=text, fingerprint=fingerprint)

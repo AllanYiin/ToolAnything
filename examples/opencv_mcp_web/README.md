@@ -93,6 +93,8 @@ toolanything inspect
 python examples/opencv_mcp_web/dual_protocol_demo.py
 ```
 
+這支腳本現在會直接使用 repo 內建的 `OpenAIChatRuntime`，不需要你自己再手寫 OpenAI `tools`、tool loop 或名稱映射。
+
 如果你要真的打 OpenAI API：
 
 ```powershell

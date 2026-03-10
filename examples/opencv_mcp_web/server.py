@@ -80,6 +80,42 @@ def _ensure_color_image(image: np.ndarray) -> np.ndarray:
     return image
 
 
+def _draw_demo_rectangle(
+    canvas: np.ndarray,
+    top_left: tuple[int, int],
+    bottom_right: tuple[int, int],
+    color: tuple[int, int, int],
+    thickness: int,
+) -> None:
+    if hasattr(cv2, "rectangle"):
+        cv2.rectangle(canvas, top_left, bottom_right, color, thickness)
+        return
+
+    x1, y1 = top_left
+    x2, y2 = bottom_right
+    canvas[y1 : y1 + thickness, x1:x2] = color
+    canvas[y2 - thickness : y2, x1:x2] = color
+    canvas[y1:y2, x1 : x1 + thickness] = color
+    canvas[y1:y2, x2 - thickness : x2] = color
+
+
+def _draw_demo_circle(
+    canvas: np.ndarray,
+    center: tuple[int, int],
+    radius: int,
+    color: tuple[int, int, int],
+    thickness: int,
+) -> None:
+    if hasattr(cv2, "circle"):
+        cv2.circle(canvas, center, radius, color, thickness)
+        return
+
+    yy, xx = np.ogrid[: canvas.shape[0], : canvas.shape[1]]
+    distance = np.sqrt((xx - center[0]) ** 2 + (yy - center[1]) ** 2)
+    ring = (radius - thickness <= distance) & (distance <= radius + thickness)
+    canvas[ring] = color
+
+
 def build_demo_image_base64(width: int = 320, height: int = 200) -> str:
     """Generate a small demo image so the example can be verified without files."""
 
@@ -89,18 +125,19 @@ def build_demo_image_base64(width: int = 320, height: int = 200) -> str:
         canvas[row, :, 0] = blue
         canvas[row, :, 1] = 80
         canvas[row, :, 2] = 255 - blue
-    cv2.rectangle(canvas, (20, 20), (width - 20, height - 20), (255, 255, 255), 3)
-    cv2.circle(canvas, (width // 2, height // 2), min(width, height) // 5, (40, 40, 40), 4)
-    cv2.putText(
-        canvas,
-        "ToolAnything",
-        (20, height // 2 + 50),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
+    _draw_demo_rectangle(canvas, (20, 20), (width - 20, height - 20), (255, 255, 255), 3)
+    _draw_demo_circle(canvas, (width // 2, height // 2), min(width, height) // 5, (40, 40, 40), 4)
+    if all(hasattr(cv2, attr) for attr in ("putText", "FONT_HERSHEY_SIMPLEX", "LINE_AA")):
+        cv2.putText(
+            canvas,
+            "ToolAnything",
+            (20, height // 2 + 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
     return _encode_image(canvas)
 
 

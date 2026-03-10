@@ -64,6 +64,7 @@ from toolanything.exceptions import (
 from toolanything.state import StateManager
 
 from toolanything.runtime import run, serve
+from toolanything.openai_runtime import OpenAIChatRuntime
 
 
 from typing import TYPE_CHECKING
@@ -130,6 +131,7 @@ if TYPE_CHECKING:
         ToolNotFoundError,
     )
     from .pipeline import PipelineContext
+    from .openai_runtime import OpenAIChatRuntime
     from .runtime import run, serve
     from .state import StateManager
 
@@ -196,12 +198,14 @@ _DECORATOR_EXPORTS = ["pipeline", "tool"]
 _PIPELINE_EXPORTS = ["PipelineContext"]
 _STATE_EXPORTS = ["StateManager"]
 _RUNTIME_EXPORTS = ["run", "serve"]
+_OPENAI_EXPORTS = ["OpenAIChatRuntime"]
 _CORE_EXPORTS_SET = set(_CORE_EXPORTS)
 _EXCEPTION_EXPORTS_SET = set(_EXCEPTION_EXPORTS)
 _DECORATOR_EXPORTS_SET = set(_DECORATOR_EXPORTS)
 _PIPELINE_EXPORTS_SET = set(_PIPELINE_EXPORTS)
 _STATE_EXPORTS_SET = set(_STATE_EXPORTS)
 _RUNTIME_EXPORTS_SET = set(_RUNTIME_EXPORTS)
+_OPENAI_EXPORTS_SET = set(_OPENAI_EXPORTS)
 
 __all__ = [
     *_CORE_EXPORTS,
@@ -209,6 +213,7 @@ __all__ = [
     *_STATE_EXPORTS,
     *_PIPELINE_EXPORTS,
     *_RUNTIME_EXPORTS,
+    *_OPENAI_EXPORTS,
     *_EXCEPTION_EXPORTS,
 ]
 
@@ -238,4 +243,8 @@ def __getattr__(name: str):
         from . import runtime
 
         return getattr(runtime, name)
+    if name in _OPENAI_EXPORTS_SET:
+        from . import openai_runtime
+
+        return getattr(openai_runtime, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

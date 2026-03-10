@@ -70,18 +70,27 @@ class OpenAIAdapter(BaseAdapter):
             normalized_tools.append(normalized_tool)
         return normalized_tools
 
-    def to_function_call(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def to_function_call(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        *,
+        tool_call_id: str | None = None,
+    ) -> Dict[str, Any]:
         """生成符合 Chat Completions tool_call 的 function 結構。"""
 
         normalized = self._normalize_arguments(arguments)
         resolved_name = self.to_openai_name(name)
-        return {
+        payload = {
             "type": "function",
             "function": {
                 "name": resolved_name,
                 "arguments": json.dumps(normalized, ensure_ascii=False),
             },
         }
+        if tool_call_id:
+            payload["id"] = tool_call_id
+        return payload
 
     async def to_invocation(
         self,

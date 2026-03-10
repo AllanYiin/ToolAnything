@@ -69,9 +69,22 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
   - 已保留為 legacy compatibility layer。
   - 實作位置：`src/toolanything/server/mcp_tool_server.py`
 - **OpenAI Tool Calling**
-  - 走 schema 轉換（`OpenAIAdapter`），由程式產出工具定義給 OpenAI API。
+  - 可用 `OpenAIAdapter` 只做 schema 轉換，也可用 `OpenAIChatRuntime` 直接執行 Chat Completions tool loop。
   - 不依賴 URL，屬於資料格式與呼叫封裝的對接。
-  - 實作位置：`src/toolanything/adapters/openai_adapter.py`
+  - 實作位置：`src/toolanything/adapters/openai_adapter.py`、`src/toolanything/openai_runtime.py`
+
+最小 OpenAI tool-calling 範例如下：
+
+```python
+from toolanything import OpenAIChatRuntime
+
+runtime = OpenAIChatRuntime()
+result = runtime.run(
+    model="gpt-4.1-mini",
+    prompt="請呼叫 weather.query，城市是台北",
+)
+print(result["final_text"])
+```
 
 ## Source-Based Tools
 

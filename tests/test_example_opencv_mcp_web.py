@@ -1,4 +1,3 @@
-import asyncio
 import importlib
 import json
 import subprocess
@@ -24,9 +23,25 @@ def _start_http_server(registry):
 
 def _import_opencv_example_module():
     try:
-        return importlib.import_module("examples.opencv_mcp_web.server")
+        module = importlib.import_module("examples.opencv_mcp_web.server")
     except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
         pytest.skip(f"OpenCV runtime unavailable: {exc}")
+    required_attrs = [
+        "imdecode",
+        "imencode",
+        "resize",
+        "cvtColor",
+        "Canny",
+        "createCLAHE",
+    ]
+    missing = [name for name in required_attrs if not hasattr(module.cv2, name)]
+    if missing:
+        pytest.skip(f"OpenCV runtime incomplete: missing {', '.join(missing)}")
+    try:
+        module.build_demo_image_base64(width=16, height=16)
+    except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
+        pytest.skip(f"OpenCV demo image unavailable: {exc}")
+    return module
 
 
 def test_opencv_example_exposes_tools_and_accepts_inspector_calls():
@@ -120,6 +135,7 @@ def test_repo_opencv_example_includes_web_assets():
 
 
 def test_opencv_dual_protocol_demo_exports_shared_tools_and_local_roundtrip():
+    _import_opencv_example_module()
     try:
         module = importlib.import_module("examples.opencv_mcp_web.dual_protocol_demo")
     except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
@@ -129,8 +145,9 @@ def test_opencv_dual_protocol_demo_exports_shared_tools_and_local_roundtrip():
     assert "opencv.info" in summary["shared_names"]
     assert summary["mcp_names"] == summary["openai_original_names"]
 
-    roundtrip = asyncio.run(module.run_local_openai_roundtrip())
+    roundtrip = module.run_local_openai_roundtrip()
     assert roundtrip["tool_call"]["function"]["name"] == "opencv_info"
+    assert roundtrip["tool_call"]["id"] == "opencv_info_local_demo"
     assert roundtrip["invocation"]["role"] == "tool"
     assert roundtrip["invocation"]["tool_call_id"] == "opencv_info_local_demo"
     assert roundtrip["invocation"]["name"] == "opencv.info"
@@ -139,6 +156,7 @@ def test_opencv_dual_protocol_demo_exports_shared_tools_and_local_roundtrip():
 
 
 def test_opencv_dual_protocol_demo_runs_mocked_live_openai_loop(monkeypatch):
+    _import_opencv_example_module()
     try:
         module = importlib.import_module("examples.opencv_mcp_web.dual_protocol_demo")
     except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
@@ -164,17 +182,17 @@ def test_opencv_dual_protocol_demo_runs_mocked_live_openai_loop(monkeypatch):
         {"content": "完成", "tool_calls": []},
     ]
 
-    def fake_request_openai_chat_completion(self, **kwargs):
+    def fake_request_openai_chat_completion(**kwargs):
         return replies.pop(0)
 
     monkeypatch.setattr(
-        MCPInspectorService,
-        "_request_openai_chat_completion",
-        fake_request_openai_chat_completion,
+        module.OpenAIChatRuntime,
+        "request_chat_completion",
+        staticmethod(fake_request_openai_chat_completion),
     )
 
     result = module.run_live_openai_roundtrip(api_key="sk-test", model="gpt-test")
-    assert result["server_url"].startswith("http://127.0.0.1:")
+    assert result["transport"] == "in_process"
     assert result["result"]["final_text"] == "完成"
     assert any(
         entry["role"] == "tool" and entry["name"] == "opencv.info"

@@ -1,19 +1,14 @@
-"""Demonstrate the OpenCV example serving MCP and OpenAI tool calling together."""
+"""Demonstrate the OpenCV example exporting MCP and OpenAI tool calling together."""
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import os
 import sys
-import threading
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from toolanything.adapters import OpenAIAdapter
-from toolanything.inspector.service import MCPInspectorService
-from toolanything.server.mcp_tool_server import _build_handler
+from toolanything import OpenAIChatRuntime
 
 if __package__ in (None, ""):
     repo_root = Path(__file__).resolve().parents[2]
@@ -26,13 +21,13 @@ from examples.opencv_mcp_web.server import build_demo_image_base64, registry
 def build_protocol_summary() -> dict[str, Any]:
     """Return the tool names exported through MCP and OpenAI adapters."""
 
-    adapter = OpenAIAdapter(registry)
+    runtime = OpenAIChatRuntime(registry)
     mcp_tools = registry.to_mcp_tools()
-    openai_tools = adapter.to_schema()
+    openai_tools = runtime.to_schema()
     mcp_names = sorted(tool["name"] for tool in mcp_tools)
     openai_names = sorted(tool["function"]["name"] for tool in openai_tools)
     openai_original_names = sorted(
-        adapter.from_openai_name(tool["function"]["name"]) for tool in openai_tools
+        runtime.adapter.from_openai_name(tool["function"]["name"]) for tool in openai_tools
     )
     return {
         "mcp_tools": mcp_tools,
@@ -44,17 +39,17 @@ def build_protocol_summary() -> dict[str, Any]:
     }
 
 
-async def run_local_openai_roundtrip() -> dict[str, Any]:
-    """Run a local OpenAI-style tool_call payload through the same registry."""
+def run_local_openai_roundtrip() -> dict[str, Any]:
+    """Run a local OpenAI-style tool_call payload through the built-in runtime."""
 
-    adapter = OpenAIAdapter(registry)
+    runtime = OpenAIChatRuntime(registry)
     image_base64 = build_demo_image_base64(width=64, height=40)
-    tool_call = adapter.to_function_call("opencv.info", {"image_base64": image_base64})
-    invocation = await adapter.to_invocation(
-        tool_call["function"]["name"],
-        tool_call["function"]["arguments"],
+    tool_call = runtime.create_tool_call(
+        "opencv.info",
+        {"image_base64": image_base64},
         tool_call_id="opencv_info_local_demo",
     )
+    invocation = runtime.execute_tool_call(tool_call)
     return {
         "tool_call": tool_call,
         "invocation": invocation,
@@ -73,15 +68,6 @@ def build_live_openai_prompt(image_base64: str) -> str:
         f"{json.dumps(arguments, ensure_ascii=False)}"
     )
 
-
-def _start_local_mcp_http_server() -> tuple[ThreadingHTTPServer, threading.Thread]:
-    handler_cls = _build_handler(registry, host="127.0.0.1", port=0)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server, thread
-
-
 def run_live_openai_roundtrip(
     *,
     api_key: str | None = None,
@@ -89,12 +75,9 @@ def run_live_openai_roundtrip(
     temperature: float = 0.0,
     max_rounds: int = 3,
 ) -> dict[str, Any]:
-    """Run a real OpenAI tool loop against the local MCP server."""
+    """Run a real OpenAI tool loop directly against the local ToolAnything registry."""
 
-    server, thread = _start_local_mcp_http_server()
-    port = server.server_address[1]
-    base_url = f"http://127.0.0.1:{port}"
-    service = MCPInspectorService(default_timeout=20.0)
+    runtime = OpenAIChatRuntime(registry)
     prompt = build_live_openai_prompt(build_demo_image_base64(width=64, height=40))
     previous_api_key = os.getenv("OPENAI_API_KEY")
 
@@ -102,8 +85,7 @@ def run_live_openai_roundtrip(
         os.environ["OPENAI_API_KEY"] = api_key
 
     try:
-        result = service.run_openai_test(
-            {"mode": "http", "url": base_url},
+        result = runtime.run(
             model=model,
             prompt=prompt,
             system_prompt="如果工具可以回答，就優先使用工具，不要自己推測。",
@@ -111,7 +93,7 @@ def run_live_openai_roundtrip(
             max_rounds=max_rounds,
         )
         return {
-            "server_url": base_url,
+            "transport": "in_process",
             "result": result,
         }
     finally:
@@ -120,9 +102,6 @@ def run_live_openai_roundtrip(
                 os.environ.pop("OPENAI_API_KEY", None)
             else:
                 os.environ["OPENAI_API_KEY"] = previous_api_key
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=3)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -152,7 +131,7 @@ def main() -> None:
     print("[dual_protocol_demo] 共用工具名稱：")
     print(json.dumps(summary["shared_names"], ensure_ascii=False, indent=2))
 
-    local_result = asyncio.run(run_local_openai_roundtrip())
+    local_result = run_local_openai_roundtrip()
     print("[dual_protocol_demo] 本地 OpenAI tool_call payload：")
     print(json.dumps(local_result["tool_call"], ensure_ascii=False, indent=2))
     print("[dual_protocol_demo] 本地 tool message 結果：")

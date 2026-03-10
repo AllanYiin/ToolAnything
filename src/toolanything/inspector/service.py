@@ -35,6 +35,7 @@ from ..server.mcp_streamable_http import (
     MCP_PROTOCOL_VERSION_HEADER,
     MCP_SESSION_ID_HEADER,
 )
+from ..utils.openai_tool_names import build_openai_name_mappings
 
 
 class InspectorError(Exception):
@@ -734,6 +735,13 @@ class MCPInspectorService:
         with self._open_session(config) as session:
             session.initialize()
             tools = session.list_tools()
+            original_to_openai, openai_to_original = build_openai_name_mappings(
+                tool["name"] for tool in tools
+            )
+            openai_tools = [
+                {**tool, "name": original_to_openai.get(tool["name"], tool["name"])}
+                for tool in tools
+            ]
             messages: list[Dict[str, Any]] = []
             transcript: list[Dict[str, Any]] = []
             final_text = ""
@@ -749,21 +757,26 @@ class MCPInspectorService:
                     api_key=api_key,
                     model=model.strip(),
                     messages=messages,
-                    tools=tools,
+                    tools=openai_tools,
                     temperature=temperature,
                 )
 
                 content = assistant_message.get("content")
                 tool_calls = assistant_message.get("tool_calls") or []
+                display_tool_calls = self._translate_openai_tool_calls(tool_calls, openai_to_original)
                 transcript.append(
                     {
                         "role": "assistant",
                         "content": content,
-                        "tool_calls": tool_calls,
+                        "tool_calls": display_tool_calls,
                     }
                 )
                 if tool_calls:
-                    self._emit(event_sink, "assistant", {"tool_calls": tool_calls, "content": content})
+                    self._emit(
+                        event_sink,
+                        "assistant",
+                        {"tool_calls": display_tool_calls, "content": content},
+                    )
                     messages.append(
                         {
                             "role": "assistant",
@@ -773,7 +786,8 @@ class MCPInspectorService:
                     )
                     for tool_call in tool_calls:
                         function = tool_call.get("function") or {}
-                        tool_name = function.get("name")
+                        requested_name = function.get("name")
+                        tool_name = openai_to_original.get(requested_name, requested_name)
                         arguments_text = function.get("arguments") or "{}"
                         try:
                             tool_arguments = json.loads(arguments_text)
@@ -790,6 +804,7 @@ class MCPInspectorService:
                             "role": "tool",
                             "tool_call_id": tool_call.get("id"),
                             "name": tool_name,
+                            "requested_name": requested_name,
                             "arguments": tool_arguments,
                             "content": result_text,
                             "result": result,
@@ -824,6 +839,20 @@ class MCPInspectorService:
             "transcript": transcript,
             "trace": session.export_trace(),
         }
+
+    @staticmethod
+    def _translate_openai_tool_calls(
+        tool_calls: list[Dict[str, Any]],
+        openai_to_original: Mapping[str, str],
+    ) -> list[Dict[str, Any]]:
+        translated: list[Dict[str, Any]] = []
+        for tool_call in tool_calls:
+            function = dict(tool_call.get("function") or {})
+            name = function.get("name")
+            if isinstance(name, str):
+                function["name"] = openai_to_original.get(name, name)
+            translated.append({**tool_call, "function": function})
+        return translated
 
     def _request_openai_chat_completion(
         self,

@@ -45,7 +45,7 @@
     {
       "function": {
         "description": "兩數相加",
-        "name": "math.add",
+        "name": "math_add",
         "parameters": {
           "additionalProperties": false,
           "properties": {
@@ -68,7 +68,7 @@
     {
       "function": {
         "description": "示範 pipeline 串接",
-        "name": "math.workflow",
+        "name": "math_workflow",
         "parameters": {
           "additionalProperties": false,
           "properties": {

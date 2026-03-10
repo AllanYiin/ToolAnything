@@ -191,6 +191,55 @@ def test_inspector_service_runs_mocked_openai_tool_loop(monkeypatch):
         thread.join(timeout=3)
 
 
+def test_inspector_service_maps_openai_safe_tool_names_back_to_original(monkeypatch):
+    registry = ToolRegistry()
+
+    @tool(name="image.adjust", description="Adjust image", registry=registry)
+    def image_adjust(level: int):
+        return {"level": level}
+
+    server, thread = _start_http_server(registry)
+    port = server.server_address[1]
+    service = MCPInspectorService()
+    captured_tools = []
+
+    def fake_request_openai_chat_completion(**kwargs):
+        captured_tools.append(kwargs["tools"])
+        if len(captured_tools) == 1:
+            return {
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "image_adjust",
+                            "arguments": json.dumps({"level": 3}, ensure_ascii=False),
+                        },
+                    }
+                ],
+            }
+        return {"content": "完成", "tool_calls": []}
+
+    service._request_openai_chat_completion = fake_request_openai_chat_completion  # type: ignore[method-assign]
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    try:
+        result = service.run_openai_test(
+            {"mode": "http", "url": f"http://127.0.0.1:{port}"},
+            model="gpt-test",
+            prompt="請呼叫 image.adjust",
+        )
+        assert captured_tools[0][0]["name"] == "image_adjust"
+        assert any(entry["role"] == "tool" and entry["name"] == "image.adjust" for entry in result["transcript"])
+        assistant_entry = next(entry for entry in result["transcript"] if entry["role"] == "assistant")
+        assert assistant_entry["tool_calls"][0]["function"]["name"] == "image.adjust"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
 def test_inspector_app_tools_endpoints():
     registry = ToolRegistry()
 

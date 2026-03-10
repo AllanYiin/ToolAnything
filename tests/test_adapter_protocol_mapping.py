@@ -21,12 +21,16 @@ def _mcp_parameter_map() -> dict[str, dict]:
 
 
 def test_adapter_schema_alignment_between_protocols():
+    openai_adapter = OpenAIAdapter(registry)
     openai_params = _openai_parameter_map()
     mcp_params = _mcp_parameter_map()
+    translated_openai_params = {
+        openai_adapter.from_openai_name(name): schema for name, schema in openai_params.items()
+    }
 
-    assert set(openai_params.keys()) == set(mcp_params.keys())
+    assert set(translated_openai_params.keys()) == set(mcp_params.keys())
 
-    for name, openai_schema in openai_params.items():
+    for name, openai_schema in translated_openai_params.items():
         mcp_schema = mcp_params[name]
         assert openai_schema["properties"] == mcp_schema["properties"]
         assert openai_schema["required"] == mcp_schema["required"]

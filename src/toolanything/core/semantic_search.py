@@ -202,7 +202,7 @@ class JinaOnnxEmbeddingsV5TextNanoRetrievalProvider:
         for input_meta in session.get_inputs():
             input_name = input_meta.name
             if input_name in inputs:
-                ort_inputs[input_name] = inputs[input_name]
+                ort_inputs[input_name] = self._coerce_onnx_input(inputs[input_name], np_module)
 
         if not ort_inputs:
             raise RuntimeError("ONNX embedding session received no compatible inputs.")
@@ -227,6 +227,13 @@ class JinaOnnxEmbeddingsV5TextNanoRetrievalProvider:
         norms = np_module.linalg.norm(values, axis=1, keepdims=True)
         norms = np_module.where(norms == 0, 1.0, norms)
         return values / norms
+
+    def _coerce_onnx_input(self, value: Any, np_module: Any) -> Any:
+        asarray = getattr(np_module, "asarray", None)
+        int64_type = getattr(np_module, "int64", None)
+        if callable(asarray) and int64_type is not None:
+            return asarray(value, dtype=int64_type)
+        return value
 
     def _load_components(self) -> tuple[Any, Any, Any]:
         if self._tokenizer is not None and self._session is not None and self._numpy is not None:
@@ -267,6 +274,8 @@ class JinaOnnxEmbeddingsV5TextNanoRetrievalProvider:
                 "sentencepiece.bpe.model",
                 "spiece.model",
                 f"{self.onnx_subfolder}/{self.onnx_filename}",
+                f"{self.onnx_subfolder}/*.onnx_data",
+                f"{self.onnx_subfolder}/{self.onnx_filename}_data",
             ],
         )
         onnx_path = Path(model_dir) / self.onnx_subfolder / self.onnx_filename

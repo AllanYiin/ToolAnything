@@ -167,6 +167,7 @@ def test_semantic_index_uses_best_score_across_multiple_document_variants():
 
 def test_jina_onnx_provider_imports_modules_only_when_used():
     calls: list[str] = []
+    snapshot_calls: list[dict] = []
 
     class FakeTokenizer:
         def __call__(self, texts, padding=True, truncation=True, return_tensors="np"):
@@ -213,12 +214,19 @@ def test_jina_onnx_provider_imports_modules_only_when_used():
     class FakeHub:
         @staticmethod
         def snapshot_download(**kwargs):
+            snapshot_calls.append(kwargs)
             return "D:/fake-model"
 
     class FakeTransformers:
         AutoTokenizer = FakeAutoTokenizer
 
     class FakeNumpy:
+        int64 = int
+
+        @staticmethod
+        def asarray(value, dtype=None):
+            return value
+
         @staticmethod
         def arange(stop):
             return list(range(stop))
@@ -260,6 +268,11 @@ def test_jina_onnx_provider_imports_modules_only_when_used():
     result = provider.encode_queries(["find email tool", "find tax tool"])
     assert calls == ["transformers", "onnxruntime", "numpy", "huggingface_hub"]
     assert result == [(0.6, 0.8), (0.38461538461538464, 0.9230769230769231)]
+    assert snapshot_calls
+    patterns = snapshot_calls[0]["allow_patterns"]
+    assert "onnx/model.onnx" in patterns
+    assert "onnx/*.onnx_data" in patterns
+    assert "onnx/model.onnx_data" in patterns
 
 
 def test_jina_onnx_provider_raises_clear_error_when_optional_dependency_missing():

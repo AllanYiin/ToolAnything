@@ -163,7 +163,7 @@ python -m toolanything.examples.tool_selection.bfcl_pipeline `
 ```powershell
 python -m toolanything.examples.tool_selection.hf_dataset_exporter `
   --dataset-id gorilla-llm/Berkeley-Function-Calling-Leaderboard `
-  --split eval `
+  --repo-file BFCL_v3_simple.json `
   --output path\to\bfcl_eval.jsonl `
   --limit 200
 ```

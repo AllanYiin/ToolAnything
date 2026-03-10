@@ -1,41 +1,29 @@
 # OpenCV MCP Web 教程
 
-這個範例會帶你從 0 跑通一條完整鏈路：
+這個範例只存在於 repo 的 [`examples/opencv_mcp_web/`](/D:/PycharmProjects/ToolAnything/examples/opencv_mcp_web)。
+
+- `toolanything` 本體不再內建 package 內 demo module。
+- 要跑範例時，直接用 repo 內檔案路徑。
+- 這樣做的目的，是讓範例結構和你自己的專案一致，而不是把教學寫死在 package 內。
+
+這個範例會帶你跑通一條完整鏈路：
 
 1. 用 ToolAnything 把 OpenCV 函式包成 MCP 工具
 2. 啟動本機 MCP Server
-3. 用內建 MCP client 確認 server 真的有接通
+3. 用內建 MCP client 驗證 `initialize` / `tools/list` / `tools/call`
 4. 用專用 Web UI 實際呼叫 `opencv.info`、`opencv.resize`、`opencv.canny`、`opencv.clahe`、`opencv.adjust_color`
-
-如果你只是想知道「這個 example 到底有沒有真的能跑」，照著這份 README 做一次就知道。
-
-## 你會看到什麼
-
-這個範例目前暴露的工具有：
-
-- `opencv.info`：讀取圖片寬高與通道數
-- `opencv.resize`：縮放圖片
-- `opencv.canny`：邊緣偵測
-- `opencv.clahe`：提升局部對比
-- `opencv.adjust_color`：調整亮度、飽和度與色相
 
 ## 前置條件
 
-請在 repo 根目錄操作。
+以下命令以「你已安裝 `toolanything` 套件，且工作目錄在 repo 根目錄」為前提。
 
-如果你還沒有把 ToolAnything 安裝成 CLI，可以先用 PowerShell 設定：
-
-```powershell
-$env:PYTHONPATH='D:\PycharmProjects\ToolAnything\src'
-```
-
-之後把本文的 `toolanything ...` 改成：
+如果你的環境還沒有 `toolanything` CLI，也可以把命令中的 `toolanything` 改成：
 
 ```powershell
 python -m toolanything.cli ...
 ```
 
-如果你的 Web UI 會跑在 `http://127.0.0.1:5173`，建議先把允許來源也設好：
+如果你的 Web UI 會跑在 `http://127.0.0.1:5173`，建議先把允許來源設好：
 
 ```powershell
 $env:TOOLANYTHING_ALLOWED_ORIGINS='http://127.0.0.1:5173,http://localhost:5173'
@@ -43,21 +31,17 @@ $env:TOOLANYTHING_ALLOWED_ORIGINS='http://127.0.0.1:5173,http://localhost:5173'
 
 ## 步驟 1：啟動 MCP Server
 
-執行：
-
 ```powershell
-toolanything serve examples.opencv_mcp_web.server --host 127.0.0.1 --port 9091
+toolanything serve examples/opencv_mcp_web/server.py --host 127.0.0.1 --port 9091
 ```
 
-成功後，你的本機會有一個 MCP HTTP server 跑在：
+成功後本機會有一個 MCP HTTP server 跑在：
 
 ```text
 http://127.0.0.1:9091
 ```
 
-## 步驟 2：先確認 server 真的有起來
-
-開另一個 PowerShell 視窗，執行：
+## 步驟 2：確認 server 真的有起來
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:9091/health | Select-Object -ExpandProperty Content
@@ -83,11 +67,7 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:9091/tools | Select-Object -
 - `opencv.clahe`
 - `opencv.adjust_color`
 
-如果 `/health` 正常、但 `/tools` 是空的，通常表示你跑到舊程序，請先停掉舊的 9091 process 再重啟。
-
-## 步驟 3：用內建 MCP Client 驗證接通
-
-執行：
+## 步驟 3：用 `inspect` 驗證接通
 
 ```powershell
 toolanything inspect
@@ -105,30 +85,31 @@ toolanything inspect
 3. 選 `opencv.info`
 4. 隨便給一張圖片測一次
 
-如果這一步成功，代表：
+如果這一步成功，代表 MCP server、`initialize`、`tools/list`、`tools/call` 都有真的跑通。
 
-- MCP server 可連線
-- `initialize` 成功
-- `tools/list` 成功
-- `tools/call` 成功
+## 步驟 4：直接跑雙協議示範腳本
 
-## 步驟 4：跑 smoke test（可選，但推薦）
+```powershell
+python -m examples.opencv_mcp_web.dual_protocol_demo
+```
 
-如果你想快速做程式化驗證：
+如果你要真的打 OpenAI API：
+
+```powershell
+$env:OPENAI_API_KEY='你的 API key'
+python -m examples.opencv_mcp_web.dual_protocol_demo --mode live-openai --model <your-model>
+```
+
+## 步驟 5：跑 smoke test
 
 ```powershell
 python -m examples.opencv_mcp_web.smoke_test
 ```
 
-這一步會直接透過 repo 內建的 inspector service 呼叫本機 MCP server。
-
-## 步驟 5：啟動專用 Web UI
-
-切到靜態頁目錄：
+## 步驟 6：啟動專用 Web UI
 
 ```powershell
-Set-Location D:\PycharmProjects\ToolAnything\examples\opencv_mcp_web\web
-python -m http.server 5173
+python -m examples.opencv_mcp_web.web_server --port 5173
 ```
 
 然後用瀏覽器開：
@@ -136,63 +117,6 @@ python -m http.server 5173
 ```text
 http://127.0.0.1:5173
 ```
-
-## 步驟 6：在 Web UI 做完整驗證
-
-建議你照這個順序做：
-
-1. 點 `使用本機 9091`
-   這個按鈕現在會自動填入 URL，並直接做連線檢查。
-2. 確認左側工具列表不是空的
-3. 點 `使用示範圖片`，或自己上傳一張圖片
-4. 先測 `opencv.info`
-5. 再測 `opencv.resize`
-6. 再測 `opencv.canny`
-7. 最後試 `opencv.clahe` 與 `opencv.adjust_color`
-
-## 每個工具怎麼測
-
-### `opencv.info`
-
-用途：確認圖片是否有成功送進 MCP tool。  
-預期：會回傳寬、高、通道數。
-
-### `opencv.resize`
-
-用途：確認圖片會真的被處理並更新預覽。  
-建議先試：
-
-- `width = 1024`
-- `height = 1024`
-- `keep_aspect_ratio = true`
-
-### `opencv.canny`
-
-用途：確認邊緣偵測流程正常。  
-建議先試：
-
-- `threshold1 = 50`
-- `threshold2 = 150`
-
-如果想要更多邊緣，可改成 `30 / 90`；  
-如果想要更乾淨，可改成 `80 / 200`。
-
-### `opencv.clahe`
-
-用途：確認局部對比增強能正常執行。  
-建議先試：
-
-- `clip_limit = 2.0`
-- `tile_grid_size = 8`
-
-### `opencv.adjust_color`
-
-用途：測顏色調整工具。  
-建議先試：
-
-- `brightness = 15`
-- `saturation = 20`
-- `hue_shift = 10`
 
 ## 成功標準
 
@@ -204,33 +128,31 @@ http://127.0.0.1:5173
 
 ## 常見問題
 
-### 問題 1：`toolanything` 指令不存在
-
-這不是範例壞掉，而是你還沒安裝 CLI。先用：
+### `toolanything` 指令不存在
 
 ```powershell
-$env:PYTHONPATH='D:\PycharmProjects\ToolAnything\src'
-python -m toolanything.cli serve examples.opencv_mcp_web.server --host 127.0.0.1 --port 9091
+python -m toolanything.cli serve examples/opencv_mcp_web/server.py --host 127.0.0.1 --port 9091
 ```
 
-### 問題 2：Web UI 顯示已接通，但工具列表是空的
+### `cv2` 載入失敗
 
-通常是你連到舊版 server process。先把舊的 9091 程序停掉，再重新啟動。
+常見原因是同時混用了 `opencv-python`、`opencv-python-headless` 或不相容的 NumPy wheel。
 
-### 問題 3：Web UI 連不上 MCP server
-
-如果 Web UI 跟 MCP server 不在同一個 origin，請確認你有設定：
+建議先檢查：
 
 ```powershell
-$env:TOOLANYTHING_ALLOWED_ORIGINS='http://127.0.0.1:5173,http://localhost:5173'
+pip show numpy opencv-python opencv-python-headless
 ```
 
-### 問題 4：按下執行工具後沒有重新可按
+這個專案建議只保留一種 OpenCV wheel，且優先使用：
 
-這是舊版前端 bug。請重新整理頁面，並確認你跑的是最新 repo 內容。
+```powershell
+opencv-python-headless>=4.12.0.88
+```
 
 ## 延伸閱讀
 
-- [server.py](D:/PycharmProjects/ToolAnything/examples/opencv_mcp_web/server.py)
-- [app.js](D:/PycharmProjects/ToolAnything/examples/opencv_mcp_web/web/app.js)
-- [toolanything inspect](D:/PycharmProjects/ToolAnything/src/toolanything/inspector/app.py)
+- [server.py](/D:/PycharmProjects/ToolAnything/examples/opencv_mcp_web/server.py)
+- [web_server.py](/D:/PycharmProjects/ToolAnything/examples/opencv_mcp_web/web_server.py)
+- [app.js](/D:/PycharmProjects/ToolAnything/examples/opencv_mcp_web/web/app.js)
+- [toolanything inspect](/D:/PycharmProjects/ToolAnything/src/toolanything/inspector/app.py)

@@ -1,4 +1,4 @@
-"""Use the built-in MCP inspector service to verify the OpenCV example."""
+"""Use the built-in MCP inspector service to verify the repository OpenCV example."""
 from __future__ import annotations
 
 import socket
@@ -10,9 +10,7 @@ from urllib import request as url_request
 
 from toolanything.inspector.service import MCPInspectorService
 
-from examples.opencv_mcp_web.server import build_demo_image_base64, start_server
-
-__test__ = False
+from .server import build_demo_image_base64, start_server
 
 
 def _find_free_port() -> int:

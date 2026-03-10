@@ -13,11 +13,10 @@ EXAMPLE_DIR = ROOT / "examples" / "tool_selection"
 
 
 def test_custom_strategy_example_runs_as_script():
-    script = EXAMPLE_DIR / "03_custom_strategy.py"
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     completed = subprocess.run(
-        [sys.executable, str(script)],
+        [sys.executable, "examples/tool_selection/03_custom_strategy.py"],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
@@ -27,6 +26,22 @@ def test_custom_strategy_example_runs_as_script():
     assert completed.returncode == 0, completed.stderr
     assert "預設策略結果" in completed.stdout
     assert "自訂策略結果" in completed.stdout
+
+
+def test_constraints_search_example_runs_as_script():
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT / "src")
+    completed = subprocess.run(
+        [sys.executable, "examples/tool_selection/02_constraints_search.py"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "== max-cost=0.02" in completed.stdout
+    assert "== category=finance" in completed.stdout
 
 
 def test_custom_strategy_preserves_constraints_and_only_changes_ranking():

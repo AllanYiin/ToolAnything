@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from toolanything.examples.tool_selection.bfcl_converter import (
+from examples.tool_selection.bfcl_converter import (
     convert_records,
     extract_expected_tool_names,
     extract_query,
@@ -102,6 +102,24 @@ def test_convert_records_outputs_retrieval_ready_rows():
     assert converted[0]["tools"][0]["name"] == "send_email"
 
 
+def test_convert_records_can_fallback_to_single_tool_when_ground_truth_missing():
+    rows = [
+        {
+            "question": "Find the area of a triangle.",
+            "function": [
+                {
+                    "name": "calculate_triangle_area",
+                    "description": "Calculate triangle area",
+                    "parameters": {"type": "object", "properties": {"base": {"type": "number"}}},
+                }
+            ],
+        }
+    ]
+    converted, stats = convert_records(rows, split="eval")
+    assert stats["kept"] == 1
+    assert converted[0]["expected"] == "calculate_triangle_area"
+
+
 def test_bfcl_converter_script_runs_end_to_end(tmp_path):
     source_path = tmp_path / "bfcl.json"
     output_path = tmp_path / "retrieval.jsonl"
@@ -126,7 +144,7 @@ def test_bfcl_converter_script_runs_end_to_end(tmp_path):
         [
             sys.executable,
             "-m",
-            "toolanything.examples.tool_selection.bfcl_converter",
+            "examples.tool_selection.bfcl_converter",
             "--input",
             str(source_path),
             "--output",

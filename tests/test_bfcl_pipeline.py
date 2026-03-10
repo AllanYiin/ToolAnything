@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from toolanything.examples.tool_selection.bfcl_pipeline import run_pipeline
+from examples.tool_selection.bfcl_pipeline import run_pipeline
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,7 +93,7 @@ def test_bfcl_pipeline_script_runs(tmp_path):
         [
             sys.executable,
             "-m",
-            "toolanything.examples.tool_selection.bfcl_pipeline",
+            "examples.tool_selection.bfcl_pipeline",
             "--workdir",
             str(tmp_path / "artifacts"),
             "--input",

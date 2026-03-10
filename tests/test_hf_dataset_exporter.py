@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from toolanything.examples.tool_selection.hf_dataset_exporter import (
+from examples.tool_selection.hf_dataset_exporter import (
     OptionalDependencyNotAvailable,
     export_dataset_split,
 )
@@ -137,7 +137,7 @@ def test_hf_dataset_exporter_script_runs(tmp_path):
         [
             sys.executable,
             "-m",
-            "toolanything.examples.tool_selection.hf_dataset_exporter",
+            "examples.tool_selection.hf_dataset_exporter",
             "--dataset-id",
             "demo/dataset",
             "--config",
@@ -180,7 +180,7 @@ def test_hf_dataset_exporter_script_supports_repo_file(tmp_path):
         [
             sys.executable,
             "-m",
-            "toolanything.examples.tool_selection.hf_dataset_exporter",
+            "examples.tool_selection.hf_dataset_exporter",
             "--dataset-id",
             "demo/dataset",
             "--repo-file",

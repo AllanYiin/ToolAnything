@@ -1,4 +1,4 @@
-"""Tool selection examples: 共用的工具目錄。"""
+"""Packaged Tool Selection example catalog."""
 from __future__ import annotations
 
 from toolanything.core.registry import ToolRegistry
@@ -6,7 +6,6 @@ from toolanything.decorators import tool
 
 
 def build_registry() -> ToolRegistry:
-    """建立供 tool selection 範例共用的工具 registry。"""
     registry = ToolRegistry()
 
     @tool(
@@ -98,7 +97,6 @@ def build_registry() -> ToolRegistry:
 
 
 def describe_registry(registry: ToolRegistry) -> list[str]:
-    """回傳可讀的工具摘要，方便 examples 直接列印。"""
     lines: list[str] = []
     for spec in registry.list():
         metadata = spec.normalized_metadata()

@@ -1,4 +1,4 @@
-"""OpenCV MCP Web example: wrap OpenCV functions as ToolAnything tools."""
+"""OpenCV MCP Web repository example: wrap OpenCV functions as ToolAnything tools."""
 from __future__ import annotations
 
 import argparse
@@ -6,15 +6,23 @@ import base64
 import binascii
 from typing import Any
 
-import cv2
 import numpy as np
+
+try:
+    import cv2
+except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
+    raise RuntimeError(
+        "OpenCV 載入失敗。請確認目前環境不要同時混用 opencv-python 與 "
+        "opencv-python-headless，並使用與 NumPy 相容的 wheel；"
+        "本專案建議 opencv-python-headless>=4.12.0.88。"
+    ) from exc
 
 from toolanything import ToolError, ToolRegistry, tool
 from toolanything.server.mcp_tool_server import run_server
 from toolanything.utils.logger import logger
 
 # 這個範例同時支援：
-# 1. `toolanything serve examples.opencv_mcp_web.server`
+# 1. `toolanything serve examples/opencv_mcp_web/server.py`
 # 2. 直接呼叫 `start_server(...)`
 # 因此要和 CLI 使用同一個全域 registry，避免 tools 載入後 server 仍看到空清單。
 registry = ToolRegistry.global_instance()
@@ -64,6 +72,14 @@ def _image_metadata(image: np.ndarray) -> dict[str, Any]:
     return {"width": width, "height": height, "channels": channels}
 
 
+def _ensure_color_image(image: np.ndarray) -> np.ndarray:
+    if image.ndim == 2:
+        return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    if image.ndim == 3 and image.shape[2] == 4:
+        return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+    return image
+
+
 def build_demo_image_base64(width: int = 320, height: int = 200) -> str:
     """Generate a small demo image so the example can be verified without files."""
 
@@ -92,6 +108,11 @@ def build_demo_image_base64(width: int = 320, height: int = 200) -> str:
 def opencv_info(image_base64: str) -> dict[str, Any]:
     image = _decode_image(image_base64)
     return _image_metadata(image)
+
+
+@tool(name="__ping__", description="Inspector/doctor 健康檢查工具", registry=registry)
+def ping() -> dict[str, Any]:
+    return {"ok": True, "message": "pong"}
 
 
 @tool(name="opencv.resize", description="依照指定尺寸縮放圖片（保持比例）", registry=registry)
@@ -149,6 +170,70 @@ def opencv_canny(
     }
 
 
+@tool(name="opencv.clahe", description="使用 CLAHE 提升局部對比", registry=registry)
+def opencv_clahe(
+    image_base64: str,
+    clip_limit: float = 2.0,
+    tile_grid_size: int = 8,
+) -> dict[str, Any]:
+    if clip_limit <= 0:
+        raise ToolError("clip_limit 必須大於 0", error_type="invalid_clahe")
+    if tile_grid_size <= 0:
+        raise ToolError("tile_grid_size 必須大於 0", error_type="invalid_clahe")
+
+    image = _decode_image(image_base64)
+    try:
+        clahe = cv2.createCLAHE(clipLimit=float(clip_limit), tileGridSize=(tile_grid_size, tile_grid_size))
+        if image.ndim == 2:
+            processed = clahe.apply(image)
+        else:
+            color_image = _ensure_color_image(image)
+            lab = cv2.cvtColor(color_image, cv2.COLOR_BGR2LAB)
+            l_channel, a_channel, b_channel = cv2.split(lab)
+            enhanced_l = clahe.apply(l_channel)
+            merged = cv2.merge((enhanced_l, a_channel, b_channel))
+            processed = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+    except Exception as exc:
+        raise ToolError("CLAHE 處理失敗", error_type="clahe_failed") from exc
+
+    return {
+        "image_base64": _encode_image(processed),
+        **_image_metadata(processed),
+    }
+
+
+@tool(name="opencv.adjust_color", description="調整亮度、飽和度與色相", registry=registry)
+def opencv_adjust_color(
+    image_base64: str,
+    brightness: int = 0,
+    saturation: int = 0,
+    hue_shift: int = 0,
+) -> dict[str, Any]:
+    if not -100 <= brightness <= 100:
+        raise ToolError("brightness 必須介於 -100 到 100", error_type="invalid_adjustment")
+    if not -100 <= saturation <= 100:
+        raise ToolError("saturation 必須介於 -100 到 100", error_type="invalid_adjustment")
+    if not -90 <= hue_shift <= 90:
+        raise ToolError("hue_shift 必須介於 -90 到 90", error_type="invalid_adjustment")
+
+    image = _decode_image(image_base64)
+    try:
+        color_image = _ensure_color_image(image)
+        hsv = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[:, :, 0] = (hsv[:, :, 0] + hue_shift) % 180
+        saturation_scale = 1.0 + (saturation / 100.0)
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation_scale, 0, 255)
+        hsv[:, :, 2] = np.clip(hsv[:, :, 2] + (brightness * 2.55), 0, 255)
+        adjusted = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    except Exception as exc:
+        raise ToolError("顏色調整失敗", error_type="adjust_color_failed") from exc
+
+    return {
+        "image_base64": _encode_image(adjusted),
+        **_image_metadata(adjusted),
+    }
+
+
 def start_server(port: int = 9091, host: str = "127.0.0.1") -> None:
     """Start an MCP HTTP server exposing the OpenCV tools."""
 
@@ -171,7 +256,7 @@ def main() -> None:
         print(f" - {tool_info['name']}: {tool_info['description']}")
 
     print("[opencv_mcp_web] 內建 inspect 驗證：toolanything inspect")
-    print("[opencv_mcp_web] Web UI 請開 examples/opencv_mcp_web/web/index.html")
+    print("[opencv_mcp_web] 專用 Web UI：python -m examples.opencv_mcp_web.web_server")
 
     try:
         start_server(port=args.port, host=args.host)

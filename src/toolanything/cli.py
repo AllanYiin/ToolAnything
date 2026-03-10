@@ -129,36 +129,6 @@ def _install_claude_config(path: Path, port: int, name: str, module: str | None)
     )
 
 
-def _install_claude_opencv_config(path: Path, port: int, name: str) -> None:
-    path = path.expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    if path.exists():
-        content = path.read_text(encoding="utf-8")
-        config = json.loads(content) if content.strip() else {}
-    else:
-        config = {}
-
-    mcp_servers = config.setdefault("mcpServers", {})
-    mcp_servers[name] = _build_custom_entry(
-        command="python",
-        args=[
-            "-m",
-            "toolanything.cli",
-            "serve",
-            "toolanything.examples.opencv_mcp_web.server",
-            "--stdio",
-            "--port",
-            str(port),
-        ],
-    )
-
-    path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(
-        f"已更新 {path}，新增 {name} OpenCV MCP Web 設定，重新啟動 Claude Desktop 後即可自動載入。"
-    )
-
-
 def _run_search(
     query: str,
     tags: list[str] | None,
@@ -410,7 +380,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="載入工具模組並啟動伺服器")
     serve_parser.add_argument(
         "module",
-        help="工具模組路徑（例如 toolanything.examples.opencv_mcp_web.server）",
+        help="工具模組或檔案路徑（例如 my_tools.weather 或 examples/opencv_mcp_web/server.py）",
     )
     serve_parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
     serve_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
@@ -439,7 +409,7 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--port", type=int, default=9090, help="MCP server port，預設 9090")
     init_parser.add_argument(
         "--module",
-        help="工具模組路徑（例如 toolanything.examples.opencv_mcp_web.server），提供時會使用 serve 模式",
+        help="工具模組或檔案路徑（例如 my_tools.weather 或 examples/opencv_mcp_web/server.py），提供時會使用 serve 模式",
     )
     init_parser.add_argument("--force", action="store_true", help="已存在時覆寫輸出檔案")
     init_parser.set_defaults(
@@ -461,7 +431,7 @@ def _build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument("--port", type=int, default=9090, help="MCP server port，預設 9090")
     install_parser.add_argument(
         "--module",
-        help="工具模組路徑（例如 toolanything.examples.opencv_mcp_web.server），提供時會使用 serve 模式",
+        help="工具模組或檔案路徑（例如 my_tools.weather 或 examples/opencv_mcp_web/server.py），提供時會使用 serve 模式",
     )
     install_parser.add_argument(
         "--name",
@@ -471,28 +441,6 @@ def _build_parser() -> argparse.ArgumentParser:
     install_parser.set_defaults(
         func=lambda args: _install_claude_config(
             path=args.config, port=args.port, name=args.name, module=args.module
-        )
-    )
-
-    install_opencv_parser = subparsers.add_parser(
-        "install-claude-opencv",
-        help="直接寫入 Claude Desktop 設定檔（OpenCV MCP Web 範例）",
-    )
-    install_opencv_parser.add_argument(
-        "--config",
-        default=_get_default_claude_config_path(),
-        type=Path,
-        help="Claude Desktop 設定檔路徑",
-    )
-    install_opencv_parser.add_argument("--port", type=int, default=9091, help="監聽 port，預設 9091")
-    install_opencv_parser.add_argument(
-        "--name",
-        default="opencv_mcp_web",
-        help="在 Claude Desktop 中顯示的 mcpServers 名稱，預設 opencv_mcp_web",
-    )
-    install_opencv_parser.set_defaults(
-        func=lambda args: _install_claude_opencv_config(
-            path=args.config, port=args.port, name=args.name
         )
     )
 
@@ -508,7 +456,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  toolanything search --query weather --max-cost 0.1 --latency-budget-ms 200\n"
             "  toolanything search --tags finance realtime --allow-side-effects\n"
             "  toolanything search --category routing --category search\n"
-            "  策略示例：python -m toolanything.examples.tool_selection.custom_strategy\n\n"
+            "  策略示例：python examples/tool_selection/03_custom_strategy.py\n\n"
             "See also: examples/tool_selection/README.md"
         ),
     )

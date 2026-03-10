@@ -3,6 +3,7 @@ import json
 from toolanything import tool
 from toolanything.cli import _build_parser
 from toolanything.core.registry import ToolRegistry
+from toolanything.runtime.serve import load_tool_module
 
 
 def test_cli_run_mcp_and_stdio_dispatch(monkeypatch):
@@ -65,12 +66,24 @@ def test_cli_init_claude(tmp_path):
     parser = _build_parser()
     output = tmp_path / "claude_config.json"
 
-    args = parser.parse_args(["init-claude", "--output", str(output), "--port", "7777", "--force"])
+    args = parser.parse_args(
+        [
+            "init-claude",
+            "--output",
+            str(output),
+            "--port",
+            "7777",
+            "--module",
+            "examples/opencv_mcp_web/server.py",
+            "--force",
+        ]
+    )
     args.func(args)
 
     data = json.loads(output.read_text(encoding="utf-8"))
     entry = data["mcpServers"]["toolanything"]
     assert entry["command"] == "python"
+    assert entry["args"][3] == "examples/opencv_mcp_web/server.py"
     assert "--port" in entry["args"]
     assert entry["args"][-1] == "7777"
 
@@ -90,12 +103,15 @@ def test_cli_install_claude_merges_existing(tmp_path):
             "8081",
             "--name",
             "custom",
+            "--module",
+            "examples/opencv_mcp_web/server.py",
         ]
     )
     args.func(args)
 
     data = json.loads(config_path.read_text(encoding="utf-8"))
     assert "existing" in data["mcpServers"]
+    assert data["mcpServers"]["custom"]["args"][3] == "examples/opencv_mcp_web/server.py"
     assert data["mcpServers"]["custom"]["args"][-1] == "8081"
 
 
@@ -170,3 +186,25 @@ def test_cli_search_uses_registry(tmp_path, monkeypatch, capsys):
     assert "demo.echo" in output
     assert "failure_score" in output
     assert "latency_hint_ms" in output
+
+
+def test_load_tool_module_accepts_external_file_path(tmp_path, monkeypatch):
+    registry = ToolRegistry()
+    monkeypatch.setattr(
+        "toolanything.core.registry.ToolRegistry.global_instance",
+        staticmethod(lambda: registry),
+    )
+
+    script_path = tmp_path / "external_tool.py"
+    script_path.write_text(
+        "from toolanything import tool\n\n"
+        "@tool(name='external.echo', description='外部工具')\n"
+        "def external_echo(message: str) -> str:\n"
+        "    return message\n",
+        encoding="utf-8",
+    )
+
+    load_tool_module(str(script_path))
+
+    names = [spec.name for spec in registry.list()]
+    assert "external.echo" in names

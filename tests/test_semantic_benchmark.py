@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from toolanything.examples.tool_selection.semantic_benchmark import (
+from examples.tool_selection.semantic_benchmark import (
     JsonlDatasetAdapter,
     describe_documents,
     run_benchmark,
@@ -159,7 +159,7 @@ def test_semantic_benchmark_example_runs_as_script():
         [
             sys.executable,
             "-m",
-            "toolanything.examples.tool_selection.semantic_benchmark",
+            "examples.tool_selection.semantic_benchmark",
             "--backend",
             "fake",
             "--profile",

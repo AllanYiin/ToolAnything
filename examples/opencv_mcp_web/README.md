@@ -138,18 +138,18 @@ python -m toolanything.cli serve examples/opencv_mcp_web/server.py --host 127.0.
 
 ### `cv2` 載入失敗
 
-常見原因是同時混用了 `opencv-python`、`opencv-python-headless` 或不相容的 NumPy wheel。
+常見原因是同時混用了 `opencv-python` 或不相容的 NumPy wheel。
 
 建議先檢查：
 
 ```powershell
-pip show numpy opencv-python opencv-python-headless
+pip show numpy opencv-python 
 ```
 
 這個專案建議只保留一種 OpenCV wheel，且優先使用：
 
 ```powershell
-opencv-python-headless>=4.12.0.88
+opencv-python>=4.12.0.88
 ```
 
 ## 延伸閱讀

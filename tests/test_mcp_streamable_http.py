@@ -309,6 +309,8 @@ def test_streamable_http_drains_body_before_returning_404_for_wrong_post_path():
         body = json.loads(resp.read())
         assert resp.status == 404
         assert body["error"] == "not_found"
+        assert body["transport"] == "streamable_http"
+        assert body["mcp"]["endpoint"] == "/mcp"
 
         conn.request(
             "POST",
@@ -327,6 +329,27 @@ def test_streamable_http_drains_body_before_returning_404_for_wrong_post_path():
         initialize_body = json.loads(resp.read())
         assert resp.status == 200
         assert initialize_body["id"] == 2
+    finally:
+        conn.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_streamable_http_root_describes_transport_and_endpoint():
+    registry = _build_registry()
+    server, thread = _start_server(build_streamable_handler(registry, host="127.0.0.1", port=0))
+    port = server.server_address[1]
+    conn = http.client.HTTPConnection("localhost", port, timeout=5)
+
+    try:
+        conn.request("GET", "/")
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        assert resp.status == 200
+        assert body["status"] == "ok"
+        assert body["transport"] == "streamable_http"
+        assert body["mcp"]["endpoint"] == "/mcp"
     finally:
         conn.close()
         server.shutdown()

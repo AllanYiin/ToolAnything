@@ -28,6 +28,39 @@ _STREAM_HEARTBEAT_SEC = 15.0
 _STREAM_HISTORY_LIMIT = 256
 
 
+def _streamable_http_endpoints() -> Dict[str, str]:
+    return {
+        "health": "/health",
+        "tools": "/tools",
+        "mcp": "/mcp",
+    }
+
+
+def _streamable_http_status_payload() -> Dict[str, Any]:
+    return {
+        "status": "ok",
+        "transport": "streamable_http",
+        "mcp": {
+            "transport": "streamable_http",
+            "endpoint": "/mcp",
+        },
+        "endpoints": _streamable_http_endpoints(),
+    }
+
+
+def _streamable_http_not_found_payload(path: str) -> Dict[str, Any]:
+    return {
+        "error": "not_found",
+        "transport": "streamable_http",
+        "path": path,
+        "hint": "Streamable HTTP MCP requests must use /mcp.",
+        "mcp": {
+            "transport": "streamable_http",
+            "endpoint": "/mcp",
+        },
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class StreamEvent:
     event_id: int
@@ -491,7 +524,7 @@ def _build_handler(
                 _json_response(
                     self,
                     200,
-                    {"status": "ok", "transport": "streamable_http"},
+                    _streamable_http_status_payload(),
                     allowed_origins=allowed_origins,
                     protocol_version=protocol_version,
                 )
@@ -511,7 +544,7 @@ def _build_handler(
                 _json_response(
                     self,
                     404,
-                    {"error": "not_found"},
+                    _streamable_http_not_found_payload(self.path),
                     allowed_origins=allowed_origins,
                     protocol_version=protocol_version,
                 )
@@ -584,7 +617,7 @@ def _build_handler(
                 _json_response(
                     self,
                     404,
-                    {"error": "not_found"},
+                    _streamable_http_not_found_payload(self.path),
                     allowed_origins=allowed_origins,
                     protocol_version=protocol_version,
                 )

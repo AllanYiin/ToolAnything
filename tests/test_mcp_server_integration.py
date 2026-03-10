@@ -84,6 +84,15 @@ def test_mcp_http_server_endpoints(registry_with_tools):
     conn = http.client.HTTPConnection("localhost", port, timeout=5)
 
     try:
+        conn.request("GET", "/")
+        resp = conn.getresponse()
+        root_body = json.loads(resp.read())
+        assert resp.status == 200
+        assert root_body["status"] == "ok"
+        assert root_body["transport"] == "legacy_sse"
+        assert root_body["mcp"]["sse"] == "/sse"
+        assert root_body["mcp"]["messages"] == "/messages/{session_id}"
+
         conn.request("GET", "/health")
         resp = conn.getresponse()
         body = json.loads(resp.read())
@@ -110,6 +119,20 @@ def test_mcp_http_server_endpoints(registry_with_tools):
         error_body = json.loads(resp.read())
         assert resp.status == 400
         assert error_body["error"] == "invalid_json"
+
+        conn.request(
+            "POST",
+            "/",
+            body=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = conn.getresponse()
+        wrong_path_body = json.loads(resp.read())
+        assert resp.status == 404
+        assert wrong_path_body["error"] == "not_found"
+        assert wrong_path_body["transport"] == "legacy_sse"
+        assert wrong_path_body["mcp"]["sse"] == "/sse"
+        assert wrong_path_body["mcp"]["messages"] == "/messages/{session_id}"
 
         conn.request("POST", "/invoke", body=json.dumps({"arguments": {}}), headers={"Content-Type": "application/json"})
         resp = conn.getresponse()

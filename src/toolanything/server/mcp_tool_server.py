@@ -31,6 +31,44 @@ _CLIENT_DISCONNECT_ERRORS = (
 )
 
 
+def _legacy_sse_endpoints() -> Dict[str, str]:
+    return {
+        "health": "/health",
+        "tools": "/tools",
+        "sse": "/sse",
+        "messages": "/messages/{session_id}",
+        "invoke": "/invoke",
+        "invoke_stream": "/invoke/stream",
+    }
+
+
+def _legacy_sse_status_payload() -> Dict[str, Any]:
+    return {
+        "status": "ok",
+        "transport": "legacy_sse",
+        "mcp": {
+            "transport": "sse",
+            "sse": "/sse",
+            "messages": "/messages/{session_id}",
+        },
+        "endpoints": _legacy_sse_endpoints(),
+    }
+
+
+def _legacy_sse_not_found_payload(path: str) -> Dict[str, Any]:
+    return {
+        "error": "not_found",
+        "transport": "legacy_sse",
+        "path": path,
+        "hint": "Legacy MCP SSE uses GET /sse then POST /messages/{session_id}.",
+        "mcp": {
+            "transport": "sse",
+            "sse": "/sse",
+            "messages": "/messages/{session_id}",
+        },
+    }
+
+
 def _build_allowed_origins(host: str, port: int) -> set[str]:
     configured = os.getenv("TOOLANYTHING_ALLOWED_ORIGINS")
     if configured:
@@ -93,6 +131,15 @@ def _read_json(handler: BaseHTTPRequestHandler) -> Dict[str, Any] | None:
         return json.loads(raw_body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
         return None
+
+
+def _drain_request_body(handler: BaseHTTPRequestHandler) -> None:
+    try:
+        content_length = int(handler.headers.get("Content-Length", 0))
+    except ValueError:
+        content_length = 0
+    if content_length > 0:
+        handler.rfile.read(content_length)
 
 
 def _send_sse_headers(
@@ -232,7 +279,12 @@ def _build_handler(
                 self.end_headers()
                 return
 
-            _json_response(self, 404, {"error": "not_found"}, allowed_origins=allowed_origins)
+            _json_response(
+                self,
+                404,
+                _legacy_sse_not_found_payload(parsed.path),
+                allowed_origins=allowed_origins,
+            )
 
         def do_GET(self) -> None:  # noqa: N802 - 標準庫接口
             parsed = urlparse(self.path)
@@ -269,7 +321,12 @@ def _build_handler(
                 return
 
             if parsed.path == "/" or parsed.path == "/health":
-                _json_response(self, 200, {"status": "ok"}, allowed_origins=allowed_origins)
+                _json_response(
+                    self,
+                    200,
+                    _legacy_sse_status_payload(),
+                    allowed_origins=allowed_origins,
+                )
                 return
 
             if parsed.path == "/tools":
@@ -281,7 +338,12 @@ def _build_handler(
                 )
                 return
 
-            _json_response(self, 404, {"error": "not_found"}, allowed_origins=allowed_origins)
+            _json_response(
+                self,
+                404,
+                _legacy_sse_not_found_payload(parsed.path),
+                allowed_origins=allowed_origins,
+            )
 
         def _handle_invoke(self) -> tuple[int, Dict[str, Any]]:
             payload = _read_json(self)
@@ -369,6 +431,7 @@ def _build_handler(
         def do_POST(self) -> None:  # noqa: N802 - 標準庫接口
             parsed = urlparse(self.path)
             if not self._origin_allowed():
+                _drain_request_body(self)
                 self._reject_disallowed_origin()
                 return
             if parsed.path == "/invoke":
@@ -388,6 +451,7 @@ def _build_handler(
                     session_id = parsed.path.split("/", 2)[2]
 
                 if not session_id:
+                    _drain_request_body(self)
                     _json_response(
                         self,
                         400,
@@ -398,6 +462,7 @@ def _build_handler(
 
                 session = _get_sse_session(session_id)
                 if session is None or not session.active:
+                    _drain_request_body(self)
                     _json_response(
                         self,
                         404,
@@ -440,7 +505,13 @@ def _build_handler(
                 )
                 return
 
-            _json_response(self, 404, {"error": "not_found"}, allowed_origins=allowed_origins)
+            _drain_request_body(self)
+            _json_response(
+                self,
+                404,
+                _legacy_sse_not_found_payload(parsed.path),
+                allowed_origins=allowed_origins,
+            )
 
     return MCPToolHandler
 

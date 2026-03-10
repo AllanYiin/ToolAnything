@@ -1,6 +1,8 @@
 import asyncio
 import importlib
 import json
+import subprocess
+import sys
 import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -106,7 +108,9 @@ def test_opencv_example_web_ui_mentions_demo_image_and_connection_flow():
 def test_repo_opencv_example_readme_uses_external_file_paths():
     readme = Path("examples/opencv_mcp_web/README.md").read_text(encoding="utf-8")
     assert "toolanything serve examples/opencv_mcp_web/server.py" in readme
-    assert "python -m examples.opencv_mcp_web.web_server" in readme
+    assert "python examples/opencv_mcp_web/web_server.py" in readme
+    assert "python examples/opencv_mcp_web/smoke_test.py" in readme
+    assert "python examples/opencv_mcp_web/dual_protocol_demo.py" in readme
 
 
 def test_repo_opencv_example_includes_web_assets():
@@ -176,3 +180,29 @@ def test_opencv_dual_protocol_demo_runs_mocked_live_openai_loop(monkeypatch):
         entry["role"] == "tool" and entry["name"] == "opencv.info"
         for entry in result["result"]["transcript"]
     )
+
+
+def test_opencv_dual_protocol_demo_runs_as_direct_file():
+    _import_opencv_example_module()
+    completed = subprocess.run(
+        [sys.executable, "examples/opencv_mcp_web/dual_protocol_demo.py", "--mode", "local"],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "[dual_protocol_demo] 共用工具名稱：" in completed.stdout
+    assert "opencv.info" in completed.stdout
+
+
+def test_opencv_smoke_test_runs_as_direct_file():
+    _import_opencv_example_module()
+    completed = subprocess.run(
+        [sys.executable, "examples/opencv_mcp_web/smoke_test.py"],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "[opencv_mcp_web] Inspector 已接通" in completed.stdout
+    assert "opencv.info" in completed.stdout

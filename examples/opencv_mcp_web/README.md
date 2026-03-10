@@ -90,26 +90,26 @@ toolanything inspect
 ## 步驟 4：直接跑雙協議示範腳本
 
 ```powershell
-python -m examples.opencv_mcp_web.dual_protocol_demo
+python examples/opencv_mcp_web/dual_protocol_demo.py
 ```
 
 如果你要真的打 OpenAI API：
 
 ```powershell
 $env:OPENAI_API_KEY='你的 API key'
-python -m examples.opencv_mcp_web.dual_protocol_demo --mode live-openai --model <your-model>
+python examples/opencv_mcp_web/dual_protocol_demo.py --mode live-openai --model <your-model>
 ```
 
 ## 步驟 5：跑 smoke test
 
 ```powershell
-python -m examples.opencv_mcp_web.smoke_test
+python examples/opencv_mcp_web/smoke_test.py
 ```
 
 ## 步驟 6：啟動專用 Web UI
 
 ```powershell
-python -m examples.opencv_mcp_web.web_server --port 5173
+python examples/opencv_mcp_web/web_server.py --port 5173
 ```
 
 然後用瀏覽器開：

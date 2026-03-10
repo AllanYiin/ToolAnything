@@ -256,7 +256,7 @@ def main() -> None:
         print(f" - {tool_info['name']}: {tool_info['description']}")
 
     print("[opencv_mcp_web] 內建 inspect 驗證：toolanything inspect")
-    print("[opencv_mcp_web] 專用 Web UI：python -m examples.opencv_mcp_web.web_server")
+    print("[opencv_mcp_web] 專用 Web UI：python examples/opencv_mcp_web/web_server.py")
 
     try:
         start_server(port=args.port, host=args.host)

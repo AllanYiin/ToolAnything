@@ -5,15 +5,22 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 import threading
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 from toolanything.adapters import OpenAIAdapter
 from toolanything.inspector.service import MCPInspectorService
 from toolanything.server.mcp_tool_server import _build_handler
 
-from .server import build_demo_image_base64, registry
+if __package__ in (None, ""):
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+from examples.opencv_mcp_web.server import build_demo_image_base64, registry
 
 
 def build_protocol_summary() -> dict[str, Any]:

@@ -436,7 +436,7 @@ toolanything install-claude --config "~/Library/Application Support/Claude/confi
 
 ## 文件索引
 
-- [docs/README.md](docs/README.md)
+- [docs/docs-map.md](docs/docs-map.md)
 - [architecture-walkthrough.md](docs/architecture-walkthrough.md)
 - [migration-guide.md](docs/migration-guide.md)
 - [mcp-test-client-spec.md](docs/mcp-test-client-spec.md)

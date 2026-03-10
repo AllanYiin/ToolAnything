@@ -314,11 +314,13 @@ function renderReport(report) {
 
 function renderToolList(tools) {
   if (!tools.length) {
+    elements.toolList.className = "tools-grid empty-state";
     elements.toolList.innerHTML = state.tools.length
       ? '<div class="empty-state">目前的篩選條件沒有符合的工具。</div>'
       : '<div class="empty-state">目標 server 沒有回傳任何工具。</div>';
     return;
   }
+  elements.toolList.className = "tools-grid";
   elements.toolList.innerHTML = "";
   tools.forEach((tool) => {
     const article = document.createElement("article");
@@ -644,6 +646,7 @@ async function handleLoadTools() {
     activateTab("tools");
   } catch (error) {
     elements.toolSummary.textContent = "工具載入失敗";
+    elements.toolList.className = "tools-grid empty-state";
     elements.toolList.innerHTML = `<div class="empty-state">${error.message}</div>`;
     setBadge("failed", "載入失敗");
     setOptionalText(elements.statusTransport, "工具載入失敗");

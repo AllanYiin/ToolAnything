@@ -17,7 +17,7 @@ from toolanything.server.mcp_tool_server import run_server
 registry = ToolRegistry()
 
 
-@tool(name="echo.text", description="回聲輸出", registry=registry)
+@tool(path="echo.text", description="回聲輸出", registry=registry)
 def echo(text: str) -> dict[str, Any]:
     """將輸入文字以回聲方式回傳。"""
 

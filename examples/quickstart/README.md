@@ -38,10 +38,10 @@
 - `examples/demo_mcp_stdio.py`：最小 MCP stdio demo。
 - `examples/streamable_http/`：用 3 支小範例看懂新版 `/mcp` transport 的 handshake、response mode 與 session lifecycle。
 - `examples/demo_mcp_streamable_http.py`：最小 Streamable HTTP server demo。
-- `examples/http_tool.py`：把 HTTP API 直接註冊成 tool，不再手寫 wrapper function。
-- `examples/sql_tool.py`：把參數化 SQL 查詢直接註冊成 tool。
-- `examples/onnx_tool.py`：看 VAD 前置門控如何用 ONNX model tool 表達。
-- `examples/pytorch_tool.py`：看 VAD 前置門控如何用 PyTorch model tool 表達。
+- `examples/non_function_tools/http_tool.py`：把 HTTP API 直接註冊成 tool，不再手寫 wrapper function。
+- `examples/non_function_tools/sql_tool.py`：把參數化 SQL 查詢直接註冊成 tool。
+- `examples/non_function_tools/onnx_tool.py`：看 VAD 前置門控如何用 ONNX model tool 表達。
+- `examples/non_function_tools/pytorch_tool.py`：看 VAD 前置門控如何用 PyTorch model tool 表達。
 - `examples/protocol_boundary/`：看 MCP runtime 與 transport 的分工。
 - `examples/opencv_mcp_web/`：較完整的 Web 範例。
 

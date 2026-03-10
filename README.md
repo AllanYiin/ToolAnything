@@ -75,12 +75,12 @@ ToolAnything 是一個「跨協議 AI 工具中介層」，開發者只需撰寫
 
 ## Source-Based Tools
 
-除了既有 `@tool` callable 用法，現在也支援 source-based API：
+除了既有 `@tool` callable 用法，現在也支援 source-based API。這組範例集中放在 [`examples/non_function_tools/`](examples/non_function_tools/)：
 
-- HTTP：[`examples/http_tool.py`](examples/http_tool.py)
-- SQL：[`examples/sql_tool.py`](examples/sql_tool.py)
-- ONNX：[`examples/onnx_tool.py`](examples/onnx_tool.py)
-- PyTorch：[`examples/pytorch_tool.py`](examples/pytorch_tool.py)
+- HTTP：[`examples/non_function_tools/http_tool.py`](examples/non_function_tools/http_tool.py)
+- SQL：[`examples/non_function_tools/sql_tool.py`](examples/non_function_tools/sql_tool.py)
+- ONNX：[`examples/non_function_tools/onnx_tool.py`](examples/non_function_tools/onnx_tool.py)
+- PyTorch：[`examples/non_function_tools/pytorch_tool.py`](examples/non_function_tools/pytorch_tool.py)
 
 新 API 的核心是：
 
@@ -181,10 +181,10 @@ def trip_plan(ctx, city: str):
 - **進階示例（閱讀時機：完成 Quickstart 後）**  
   - `examples/demo_mcp.py`：最小 MCP HTTP server demo。  
   - `examples/demo_mcp_stdio.py`：MCP stdio demo。  
-  - `examples/http_tool.py`：宣告式 HTTP tool。  
-  - `examples/sql_tool.py`：宣告式 SQL tool。  
-  - `examples/onnx_tool.py`：ONNX model tool。  
-  - `examples/pytorch_tool.py`：PyTorch model tool。  
+  - `examples/non_function_tools/http_tool.py`：宣告式 HTTP tool。  
+  - `examples/non_function_tools/sql_tool.py`：宣告式 SQL tool。  
+  - `examples/non_function_tools/onnx_tool.py`：ONNX model tool。  
+  - `examples/non_function_tools/pytorch_tool.py`：PyTorch model tool。  
   - `examples/weather_tool/`：天氣工具模組。  
   - `examples/opencv_mcp_web/`：OpenCV MCP Web 外部範例（檔案路徑工作流）。  
 

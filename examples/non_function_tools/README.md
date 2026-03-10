@@ -44,14 +44,7 @@ examples/non_function_tools/assets/tiny_vad_router.onnx
 它是一顆手工建立的單層線性 VAD router，權重與 PyTorch 範例中的 `TinyVadRouter` 相同，
 用途是示範「repo 內附固定 ONNX artifact」的最小做法，而不是提供真實生產模型。
 
-如果你還在使用舊路徑，這些 shim 仍可運作：
-
-```bash
-python examples/http_tool.py
-python examples/sql_tool.py
-python examples/onnx_tool.py
-python examples/pytorch_tool.py
-```
+這些範例現在只保留 `examples/non_function_tools/` 這條路徑，不再額外維護 `examples/` 根目錄 shim。
 
 ## 相依套件
 

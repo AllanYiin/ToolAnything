@@ -86,4 +86,4 @@ http://127.0.0.1:9092/mcp
 - 先跑這組 lab，再去看 `examples/protocol_boundary/README.md`，你會更容易看懂 transport 和 runtime 的分工。
 - 如果你要比較新舊 transport 的差異，可以再看 `examples/demo_mcp.py`。那個是 legacy HTTP/SSE 路線，不是新的主路徑。
 - 如果你想直接啟一個最小的 modern server，而不是自帶 demo server 的 lab，請看 `examples/demo_mcp_streamable_http.py`。
-- 如果你想看真正的 model tool 版 VAD，請接著跑 `examples/pytorch_tool.py` 與 `examples/onnx_tool.py`。
+- 如果你想看真正的 model tool 版 VAD，請接著跑 `examples/non_function_tools/pytorch_tool.py` 與 `examples/non_function_tools/onnx_tool.py`。

@@ -58,7 +58,7 @@ def test_streamable_http_lab_examples_cover_handshake_modes_and_session_lifecycl
 )
 def test_pytorch_model_example_runs() -> None:
     result = subprocess.run(
-        [sys.executable, "examples/pytorch_tool.py"],
+        [sys.executable, "examples/non_function_tools/pytorch_tool.py"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -71,18 +71,38 @@ def test_pytorch_model_example_runs() -> None:
 
 
 @pytest.mark.skipif(
-    any(importlib.util.find_spec(name) is None for name in ("torch", "onnxruntime")),
-    reason="torch 或 onnxruntime 未安裝，跳過 ONNX example smoke test",
+    importlib.util.find_spec("onnxruntime") is None,
+    reason="onnxruntime 未安裝，跳過 ONNX example smoke test",
 )
 def test_onnx_model_example_runs() -> None:
     result = subprocess.run(
-        [sys.executable, "examples/onnx_tool.py"],
+        [sys.executable, "examples/non_function_tools/onnx_tool.py"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
     )
     payload = json.loads(result.stdout)
+    assert Path(payload["artifact"]).name == "tiny_vad_router.onnx"
+    assert payload["artifact_sha256"] == "fdad9f4b0ec9e2bb84721ab0253e1f8235f518e7bd7a5ac24e895f2c871da08d"
     decisions = [item["prediction"]["speech_detected"] for item in payload["results"]]
     assert decisions == [False, False, True]
     assert payload["results"][2]["prediction"]["route"] == "forward_to_asr"
+
+
+def test_sql_source_example_uses_packaged_sqlite_asset() -> None:
+    asset_path = REPO_ROOT / "examples" / "non_function_tools" / "assets" / "analytics.sqlite"
+    assert asset_path.exists()
+
+    result = subprocess.run(
+        [sys.executable, "examples/non_function_tools/sql_tool.py"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(result.stdout)
+    assert Path(payload["database"]).name == "analytics.sqlite"
+    assert payload["query_team"] == "alpha"
+    rows = payload["result"]["rows"]
+    assert [row["score"] for row in rows] == [20, 15, 10]

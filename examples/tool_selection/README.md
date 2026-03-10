@@ -141,11 +141,23 @@ python -m toolanything.examples.tool_selection.custom_strategy
 
 如果你要把 BFCL 或 BFCL-CN 這類 tool calling dataset 拿來測工具搜尋，建議先抽成「single-tool retrieval」資料，不要一開始把 multi-tool / parallel tool call 混進來。
 
+### 第 0 步：先把 Hugging Face dataset 匯出到本地
+
+如果資料集在 Hugging Face 上，可以先匯出 split 成本地檔案：
+
+```powershell
+python -m toolanything.examples.tool_selection.hf_dataset_exporter `
+  --dataset-id gorilla-llm/Berkeley-Function-Calling-Leaderboard `
+  --split eval `
+  --output path\to\bfcl_eval.jsonl `
+  --limit 200
+```
+
 ### 第 1 步：把原始資料轉成 retrieval JSONL
 
 ```powershell
 python -m toolanything.examples.tool_selection.bfcl_converter `
-  --input path\to\bfcl.jsonl `
+  --input path\to\bfcl_eval.jsonl `
   --output path\to\bfcl_retrieval.jsonl `
   --split eval
 ```

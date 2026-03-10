@@ -116,6 +116,7 @@ server/transport 只處理 I/O 與依賴注入，method routing 由 protocol cor
 **對照位置與符號**
 - `src/toolanything/core/selection_strategies.py`：`BaseToolSelectionStrategy`、`RuleBasedStrategy`。
 - `src/toolanything/core/tool_search.py`：`ToolSearchTool` 注入策略。
+- `src/toolanything/core/semantic_search.py`：`SemanticToolIndex`、`SemanticRetrievalStrategy`、`JinaOnnxEmbeddingsV5TextNanoRetrievalProvider`。
 - `src/toolanything/cli.py`：`_run_search()` 使用 `ToolSearchTool`。
 
 **最小做法（自訂策略 → 注入 ToolSearchTool）**
@@ -130,6 +131,11 @@ class AlwaysFirstStrategy(BaseToolSelectionStrategy):
 searcher = ToolSearchTool(registry, failure_log, strategy=AlwaysFirstStrategy())
 results = searcher.search(query="demo")
 ```
+
+**可選的語意搜尋路線**
+- `SemanticToolIndex` 會把 tool 的名稱、描述、metadata、輸入 schema 組成搜尋文件，並快取成可索引文本。
+- `SemanticRetrievalStrategy` 保留既有 tags/prefix/metadata 篩選，再改用語意相似度排序。
+- `JinaOnnxEmbeddingsV5TextNanoRetrievalProvider` 採 lazy import；只有真的呼叫語意搜尋時才會載入 `onnxruntime`、`transformers`、`huggingface-hub` 與 `numpy`，不會把依賴變成核心安裝門檻。
 
 ## Tool metadata 設計（cost/latency_hint_ms/side_effect/category/tags/extra）與向下相容策略
 

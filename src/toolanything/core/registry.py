@@ -29,6 +29,7 @@ class ToolRegistry:
         self._lookup_cache: Dict[
             Tuple[str | None, str], Tuple[str, ToolSpec | PipelineDefinition]
         ] = {}
+        self._observers: list[Any] = []
 
         self.tool_prefix = tool_prefix
         self.pipeline_prefix = pipeline_prefix
@@ -58,6 +59,7 @@ class ToolRegistry:
             raise ValueError(f"工具 {spec.name} 缺少 invoker，無法註冊。")
         self._invokers[normalized_name] = spec.invoker
         self._lookup_cache.clear()
+        self._notify_observers("on_tool_registered", spec)
 
     # 舊介面的相容別名
     def register_tool(self, definition: ToolSpec) -> None:
@@ -70,6 +72,7 @@ class ToolRegistry:
         del self._tools[normalized_name]
         self._invokers.pop(normalized_name, None)
         self._lookup_cache.clear()
+        self._notify_observers("on_tool_unregistered", normalized_name)
 
     def get_tool(self, name: str) -> ToolSpec:
         target, normalized_name = self._normalize_lookup_target(name)
@@ -96,6 +99,15 @@ class ToolRegistry:
 
         tag_set = set(tags)
         return [spec for spec in specs if tag_set.issubset(set(spec.tags))]
+
+    def add_observer(self, observer: Any) -> None:
+        if observer in self._observers:
+            return
+        self._observers.append(observer)
+
+    def remove_observer(self, observer: Any) -> None:
+        if observer in self._observers:
+            self._observers.remove(observer)
 
     # pipeline
     def register_pipeline(self, definition: PipelineDefinition) -> None:
@@ -225,6 +237,12 @@ class ToolRegistry:
             raise ValueError(
                 f"名稱 {name} 已同時註冊為工具與 pipeline，請調整名稱或使用型別前綴分開管理。"
             )
+
+    def _notify_observers(self, method_name: str, payload: Any) -> None:
+        for observer in list(self._observers):
+            method = getattr(observer, method_name, None)
+            if callable(method):
+                method(payload)
 
     async def invoke_tool_async(
         self,

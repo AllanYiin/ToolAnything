@@ -25,6 +25,14 @@ from .failure_log import FailureLogManager
 from .schema import build_parameters_schema, python_type_to_schema
 from .metadata import ToolMetadata, normalize_metadata
 from .selection_strategies import BaseToolSelectionStrategy, HybridStrategy, RuleBasedStrategy
+from .semantic_search import (
+    JinaOnnxEmbeddingsV5TextNanoRetrievalProvider,
+    OptionalDependencyNotAvailable,
+    SemanticRetrievalStrategy,
+    SemanticToolIndex,
+    ToolSearchDocument,
+    ToolSearchDocumentBuilder,
+)
 
 __all__ = [
     "ToolDefinition",
@@ -71,6 +79,12 @@ __all__ = [
     "BaseToolSelectionStrategy",
     "RuleBasedStrategy",
     "HybridStrategy",
+    "ToolSearchDocument",
+    "ToolSearchDocumentBuilder",
+    "SemanticToolIndex",
+    "SemanticRetrievalStrategy",
+    "JinaOnnxEmbeddingsV5TextNanoRetrievalProvider",
+    "OptionalDependencyNotAvailable",
     "ConnectionTester",
     "ConnectionReport",
     "StepReport",

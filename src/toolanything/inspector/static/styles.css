@@ -764,6 +764,36 @@ pre {
   flex-wrap: wrap;
 }
 
+.llm-env-notice {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: var(--r-md);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.llm-env-notice strong {
+  font-size: 12px;
+  color: var(--accent-hover);
+}
+
+.llm-env-notice p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.llm-env-notice code,
+.llm-hint code {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
 .llm-timeline {
   flex: 1;
   min-height: 0;

@@ -5,7 +5,7 @@ import json
 import queue
 import threading
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -35,8 +35,12 @@ def _error_response(exc: InspectorError) -> JSONResponse:
     )
 
 
-def create_app(*, default_timeout: float = 8.0) -> FastAPI:
-    service = MCPInspectorService(default_timeout=default_timeout)
+def create_app(
+    *,
+    default_timeout: float = 8.0,
+    skill_roots: Optional[list[Path | str]] = None,
+) -> FastAPI:
+    service = MCPInspectorService(default_timeout=default_timeout, skill_roots=skill_roots)
     app = FastAPI(title="ToolAnything MCP Inspector", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -75,6 +79,10 @@ def create_app(*, default_timeout: float = 8.0) -> FastAPI:
         except InspectorError as exc:
             return _error_response(exc)
 
+    @app.get("/api/skills/list")
+    async def skills_list() -> JSONResponse:
+        return JSONResponse(service.list_skills())
+
     @app.post("/api/llm/openai/test")
     async def llm_openai_test(request: Request) -> JSONResponse:
         try:
@@ -83,7 +91,6 @@ def create_app(*, default_timeout: float = 8.0) -> FastAPI:
             return JSONResponse(
                 service.run_openai_test(
                     connection,
-                    api_key=str(payload.get("api_key") or ""),
                     model=str(payload.get("model") or ""),
                     prompt=str(payload.get("prompt") or ""),
                     system_prompt=payload.get("system_prompt"),
@@ -112,7 +119,6 @@ def create_app(*, default_timeout: float = 8.0) -> FastAPI:
                 try:
                     result = service.run_openai_test(
                         connection,
-                        api_key=str(payload.get("api_key") or ""),
                         model=str(payload.get("model") or ""),
                         prompt=str(payload.get("prompt") or ""),
                         system_prompt=payload.get("system_prompt"),

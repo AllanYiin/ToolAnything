@@ -138,7 +138,7 @@ def test_inspector_service_supports_stdio_tools():
     assert any(entry["kind"] == "notification" for entry in call_result["trace"])
 
 
-def test_inspector_service_runs_mocked_openai_tool_loop():
+def test_inspector_service_runs_mocked_openai_tool_loop(monkeypatch):
     registry = ToolRegistry()
 
     @tool(name="echo", description="Echo message", registry=registry)
@@ -170,11 +170,11 @@ def test_inspector_service_runs_mocked_openai_tool_loop():
         return replies.pop(0)
 
     service._request_openai_chat_completion = fake_request_openai_chat_completion  # type: ignore[method-assign]
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
     try:
         result = service.run_openai_test(
             {"mode": "http", "url": f"http://127.0.0.1:{port}"},
-            api_key="sk-test",
             model="gpt-test",
             prompt="請呼叫 echo",
         )
@@ -214,6 +214,8 @@ def test_inspector_app_tools_endpoints():
         assert "匯出 JSON" in response.text
         assert "工具搜尋" in response.text
         assert "上傳圖片後會自動轉成 base64 / data URL" in response.text
+        assert "OPENAI_API_KEY" in response.text
+        assert "不再接受手動輸入金鑰" in response.text
 
         response = client.post(
             "/api/connection/test",

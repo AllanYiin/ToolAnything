@@ -157,9 +157,9 @@
         <section class="tab-panel" data-panel="llm">
           <div class="llm-panel">
             <div class="llm-config">
-              <div class="field">
-                <label class="field-label" for="apiKey">OpenAI API Key</label>
-                <input id="apiKey" class="field-input" type="password" placeholder="sk-..." autocomplete="off" />
+              <div class="llm-env-notice">
+                <strong>OpenAI API Key 由環境變數提供</strong>
+                <p>請先在啟動 inspector 的同一個 shell 設定 <code>OPENAI_API_KEY</code>，介面不再接受手動輸入金鑰。</p>
               </div>
               <div class="llm-row">
                 <div class="field">
@@ -181,7 +181,7 @@
               </div>
               <div class="llm-actions">
                 <button id="runLlmButton" type="button" class="btn btn-primary">執行 LLM 測試</button>
-                <span class="llm-hint">API key 不會持久化儲存，僅存於單次請求記憶體。</span>
+                <span class="llm-hint">若未設定 <code>OPENAI_API_KEY</code>，後端會直接回傳錯誤。</span>
               </div>
             </div>
             <div id="llmTimeline" class="llm-timeline empty-state">開始測試後會在這裡逐步顯示 assistant / tool 事件。</div>

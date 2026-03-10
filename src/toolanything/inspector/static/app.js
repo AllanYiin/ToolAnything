@@ -35,7 +35,6 @@ const elements = {
   traceFilterInput: document.getElementById("traceFilterInput"),
   copyTraceButton: document.getElementById("copyTraceButton"),
   exportTraceButton: document.getElementById("exportTraceButton"),
-  apiKey: document.getElementById("apiKey"),
   modelName: document.getElementById("modelName"),
   temperature: document.getElementById("temperature"),
   systemPrompt: document.getElementById("systemPrompt"),
@@ -771,7 +770,6 @@ async function handleLlmRun() {
   setBadge("running", "LLM 測試中");
   const payload = {
     connection: getConnectionPayload(),
-    api_key: elements.apiKey.value.trim(),
     model: elements.modelName.value.trim(),
     temperature: Number(elements.temperature.value || 0.2),
     system_prompt: elements.systemPrompt.value.trim(),

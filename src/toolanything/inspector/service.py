@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 import time
@@ -714,7 +715,6 @@ class MCPInspectorService:
         self,
         payload: Mapping[str, Any],
         *,
-        api_key: str,
         model: str,
         prompt: str,
         system_prompt: str | None = None,
@@ -722,8 +722,7 @@ class MCPInspectorService:
         max_rounds: int = 4,
         event_sink: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
-        if not api_key.strip():
-            raise InspectorError("缺少 OpenAI API key")
+        api_key = self._load_openai_api_key()
         if not model.strip():
             raise InspectorError("缺少 model")
         if not prompt.strip():
@@ -892,6 +891,16 @@ class MCPInspectorService:
             "content": message.get("content"),
             "tool_calls": message.get("tool_calls") or [],
         }
+
+    @staticmethod
+    def _load_openai_api_key() -> str:
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            raise InspectorError(
+                "缺少 OpenAI API key",
+                details={"env_var": "OPENAI_API_KEY"},
+            )
+        return api_key
 
     @staticmethod
     def _emit(

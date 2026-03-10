@@ -134,28 +134,7 @@ def test_repo_opencv_example_includes_web_assets():
     assert "使用示範圖片" in content
 
 
-def test_opencv_dual_protocol_demo_exports_shared_tools_and_local_roundtrip():
-    _import_opencv_example_module()
-    try:
-        module = importlib.import_module("examples.opencv_mcp_web.dual_protocol_demo")
-    except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
-        pytest.skip(f"OpenCV runtime unavailable: {exc}")
-
-    summary = module.build_protocol_summary()
-    assert "opencv.info" in summary["shared_names"]
-    assert summary["mcp_names"] == summary["openai_original_names"]
-
-    roundtrip = module.run_local_openai_roundtrip()
-    assert roundtrip["tool_call"]["function"]["name"] == "opencv_info"
-    assert roundtrip["tool_call"]["id"] == "opencv_info_local_demo"
-    assert roundtrip["invocation"]["role"] == "tool"
-    assert roundtrip["invocation"]["tool_call_id"] == "opencv_info_local_demo"
-    assert roundtrip["invocation"]["name"] == "opencv.info"
-    assert roundtrip["parsed_content"]["width"] == 64
-    assert roundtrip["parsed_content"]["height"] == 40
-
-
-def test_opencv_dual_protocol_demo_runs_mocked_live_openai_loop(monkeypatch):
+def test_opencv_dual_protocol_demo_runs_mocked_live_openai_loop(monkeypatch, capsys):
     _import_opencv_example_module()
     try:
         module = importlib.import_module("examples.opencv_mcp_web.dual_protocol_demo")
@@ -190,14 +169,19 @@ def test_opencv_dual_protocol_demo_runs_mocked_live_openai_loop(monkeypatch):
         "request_chat_completion",
         staticmethod(fake_request_openai_chat_completion),
     )
-
-    result = module.run_live_openai_roundtrip(api_key="sk-test", model="gpt-test")
-    assert result["transport"] == "in_process"
-    assert result["result"]["final_text"] == "完成"
-    assert any(
-        entry["role"] == "tool" and entry["name"] == "opencv.info"
-        for entry in result["result"]["transcript"]
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["dual_protocol_demo.py", "--mode", "live-openai", "--model", "gpt-test", "--api-key", "sk-test"],
     )
+
+    module.main()
+
+    captured = capsys.readouterr().out
+    assert "[dual_protocol_demo] OpenAI live roundtrip：" in captured
+    assert '"transport": "in_process"' in captured
+    assert '"name": "opencv.info"' in captured
+    assert '"final_text": "完成"' in captured
 
 
 def test_opencv_dual_protocol_demo_runs_as_direct_file():

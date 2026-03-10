@@ -623,12 +623,55 @@ pre {
   padding: var(--sp-6);
 }
 
+.result-body {
+  display: grid;
+  gap: var(--sp-4);
+}
+
 .code-block {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   padding: var(--sp-5);
   min-height: 120px;
+}
+
+.result-preview {
+  min-height: 112px;
+}
+
+.result-preview-grid {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.result-preview-card {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.result-preview-card strong {
+  font-size: 12px;
+}
+
+.result-preview-card span {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.result-preview-card img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .tool-card {
@@ -732,18 +775,29 @@ pre {
 
 .llm-panel {
   display: flex;
-  flex-direction: column;
   flex: 1;
+  min-height: 0;
+}
+
+.llm-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
+  gap: 0;
+}
+
+.llm-column {
+  min-width: 0;
   min-height: 0;
 }
 
 .llm-config {
   padding: var(--sp-5) var(--sp-6);
-  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
   background: var(--surface);
+  overflow-y: auto;
 }
 
 .llm-row {
@@ -762,6 +816,80 @@ pre {
   align-items: center;
   gap: var(--sp-3);
   flex-wrap: wrap;
+}
+
+.llm-output {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(240, 242, 245, 0.95) 100%);
+}
+
+.llm-output-header {
+  padding: var(--sp-5) var(--sp-6) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.llm-output-header strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.llm-output-copy {
+  margin: var(--sp-1) 0 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.llm-result-viewer {
+  margin: var(--sp-4) var(--sp-6) 0;
+  min-height: 140px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.llm-image-card {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.llm-image-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.llm-image-head strong {
+  font-size: 12px;
+}
+
+.llm-image-source {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.checkbox-row input {
+  margin: 0;
+}
+
+.llm-image-upload {
+  margin-top: var(--sp-1);
 }
 
 .llm-env-notice {
@@ -799,6 +927,63 @@ pre {
   min-height: 0;
   overflow-y: auto;
   padding: var(--sp-5) var(--sp-6);
+}
+
+.llm-timeline:not(.empty-state) {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-3);
+}
+
+.timeline-entry {
+  padding: 0;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.74);
+  overflow: hidden;
+}
+
+.timeline-entry summary {
+  list-style: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+}
+
+.timeline-entry summary::-webkit-details-marker {
+  display: none;
+}
+
+.timeline-entry summary::after {
+  content: "展開";
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.timeline-entry[open] summary::after {
+  content: "收合";
+}
+
+.timeline-entry-body {
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+
+.timeline-entry-title {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.timeline-entry pre {
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
 }
 
 .schema-field {
@@ -851,6 +1036,12 @@ pre {
 
 .schema-hint {
   font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.llm-hint-block {
+  margin: 0;
 }
 
 .empty-state {
@@ -929,6 +1120,15 @@ pre {
 
   .main-panel {
     min-height: 70vh;
+  }
+
+  .llm-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .llm-config {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
   }
 }
 

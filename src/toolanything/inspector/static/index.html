@@ -123,9 +123,10 @@
         <section class="tab-panel is-active" data-panel="result">
           <div class="result-header">
             <span class="result-title">工具結果</span>
-            <span class="result-meta">回傳內容會以格式化 JSON 顯示。</span>
+            <span class="result-meta">回傳內容會以格式化 JSON 顯示；若結果包含圖片 data URL，會自動顯示預覽。</span>
           </div>
           <div class="result-body">
+            <div id="resultPreview" class="result-preview empty-state">目前結果沒有可預覽的圖片。</div>
             <pre id="resultViewer" class="code-block">{
   "status": "idle"
 }</pre>
@@ -155,8 +156,8 @@
         </section>
 
         <section class="tab-panel" data-panel="llm">
-          <div class="llm-panel">
-            <div class="llm-config">
+          <div class="llm-panel llm-grid">
+            <section class="llm-config llm-column">
               <div class="llm-env-notice">
                 <strong>OpenAI API Key 由環境變數提供</strong>
                 <p>請先在啟動 inspector 的同一個 shell 設定 <code>OPENAI_API_KEY</code>，介面不再接受手動輸入金鑰。</p>
@@ -179,12 +180,42 @@
                 <label class="field-label" for="userPrompt">Prompt</label>
                 <textarea id="userPrompt" class="field-textarea" rows="3" placeholder="描述你要模型完成的任務，例如請模型用工具查詢目前已註冊的能力。"></textarea>
               </div>
+              <div class="llm-image-card">
+                <div class="llm-image-head">
+                  <strong>LLM 測試圖片</strong>
+                  <span id="llmImageSourceLabel" class="llm-image-source">目前沒有指定圖片</span>
+                </div>
+                <label class="checkbox-row" for="useToolImageForLlm">
+                  <input id="useToolImageForLlm" type="checkbox" checked />
+                  <span>優先使用工具表單目前已上傳的圖片</span>
+                </label>
+                <div class="schema-image-upload llm-image-upload">
+                  <input id="llmImageFile" class="schema-file-input" type="file" accept="image/*" />
+                  <div class="schema-upload-meta">
+                    <span id="llmImageUploadText" class="schema-upload-text">可在這裡額外上傳一張圖片；若上面開關啟用且工具區已有圖片，會優先共用工具區圖片。</span>
+                    <button id="clearLlmImageButton" class="btn btn-ghost btn-sm hidden" type="button">清除圖片</button>
+                  </div>
+                  <img id="llmImagePreview" class="schema-image-preview hidden" alt="LLM 測試圖片預覽" />
+                </div>
+                <p class="llm-hint llm-hint-block">執行 LLM 測試時，inspector 會把目前選定的圖片上下文告訴模型；若工具需要 `image_base64`，模型可省略該欄位，後端會自動帶入。</p>
+              </div>
               <div class="llm-actions">
                 <button id="runLlmButton" type="button" class="btn btn-primary">執行 LLM 測試</button>
                 <span class="llm-hint">若未設定 <code>OPENAI_API_KEY</code>，後端會直接回傳錯誤。</span>
               </div>
-            </div>
-            <div id="llmTimeline" class="llm-timeline empty-state">開始測試後會在這裡逐步顯示 assistant / tool 事件。</div>
+            </section>
+            <section class="llm-output llm-column">
+              <div class="llm-output-header">
+                <div>
+                  <strong>LLM 執行結果</strong>
+                  <p id="llmStatusText" class="llm-output-copy">尚未開始執行。右側會顯示最終結果與每一步事件。</p>
+                </div>
+              </div>
+              <pre id="llmResultViewer" class="code-block llm-result-viewer">{
+  "status": "idle"
+}</pre>
+              <div id="llmTimeline" class="llm-timeline empty-state">開始測試後會在這裡逐步顯示 assistant / tool / error 事件。</div>
+            </section>
           </div>
         </section>
       </section>

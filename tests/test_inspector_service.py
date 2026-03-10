@@ -216,6 +216,8 @@ def test_inspector_app_tools_endpoints():
         assert "上傳圖片後會自動轉成 base64 / data URL" in response.text
         assert "OPENAI_API_KEY" in response.text
         assert "不再接受手動輸入金鑰" in response.text
+        assert "LLM 執行結果" in response.text
+        assert "右側會顯示最終結果與每一步事件" in response.text
 
         response = client.post(
             "/api/connection/test",

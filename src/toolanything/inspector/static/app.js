@@ -6,6 +6,8 @@ const state = {
   lastTrace: [],
   traceFilter: "",
   toolFilter: "",
+  llmImageDataUrl: "",
+  llmImageName: "",
 };
 
 const elements = {
@@ -29,6 +31,7 @@ const elements = {
   toolDescription: document.getElementById("toolDescription"),
   schemaForm: document.getElementById("schemaForm"),
   callToolButton: document.getElementById("callToolButton"),
+  resultPreview: document.getElementById("resultPreview"),
   resultViewer: document.getElementById("resultViewer"),
   toolList: document.getElementById("toolList"),
   traceTimeline: document.getElementById("traceTimeline"),
@@ -39,6 +42,14 @@ const elements = {
   temperature: document.getElementById("temperature"),
   systemPrompt: document.getElementById("systemPrompt"),
   userPrompt: document.getElementById("userPrompt"),
+  llmStatusText: document.getElementById("llmStatusText"),
+  llmResultViewer: document.getElementById("llmResultViewer"),
+  useToolImageForLlm: document.getElementById("useToolImageForLlm"),
+  llmImageSourceLabel: document.getElementById("llmImageSourceLabel"),
+  llmImageFile: document.getElementById("llmImageFile"),
+  llmImageUploadText: document.getElementById("llmImageUploadText"),
+  llmImagePreview: document.getElementById("llmImagePreview"),
+  clearLlmImageButton: document.getElementById("clearLlmImageButton"),
   runLlmButton: document.getElementById("runLlmButton"),
   llmTimeline: document.getElementById("llmTimeline"),
   resetStateButton: document.getElementById("resetStateButton"),
@@ -80,6 +91,113 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function isImageDataUrl(value) {
+  return typeof value === "string" && /^data:image\/[a-z0-9.+-]+;base64,/i.test(value.trim());
+}
+
+function parseJsonSafely(text) {
+  if (typeof text !== "string") {
+    return null;
+  }
+  const trimmed = text.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function summarizeImageDataUrl(value) {
+  if (!isImageDataUrl(value)) {
+    return value;
+  }
+  const mimeMatch = value.match(/^data:([^;]+);base64,/i);
+  const mime = mimeMatch ? mimeMatch[1] : "image";
+  return `[${mime} data URL，長度 ${value.length} 字元]`;
+}
+
+function sanitizePayloadForDisplay(value) {
+  if (isImageDataUrl(value)) {
+    return summarizeImageDataUrl(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizePayloadForDisplay(entry));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizePayloadForDisplay(entry)])
+    );
+  }
+  return value;
+}
+
+function collectImagePreviews(value, location, previews, seen) {
+  if (isImageDataUrl(value)) {
+    const normalized = value.trim();
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      previews.push({ location, url: normalized });
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => {
+      collectImagePreviews(entry, `${location}[${index}]`, previews, seen);
+    });
+    return;
+  }
+  if (value && typeof value === "object") {
+    Object.entries(value).forEach(([key, entry]) => {
+      const nextLocation = location ? `${location}.${key}` : key;
+      collectImagePreviews(entry, nextLocation, previews, seen);
+    });
+  }
+}
+
+function extractImagePreviews(payload) {
+  const previews = [];
+  const seen = new Set();
+  collectImagePreviews(payload, "result", previews, seen);
+
+  const content = payload?.result?.content;
+  if (Array.isArray(content)) {
+    content.forEach((entry, index) => {
+      const parsed = parseJsonSafely(entry?.text);
+      if (parsed !== null) {
+        collectImagePreviews(parsed, `result.content[${index}]`, previews, seen);
+      } else if (typeof entry?.text === "string") {
+        collectImagePreviews(entry.text, `result.content[${index}]`, previews, seen);
+      }
+    });
+  }
+  return previews;
+}
+
+function renderResultPreviews(payload) {
+  const previews = extractImagePreviews(payload);
+  if (!previews.length) {
+    elements.resultPreview.className = "result-preview empty-state";
+    elements.resultPreview.textContent = "目前結果沒有可預覽的圖片。";
+    return;
+  }
+
+  elements.resultPreview.className = "result-preview result-preview-grid";
+  elements.resultPreview.innerHTML = "";
+  previews.forEach((preview, index) => {
+    const article = document.createElement("article");
+    article.className = "result-preview-card";
+    article.innerHTML = `
+      <strong>圖片預覽 ${index + 1}</strong>
+      <span>${preview.location}</span>
+      <img src="${preview.url}" alt="工具回傳圖片預覽 ${index + 1}" />
+    `;
+    elements.resultPreview.appendChild(article);
+  });
+}
+
 function normalizeSchema(schema) {
   if (!schema || typeof schema !== "object") {
     return {};
@@ -108,6 +226,7 @@ function saveSettings() {
     system_prompt: elements.systemPrompt.value,
     user_prompt: elements.userPrompt.value,
     tool_filter: elements.toolFilterInput.value,
+    use_tool_image_for_llm: elements.useToolImageForLlm.checked,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 }
@@ -129,6 +248,7 @@ function restoreSettings() {
     elements.systemPrompt.value = payload.system_prompt || "";
     elements.userPrompt.value = payload.user_prompt || "";
     elements.toolFilterInput.value = payload.tool_filter || "";
+    elements.useToolImageForLlm.checked = payload.use_tool_image_for_llm !== false;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -173,7 +293,61 @@ async function postJson(url, payload) {
 }
 
 function renderJson(target, payload) {
-  target.textContent = JSON.stringify(payload, null, 2);
+  target.textContent = JSON.stringify(sanitizePayloadForDisplay(payload), null, 2);
+}
+
+function setLlmStatus(text) {
+  setOptionalText(elements.llmStatusText, text);
+}
+
+function getActiveToolImageField() {
+  return elements.schemaForm.querySelector('[data-field-type="image_base64"]');
+}
+
+function getActiveToolImageContext() {
+  const field = getActiveToolImageField();
+  const imageBase64 = field?.dataset?.encodedValue || "";
+  if (!imageBase64) {
+    return null;
+  }
+  const fileName = field.querySelector(".schema-file-input")?.files?.[0]?.name || "tool-form-image";
+  return {
+    image_base64: imageBase64,
+    image_name: fileName,
+    source: "tool_form",
+    label: `工具區圖片：${fileName}`,
+  };
+}
+
+function getLlmUploadImageContext() {
+  if (!state.llmImageDataUrl) {
+    return null;
+  }
+  return {
+    image_base64: state.llmImageDataUrl,
+    image_name: state.llmImageName || "llm-upload-image",
+    source: "llm_upload",
+    label: `LLM 區圖片：${state.llmImageName || "未命名圖片"}`,
+  };
+}
+
+function getSelectedLlmImageContext() {
+  const toolImage = getActiveToolImageContext();
+  const llmImage = getLlmUploadImageContext();
+
+  if (elements.useToolImageForLlm.checked && toolImage) {
+    return toolImage;
+  }
+  return llmImage || toolImage || null;
+}
+
+function updateLlmImageSummary() {
+  const selected = getSelectedLlmImageContext();
+  if (!selected) {
+    elements.llmImageSourceLabel.textContent = "目前沒有指定圖片";
+    return;
+  }
+  elements.llmImageSourceLabel.textContent = selected.label;
 }
 
 function renderTrace(trace) {
@@ -435,6 +609,61 @@ function applyToolFilter() {
   setOptionalText(elements.statusTools, `${state.tools.length} 工具已載入`);
 }
 
+function formatSchemaDefault(defaultValue) {
+  if (defaultValue === null) {
+    return "null";
+  }
+  if (typeof defaultValue === "string") {
+    return defaultValue;
+  }
+  return JSON.stringify(defaultValue);
+}
+
+function buildSchemaHint(resolvedSchema, fieldType, isImageField) {
+  const noteParts = [];
+  if (resolvedSchema.description) {
+    noteParts.push(resolvedSchema.description);
+  } else if (isImageField) {
+    noteParts.push("支援直接上傳圖片，系統會自動轉成工具需要的字串格式。");
+  } else if (fieldType === "object" || fieldType === "array") {
+    noteParts.push("複合型別請輸入 JSON。");
+  }
+
+  const typeLabel = Array.isArray(resolvedSchema.oneOf)
+    ? resolvedSchema.oneOf.map((entry) => entry?.type).filter(Boolean).join(" | ")
+    : fieldType;
+  noteParts.push(`型別: ${typeLabel}`);
+
+  if (Object.prototype.hasOwnProperty.call(resolvedSchema, "default")) {
+    noteParts.push(`預設值: ${formatSchemaDefault(resolvedSchema.default)}`);
+  }
+  if (Array.isArray(resolvedSchema.enum) && resolvedSchema.enum.length) {
+    noteParts.push(`可用值: ${resolvedSchema.enum.join(", ")}`);
+  }
+  return noteParts.join(" · ");
+}
+
+function applySchemaDefaultValue(resolvedSchema, fieldType, input, textarea) {
+  if (!Object.prototype.hasOwnProperty.call(resolvedSchema, "default")) {
+    return;
+  }
+  const defaultValue = resolvedSchema.default;
+  if (defaultValue === null || defaultValue === undefined) {
+    return;
+  }
+  if (fieldType === "boolean") {
+    input.checked = Boolean(defaultValue);
+    return;
+  }
+  if (fieldType === "object" || fieldType === "array") {
+    textarea.value = typeof defaultValue === "string"
+      ? defaultValue
+      : JSON.stringify(defaultValue, null, 2);
+    return;
+  }
+  input.value = String(defaultValue);
+}
+
 function createSchemaField(name, schema, requiredNames) {
   const resolvedSchema = normalizeSchema(schema);
   const fragment = elements.schemaFieldTemplate.content.cloneNode(true);
@@ -451,11 +680,12 @@ function createSchemaField(name, schema, requiredNames) {
 
   const fieldType = resolvedSchema.type || "string";
   const required = requiredNames.includes(name);
+  const imageField = isImageBase64Field(name, resolvedSchema);
   label.textContent = `${name}${required ? " *" : ""}`;
 
   field.dataset.fieldName = name;
 
-  if (isImageBase64Field(name, resolvedSchema)) {
+  if (imageField) {
     field.dataset.fieldType = "image_base64";
     input.classList.add("hidden");
     textarea.classList.add("hidden");
@@ -475,12 +705,14 @@ function createSchemaField(name, schema, requiredNames) {
         preview.classList.remove("hidden");
         clearButton.classList.remove("hidden");
         uploadText.textContent = `已載入 ${file.name}`;
+        updateLlmImageSummary();
       } catch (error) {
         field.dataset.encodedValue = "";
         preview.removeAttribute("src");
         preview.classList.add("hidden");
         clearButton.classList.add("hidden");
         uploadText.textContent = error.message || "圖片讀取失敗";
+        updateLlmImageSummary();
       }
     });
     clearButton.addEventListener("click", (event) => {
@@ -493,6 +725,7 @@ function createSchemaField(name, schema, requiredNames) {
       uploadText.textContent = required
         ? "上傳圖片後會自動轉成 base64 / data URL，這是必填欄位。"
         : "上傳圖片後會自動轉成 base64 / data URL。";
+      updateLlmImageSummary();
     });
   } else if (fieldType === "boolean") {
     field.dataset.fieldType = "boolean";
@@ -503,6 +736,7 @@ function createSchemaField(name, schema, requiredNames) {
     field.dataset.fieldType = fieldType;
     input.type = "number";
     input.dataset.fieldType = fieldType;
+    input.step = fieldType === "integer" ? "1" : "any";
   } else if (fieldType === "object" || fieldType === "array") {
     field.dataset.fieldType = fieldType;
     input.classList.add("hidden");
@@ -515,15 +749,10 @@ function createSchemaField(name, schema, requiredNames) {
     input.dataset.fieldType = "string";
   }
 
-  if (resolvedSchema.description) {
-    hint.textContent = resolvedSchema.description;
-  } else if (field.dataset.fieldType === "image_base64") {
-    hint.textContent = "支援直接上傳圖片，系統會自動轉成工具需要的字串格式。";
-  } else if (fieldType === "object" || fieldType === "array") {
-    hint.textContent = "複合型別請輸入 JSON。";
-  } else {
-    hint.textContent = `型別: ${fieldType}`;
+  if (!imageField) {
+    applySchemaDefaultValue(resolvedSchema, field.dataset.fieldType || fieldType, input, textarea);
   }
+  hint.textContent = buildSchemaHint(resolvedSchema, field.dataset.fieldType || fieldType, imageField);
 
   return fragment;
 }
@@ -612,14 +841,22 @@ function appendTimelineEntry(kind, title, payload) {
     elements.llmTimeline.className = "llm-timeline";
     elements.llmTimeline.innerHTML = "";
   }
-  const article = document.createElement("article");
-  article.className = `timeline-entry ${kind}`;
-  article.innerHTML = `
-    <strong>${title}</strong>
-    <p class="entry-meta">${new Date().toLocaleTimeString("zh-TW", { hour12: false })}</p>
-    <pre>${JSON.stringify(payload, null, 2)}</pre>
+  const details = document.createElement("details");
+  details.className = `timeline-entry ${kind}`;
+  if (kind === "error" || kind === "tool") {
+    details.open = true;
+  }
+  details.innerHTML = `
+    <summary>
+      <span class="timeline-entry-title">${title}</span>
+      <span class="entry-meta">${new Date().toLocaleTimeString("zh-TW", { hour12: false })}</span>
+      <span class="step-status">${kind}</span>
+    </summary>
+    <div class="timeline-entry-body">
+      <pre>${JSON.stringify(sanitizePayloadForDisplay(payload), null, 2)}</pre>
+    </div>
   `;
-  elements.llmTimeline.appendChild(article);
+  elements.llmTimeline.appendChild(details);
 }
 
 function activateTab(tabName) {
@@ -685,16 +922,24 @@ async function streamLlmTest(payload) {
       }
       const payloadData = JSON.parse(parsed.data);
       if (parsed.event === "status") {
+        setLlmStatus(`執行中：${payloadData.phase || "processing"}`);
         appendTimelineEntry("assistant", "狀態更新", payloadData);
       } else if (parsed.event === "tool") {
+        setLlmStatus(`工具呼叫：${payloadData.name || "unknown"}`);
         appendTimelineEntry("tool", `工具：${payloadData.name}`, payloadData);
       } else if (parsed.event === "assistant") {
+        setLlmStatus(payloadData.done ? "Assistant 已完成回應" : "Assistant 回應中");
         appendTimelineEntry("assistant", "Assistant", payloadData);
       } else if (parsed.event === "complete") {
+        setLlmStatus("LLM 測試完成");
         appendTimelineEntry("assistant", "完成", payloadData);
+        renderJson(elements.llmResultViewer, payloadData);
+        renderResultPreviews(payloadData);
         renderJson(elements.resultViewer, payloadData);
         renderTrace(payloadData.trace || []);
       } else if (parsed.event === "error") {
+        setLlmStatus("LLM 測試失敗，請展開錯誤卡片查看詳細內容。");
+        renderJson(elements.llmResultViewer, { error: payloadData });
         appendTimelineEntry("error", "錯誤", payloadData);
       }
     });
@@ -756,6 +1001,7 @@ async function handleToolCall() {
     name: state.selectedTool.name,
     arguments: argumentsPayload,
   });
+  renderResultPreviews(payload);
   renderJson(elements.resultViewer, payload);
   renderTrace(payload.trace || []);
   activateTab("result");
@@ -765,7 +1011,9 @@ async function handleToolCall() {
 async function handleLlmRun() {
   saveSettings();
   elements.llmTimeline.className = "llm-timeline empty-state";
-  elements.llmTimeline.textContent = "開始執行...";
+  elements.llmTimeline.textContent = "開始測試後會在這裡逐步顯示 assistant / tool / error 事件。";
+  setLlmStatus("正在送出請求並等待模型規劃工具呼叫。");
+  renderJson(elements.llmResultViewer, { status: "running" });
   activateTab("llm");
   setBadge("running", "LLM 測試中");
   const payload = {
@@ -833,6 +1081,8 @@ function bindEvents() {
   elements.runLlmButton.addEventListener("click", () => {
     handleLlmRun().catch((error) => {
       setBadge("failed", "LLM 測試失敗");
+      setLlmStatus("LLM 測試失敗，請展開錯誤卡片查看詳細內容。");
+      renderJson(elements.llmResultViewer, { error: error.message });
       appendTimelineEntry("error", "錯誤", { message: error.message });
     });
   });
@@ -866,7 +1116,10 @@ function init() {
   bindEvents();
   elements.traceFilterInput.value = "";
   state.toolFilter = elements.toolFilterInput.value || "";
+  renderResultPreviews({ status: "idle" });
   renderJson(elements.resultViewer, { status: "idle" });
+  renderJson(elements.llmResultViewer, { status: "idle" });
+  setLlmStatus("尚未開始執行。右側會顯示最終結果與每一步事件。");
   renderTrace([]);
   renderCapabilities(null);
   renderSchemaForm(null);

@@ -776,6 +776,44 @@ pre {
   gap: var(--sp-2);
 }
 
+.schema-image-upload {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.schema-file-input {
+  width: 100%;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.schema-upload-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.schema-upload-text {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.schema-image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
 .schema-label {
   font-size: 12px;
   font-weight: 700;

@@ -215,6 +215,14 @@
         <span class="schema-label"></span>
         <input class="schema-input field-input" type="text" />
         <textarea class="schema-textarea field-textarea hidden" rows="4"></textarea>
+        <div class="schema-image-upload hidden">
+          <input class="schema-file-input" type="file" accept="image/*" />
+          <div class="schema-upload-meta">
+            <span class="schema-upload-text">上傳圖片後會自動轉成 base64 / data URL</span>
+            <button class="btn btn-ghost btn-sm schema-clear-button hidden" type="button">清除圖片</button>
+          </div>
+          <img class="schema-image-preview hidden" alt="已上傳圖片預覽" />
+        </div>
         <span class="schema-hint"></span>
       </label>
     </template>

@@ -213,6 +213,7 @@ def test_inspector_app_tools_endpoints():
         assert "複製 Trace" in response.text
         assert "匯出 JSON" in response.text
         assert "工具搜尋" in response.text
+        assert "上傳圖片後會自動轉成 base64 / data URL" in response.text
 
         response = client.post(
             "/api/connection/test",

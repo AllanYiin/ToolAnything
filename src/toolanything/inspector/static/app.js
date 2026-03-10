@@ -61,6 +61,42 @@ function setOptionalText(element, text) {
   }
 }
 
+function isImageBase64Field(name, schema) {
+  const normalizedName = String(name || "").toLowerCase();
+  const description = String(schema?.description || "").toLowerCase();
+  return (
+    normalizedName === "image_base64" ||
+    (normalizedName.includes("image") && normalizedName.includes("base64")) ||
+    (description.includes("image") && description.includes("base64")) ||
+    description.includes("圖片")
+  );
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("圖片讀取失敗"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function normalizeSchema(schema) {
+  if (!schema || typeof schema !== "object") {
+    return {};
+  }
+  if (schema.type) {
+    return schema;
+  }
+  if (Array.isArray(schema.oneOf)) {
+    const preferred = schema.oneOf.find((entry) => entry && entry.type && entry.type !== "null");
+    if (preferred && typeof preferred === "object") {
+      return { ...schema, ...preferred };
+    }
+  }
+  return schema;
+}
+
 function saveSettings() {
   const payload = {
     mode: elements.transportMode.value,
@@ -401,42 +437,95 @@ function applyToolFilter() {
 }
 
 function createSchemaField(name, schema, requiredNames) {
+  const resolvedSchema = normalizeSchema(schema);
   const fragment = elements.schemaFieldTemplate.content.cloneNode(true);
+  const field = fragment.querySelector(".schema-field");
   const label = fragment.querySelector(".schema-label");
   const input = fragment.querySelector(".schema-input");
   const textarea = fragment.querySelector(".schema-textarea");
+  const imageUpload = fragment.querySelector(".schema-image-upload");
+  const fileInput = fragment.querySelector(".schema-file-input");
+  const preview = fragment.querySelector(".schema-image-preview");
+  const clearButton = fragment.querySelector(".schema-clear-button");
+  const uploadText = fragment.querySelector(".schema-upload-text");
   const hint = fragment.querySelector(".schema-hint");
 
-  const fieldType = schema.type || "string";
+  const fieldType = resolvedSchema.type || "string";
   const required = requiredNames.includes(name);
   label.textContent = `${name}${required ? " *" : ""}`;
 
-  if (fieldType === "boolean") {
+  field.dataset.fieldName = name;
+
+  if (isImageBase64Field(name, resolvedSchema)) {
+    field.dataset.fieldType = "image_base64";
+    input.classList.add("hidden");
+    textarea.classList.add("hidden");
+    imageUpload.classList.remove("hidden");
+    uploadText.textContent = required
+      ? "上傳圖片後會自動轉成 base64 / data URL，這是必填欄位。"
+      : "上傳圖片後會自動轉成 base64 / data URL。";
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) {
+        return;
+      }
+      try {
+        const encodedValue = await readFileAsDataUrl(file);
+        field.dataset.encodedValue = encodedValue;
+        preview.src = encodedValue;
+        preview.classList.remove("hidden");
+        clearButton.classList.remove("hidden");
+        uploadText.textContent = `已載入 ${file.name}`;
+      } catch (error) {
+        field.dataset.encodedValue = "";
+        preview.removeAttribute("src");
+        preview.classList.add("hidden");
+        clearButton.classList.add("hidden");
+        uploadText.textContent = error.message || "圖片讀取失敗";
+      }
+    });
+    clearButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      fileInput.value = "";
+      field.dataset.encodedValue = "";
+      preview.removeAttribute("src");
+      preview.classList.add("hidden");
+      clearButton.classList.add("hidden");
+      uploadText.textContent = required
+        ? "上傳圖片後會自動轉成 base64 / data URL，這是必填欄位。"
+        : "上傳圖片後會自動轉成 base64 / data URL。";
+    });
+  } else if (fieldType === "boolean") {
+    field.dataset.fieldType = "boolean";
     input.type = "checkbox";
     input.dataset.fieldType = "boolean";
     input.value = "true";
   } else if (fieldType === "integer" || fieldType === "number") {
+    field.dataset.fieldType = fieldType;
     input.type = "number";
     input.dataset.fieldType = fieldType;
   } else if (fieldType === "object" || fieldType === "array") {
+    field.dataset.fieldType = fieldType;
     input.classList.add("hidden");
     textarea.classList.remove("hidden");
     textarea.dataset.fieldType = fieldType;
     textarea.placeholder = '請輸入合法 JSON，例如 {"key":"value"}';
   } else {
+    field.dataset.fieldType = "string";
     input.type = "text";
     input.dataset.fieldType = "string";
   }
 
-  if (schema.description) {
-    hint.textContent = schema.description;
+  if (resolvedSchema.description) {
+    hint.textContent = resolvedSchema.description;
+  } else if (field.dataset.fieldType === "image_base64") {
+    hint.textContent = "支援直接上傳圖片，系統會自動轉成工具需要的字串格式。";
   } else if (fieldType === "object" || fieldType === "array") {
     hint.textContent = "複合型別請輸入 JSON。";
   } else {
     hint.textContent = `型別: ${fieldType}`;
   }
 
-  fragment.firstElementChild.dataset.fieldName = name;
   return fragment;
 }
 
@@ -475,14 +564,17 @@ function collectArguments() {
   const fieldNodes = elements.schemaForm.querySelectorAll("[data-field-name]");
   fieldNodes.forEach((node) => {
     const fieldName = node.dataset.fieldName;
+    const containerType = node.dataset.fieldType;
     const input = node.querySelector(".schema-input");
     const textarea = node.querySelector(".schema-textarea");
-    const type = textarea && !textarea.classList.contains("hidden")
+    const type = containerType || (textarea && !textarea.classList.contains("hidden")
       ? textarea.dataset.fieldType
-      : input.dataset.fieldType;
+      : input.dataset.fieldType);
 
     let value;
-    if (type === "boolean") {
+    if (type === "image_base64") {
+      value = node.dataset.encodedValue || undefined;
+    } else if (type === "boolean") {
       value = input.checked;
     } else if (textarea && !textarea.classList.contains("hidden")) {
       const raw = textarea.value.trim();

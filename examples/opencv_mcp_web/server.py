@@ -13,8 +13,8 @@ try:
 except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
     raise RuntimeError(
         "OpenCV 載入失敗。請確認目前環境不要同時混用 opencv-python 與 "
-        "opencv-python-headless，並使用與 NumPy 相容的 wheel；"
-        "本專案建議 opencv-python-headless>=4.12.0.88。"
+        "opencv-python，並使用與 NumPy 相容的 wheel；"
+        "本專案建議 opencv-python>=4.12.0.88。"
     ) from exc
 
 from toolanything import ToolError, ToolRegistry, tool

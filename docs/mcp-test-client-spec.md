@@ -677,7 +677,7 @@ tests/test_mcp_server_integration.py
 
 [需修改/新增的檔案清單]
 README.md
-docs/README.md
+docs/docs-map.md
 examples/README.md
 
 [具體步驟]

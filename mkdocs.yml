@@ -1,0 +1,46 @@
+site_name: ToolAnything
+site_description: ToolAnything documentation
+docs_dir: docs
+site_dir: site
+theme:
+  name: material
+  language: zh-TW
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            show_source: false
+            show_root_heading: true
+            show_root_toc_entry: false
+            heading_level: 2
+            inherited_members: true
+            merge_init_into_class: true
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+nav:
+  - Home: index.md
+  - Docs Map: docs-map.md
+  - Build Docs: build-docs.md
+  - Architecture Walkthrough: architecture-walkthrough.md
+  - Migration Guide: migration-guide.md
+  - MCP Test Client Spec: mcp-test-client-spec.md
+  - API Reference: reference/index.md
+  - Internal Notes:
+      - Imports Map: IMPORTS.md
+      - Callable Coupling Baseline: refactor/callable-coupling-baseline.md
+      - Migration Baseline: refactor/migration-baseline.md

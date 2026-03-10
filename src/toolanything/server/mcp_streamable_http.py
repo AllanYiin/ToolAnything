@@ -575,10 +575,12 @@ def _build_handler(
 
         def do_POST(self) -> None:  # noqa: N802
             if not self._origin_allowed():
+                _drain_request_body(self)
                 self._reject_disallowed_origin()
                 return
 
             if self.path != "/mcp":
+                _drain_request_body(self)
                 _json_response(
                     self,
                     404,

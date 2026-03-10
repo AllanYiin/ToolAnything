@@ -285,6 +285,55 @@ def test_streamable_http_returns_202_for_notifications_and_jsonrpc_responses():
         thread.join(timeout=3)
 
 
+def test_streamable_http_drains_body_before_returning_404_for_wrong_post_path():
+    registry = _build_registry()
+    server, thread = _start_server(build_streamable_handler(registry, host="127.0.0.1", port=0))
+    port = server.server_address[1]
+    conn = http.client.HTTPConnection("localhost", port, timeout=5)
+
+    try:
+        conn.request(
+            "POST",
+            "/",
+            body=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"protocolVersion": "2025-11-25"},
+                }
+            ),
+            headers=_streamable_headers(protocol_version="2025-11-25"),
+        )
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        assert resp.status == 404
+        assert body["error"] == "not_found"
+
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "initialize",
+                    "params": {"protocolVersion": "2025-11-25"},
+                }
+            ),
+            headers=_streamable_headers(protocol_version="2025-11-25"),
+        )
+        resp = conn.getresponse()
+        initialize_body = json.loads(resp.read())
+        assert resp.status == 200
+        assert initialize_body["id"] == 2
+    finally:
+        conn.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
 def test_streamable_http_auth_failure_session_binding_and_malformed_request():
     registry = _build_registry()
     verifier: BearerTokenVerifier = StaticTokenVerifier("good-token")

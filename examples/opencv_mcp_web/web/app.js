@@ -18,10 +18,17 @@ const toolSelect = document.getElementById("toolSelect");
 const toolDescription = document.getElementById("toolDescription");
 const resizeSettings = document.getElementById("resizeSettings");
 const cannySettings = document.getElementById("cannySettings");
+const claheSettings = document.getElementById("claheSettings");
+const colorSettings = document.getElementById("colorSettings");
 const resizeWidthInput = document.getElementById("resizeWidth");
 const resizeHeightInput = document.getElementById("resizeHeight");
 const threshold1Input = document.getElementById("threshold1");
 const threshold2Input = document.getElementById("threshold2");
+const clipLimitInput = document.getElementById("clipLimit");
+const tileGridSizeInput = document.getElementById("tileGridSize");
+const brightnessInput = document.getElementById("brightness");
+const saturationInput = document.getElementById("saturation");
+const hueShiftInput = document.getElementById("hueShift");
 const runToolButton = document.getElementById("runTool");
 const progressBar = document.getElementById("progressBar");
 const resultOutput = document.getElementById("resultOutput");
@@ -301,6 +308,8 @@ function toggleSettings() {
   const toolName = toolSelect.value;
   resizeSettings.style.display = toolName === "opencv.resize" ? "block" : "none";
   cannySettings.style.display = toolName === "opencv.canny" ? "block" : "none";
+  claheSettings.style.display = toolName === "opencv.clahe" ? "block" : "none";
+  colorSettings.style.display = toolName === "opencv.adjust_color" ? "block" : "none";
   updateToolDescription();
   saveSettings();
 }
@@ -479,6 +488,17 @@ async function runTool() {
   if (toolName === "opencv.canny") {
     argumentsPayload.threshold1 = Number(threshold1Input.value);
     argumentsPayload.threshold2 = Number(threshold2Input.value);
+  }
+
+  if (toolName === "opencv.clahe") {
+    argumentsPayload.clip_limit = Number(clipLimitInput.value);
+    argumentsPayload.tile_grid_size = Number(tileGridSizeInput.value);
+  }
+
+  if (toolName === "opencv.adjust_color") {
+    argumentsPayload.brightness = Number(brightnessInput.value);
+    argumentsPayload.saturation = Number(saturationInput.value);
+    argumentsPayload.hue_shift = Number(hueShiftInput.value);
   }
 
   try {

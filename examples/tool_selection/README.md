@@ -16,16 +16,9 @@
 
 ## 前置條件
 
-在 repo 根目錄執行以下指令。
+以下命令以「你已經安裝 `toolanything` 套件」為前提。
 
-如果你已經把 ToolAnything 安裝成 CLI，可直接用 `toolanything ...`。  
-如果還沒安裝，Windows PowerShell 可以先這樣執行：
-
-```powershell
-$env:PYTHONPATH='D:\PycharmProjects\ToolAnything\src'
-```
-
-之後把 README 裡的 `toolanything ...` 改成：
+如果你的環境還沒有 `toolanything` CLI，也可以把命令中的 `toolanything` 改成：
 
 ```powershell
 python -m toolanything.cli ...
@@ -36,7 +29,7 @@ python -m toolanything.cli ...
 執行：
 
 ```powershell
-python examples/tool_selection/01_metadata_catalog.py
+python -m toolanything.examples.tool_selection.metadata_catalog
 ```
 
 你會看到類似輸出：
@@ -54,40 +47,41 @@ python examples/tool_selection/01_metadata_catalog.py
 
 ## 步驟 2：用 constraints 篩選工具
 
-你可以直接參考 [02_constraints_search.sh](D:/PycharmProjects/ToolAnything/examples/tool_selection/02_constraints_search.sh)，但第一次建議直接手動跑下面這些指令，比較容易理解。
-
-### 範例 A：只看成本不超過 `0.02` 的工具
+這一步請直接跑跨平台腳本：
 
 ```powershell
-toolanything search --max-cost 0.02
+python -m toolanything.examples.tool_selection.constraints_search
 ```
 
-### 範例 B：只看延遲低於 `500ms` 的工具
+你會看到類似輸出：
 
-```powershell
-toolanything search --latency-budget-ms 500
+```text
+== max-cost=0.02
+catalog.summarize cost=0.02 latency=800 side_effect=False category=nlp
+catalog.translate_fast cost=0.015 latency=150 side_effect=False category=nlp
+catalog.calculate_tax cost=0.01 latency=60 side_effect=False category=finance
+
+== latency-budget-ms=500
+catalog.translate_fast cost=0.015 latency=150 side_effect=False category=nlp
+catalog.send_email cost=0.1 latency=300 side_effect=True category=ops
+catalog.calculate_tax cost=0.01 latency=60 side_effect=False category=finance
 ```
 
-### 範例 C：只看 `finance` 分類
+這一步會示範四種 constraints：
 
-```powershell
-toolanything search --category finance
-```
+- `max_cost`
+- `latency_budget_ms`
+- `allow_side_effects=False`
+- `categories=["finance"]`
 
-### 範例 D：排除有副作用的工具
-
-```powershell
-toolanything search --query catalog --category nlp
-```
-
-補充：`toolanything search` 的 `allow_side_effects` 預設就是排除高風險工具；只有你明確加上 `--allow-side-effects`，像 `catalog.send_email` 這類工具才會被納入。
+補充：我把 README 原本那種 `toolanything search ...` 的教學拿掉了，因為在這個 example 脈絡裡，CLI 的全域 registry 並沒有自動載入這組範例工具；直接那樣教會讓使用者看到空結果。
 
 ## 步驟 3：比較預設策略與自訂策略
 
 執行：
 
 ```powershell
-python examples/tool_selection/03_custom_strategy.py
+python -m toolanything.examples.tool_selection.custom_strategy
 ```
 
 你會看到類似輸出：
@@ -142,3 +136,60 @@ python examples/tool_selection/03_custom_strategy.py
 - [tool_search.py](D:/PycharmProjects/ToolAnything/src/toolanything/core/tool_search.py)
 - [selection_strategies.py](D:/PycharmProjects/ToolAnything/src/toolanything/core/selection_strategies.py)
 - [metadata.py](D:/PycharmProjects/ToolAnything/src/toolanything/core/metadata.py)
+
+## 用 BFCL / BFCL-CN 做 retrieval benchmark
+
+如果你要把 BFCL 或 BFCL-CN 這類 tool calling dataset 拿來測工具搜尋，建議先抽成「single-tool retrieval」資料，不要一開始把 multi-tool / parallel tool call 混進來。
+
+### 第 1 步：把原始資料轉成 retrieval JSONL
+
+```powershell
+python -m toolanything.examples.tool_selection.bfcl_converter `
+  --input path\to\bfcl.jsonl `
+  --output path\to\bfcl_retrieval.jsonl `
+  --split eval
+```
+
+輸出的每列會長這樣：
+
+```json
+{
+  "split": "eval",
+  "query": "Send an email to Alice.",
+  "expected": "send_email",
+  "query_lang": "en",
+  "tools": [
+    {
+      "name": "send_email",
+      "description": "Send an email notification",
+      "parameters": {"type": "object", "properties": {"to": {"type": "string"}}},
+      "tags": [],
+      "metadata": {}
+    }
+  ]
+}
+```
+
+### 第 2 步：用 semantic benchmark 跑 retrieval
+
+```powershell
+python -m toolanything.examples.tool_selection.semantic_benchmark `
+  --backend fake `
+  --dataset jsonl `
+  --dataset-path path\to\bfcl_retrieval.jsonl `
+  --split eval `
+  --profile full `
+  --tool-doc-langs en,zh `
+  --lexical-weight 0
+```
+
+如果你已經裝好 ONNX 依賴，也可以把 `--backend fake` 換成 `--backend onnx`，直接測 `jinaai/jina-embeddings-v5-text-nano-retrieval`。
+
+### 中英測試建議
+
+- `EN query -> EN tool doc`
+- `ZH query -> ZH tool doc`
+- `ZH query -> EN tool doc`
+- `EN query -> ZH tool doc`
+
+如果你只留英文 tool docs，中文 query 的 hit rate 很可能會掉；這時候就該用 `--tool-doc-langs en,zh` 做 bilingual indexing，而不是只怪 embedding 模型。

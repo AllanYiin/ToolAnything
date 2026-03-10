@@ -35,6 +35,7 @@ class ToolSearchDocument:
     name: str
     text: str
     fingerprint: str
+    variant: str = "default"
 
 
 def _schema_type_name(definition: Mapping[str, Any]) -> str:
@@ -102,6 +103,9 @@ class ToolSearchDocumentBuilder:
         text = "\n".join(line for line in payload if line).strip()
         fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()
         return ToolSearchDocument(name=spec.name, text=text, fingerprint=fingerprint)
+
+    def build_all(self, spec: ToolSpec) -> list[ToolSearchDocument]:
+        return [self.build(spec)]
 
     def _format_parameters(self, schema: Mapping[str, Any] | None) -> list[str]:
         if not isinstance(schema, Mapping):
@@ -293,7 +297,7 @@ class SemanticToolIndex:
     ) -> None:
         self.provider = provider
         self.document_builder = document_builder or ToolSearchDocumentBuilder()
-        self._records: dict[str, _PreparedToolRecord] = {}
+        self._records: dict[tuple[str, str], _PreparedToolRecord] = {}
 
     def on_tool_registered(self, spec: ToolSpec) -> None:
         self.prepare(spec)
@@ -302,24 +306,38 @@ class SemanticToolIndex:
         self.remove(name)
 
     def prepare(self, spec: ToolSpec) -> None:
-        document = self.document_builder.build(spec)
-        current = self._records.get(spec.name)
-        if current is not None and current.document.fingerprint == document.fingerprint:
-            self._records[spec.name] = _PreparedToolRecord(
-                spec=spec,
-                document=current.document,
-                embedding=current.embedding,
-            )
-            return
+        documents = self.document_builder.build_all(spec)
+        active_keys: set[tuple[str, str]] = set()
 
-        self._records[spec.name] = _PreparedToolRecord(
-            spec=spec,
-            document=document,
-            embedding=None,
-        )
+        for document in documents:
+            key = (spec.name, document.variant)
+            active_keys.add(key)
+            current = self._records.get(key)
+            if current is not None and current.document.fingerprint == document.fingerprint:
+                self._records[key] = _PreparedToolRecord(
+                    spec=spec,
+                    document=current.document,
+                    embedding=current.embedding,
+                )
+                continue
+
+            self._records[key] = _PreparedToolRecord(
+                spec=spec,
+                document=document,
+                embedding=None,
+            )
+
+        stale_keys = [
+            key for key in self._records
+            if key[0] == spec.name and key not in active_keys
+        ]
+        for key in stale_keys:
+            self._records.pop(key, None)
 
     def remove(self, name: str) -> None:
-        self._records.pop(name, None)
+        stale_keys = [key for key in self._records if key[0] == name]
+        for key in stale_keys:
+            self._records.pop(key, None)
 
     def ensure_synced(self, specs: Iterable[ToolSpec]) -> None:
         names = set()
@@ -346,24 +364,29 @@ class SemanticToolIndex:
         query_embedding = query_embeddings[0]
         scores: dict[str, float] = {}
         for spec in requested:
-            record = self._records.get(spec.name)
-            if record is None or record.embedding is None:
-                continue
-            scores[spec.name] = _cosine_similarity(query_embedding, record.embedding)
+            best_score = 0.0
+            for key, record in self._records.items():
+                if key[0] != spec.name or record.embedding is None:
+                    continue
+                best_score = max(
+                    best_score,
+                    _cosine_similarity(query_embedding, record.embedding),
+                )
+            scores[spec.name] = best_score
 
         return scores
 
     def _materialize_missing_embeddings(self) -> None:
-        pending_names = [
-            name for name, record in self._records.items() if record.embedding is None
+        pending_keys = [
+            key for key, record in self._records.items() if record.embedding is None
         ]
-        if not pending_names:
+        if not pending_keys:
             return
 
-        payloads = [self._records[name].document.text for name in pending_names]
+        payloads = [self._records[key].document.text for key in pending_keys]
         embeddings = self.provider.encode_documents(payloads)
-        for name, embedding in zip(pending_names, embeddings):
-            self._records[name].embedding = embedding
+        for key, embedding in zip(pending_keys, embeddings):
+            self._records[key].embedding = embedding
 
 
 class SemanticRetrievalStrategy(RuleBasedStrategy):

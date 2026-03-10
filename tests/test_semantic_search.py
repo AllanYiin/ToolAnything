@@ -9,6 +9,7 @@ from toolanything.core.semantic_search import (
     OptionalDependencyNotAvailable,
     SemanticRetrievalStrategy,
     SemanticToolIndex,
+    ToolSearchDocument,
     ToolSearchDocumentBuilder,
 )
 
@@ -113,6 +114,55 @@ def test_semantic_strategy_can_rank_by_parameter_shape():
 
     results = searcher.search(query="subject body to", top_k=1, sort_by_failure=False)
     assert [spec.name for spec in results] == ["notify.email"]
+
+
+def test_semantic_index_uses_best_score_across_multiple_document_variants():
+    class ChineseKeywordProvider:
+        def encode_documents(self, texts):
+            return [self._encode(text) for text in texts]
+
+        def encode_queries(self, texts):
+            return [self._encode(text) for text in texts]
+
+        def _encode(self, text: str) -> tuple[float, ...]:
+            return (
+                float("電子郵件" in text),
+                float("標題" in text),
+                float("內文" in text),
+            )
+
+    class BilingualBuilder(ToolSearchDocumentBuilder):
+        def build_all(self, spec):
+            return [
+                ToolSearchDocument(
+                    name=spec.name,
+                    text="english variant",
+                    fingerprint="en",
+                    variant="en",
+                ),
+                ToolSearchDocument(
+                    name=spec.name,
+                    text="電子郵件 收件者 標題 內文",
+                    fingerprint="zh",
+                    variant="zh",
+                ),
+            ]
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec.from_function(
+            _email_action,
+            name="notify.email",
+            description="send mail",
+        )
+    )
+
+    index = SemanticToolIndex(
+        ChineseKeywordProvider(),
+        document_builder=BilingualBuilder(),
+    )
+    scores = index.score("電子郵件 標題 內文", registry.list())
+    assert scores["notify.email"] > 0.0
 
 
 def test_jina_onnx_provider_imports_modules_only_when_used():

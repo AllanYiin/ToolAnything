@@ -21,6 +21,7 @@ from ..protocol.mcp_jsonrpc import (
     MCPRequestContext,
     build_transport_ready_message,
 )
+from .mcp_streamable_http import _build_handler as _build_streamable_handler
 from .mcp_runtime import build_protocol_dependencies
 from ..utils.logger import configure_logging, logger
 
@@ -216,7 +217,7 @@ def _write_sse_event_locked(session: SSESession, event: str, data: Dict[str, Any
         logger.exception("MCP SSE 寫入失敗")
         return False
 
-def _build_handler(
+def _build_legacy_handler(
     registry: ToolRegistry,
     *,
     host: str,
@@ -516,6 +517,76 @@ def _build_handler(
     return MCPToolHandler
 
 
+def _build_handler(
+    registry: ToolRegistry,
+    *,
+    host: str,
+    port: int,
+    serializer: ResultSerializer | None = None,
+    security_manager: SecurityManager | None = None,
+) -> type[BaseHTTPRequestHandler]:
+    """建立同時支援 Streamable HTTP 與 legacy SSE 的 HTTP handler。"""
+
+    legacy_handler_cls = _build_legacy_handler(
+        registry,
+        host=host,
+        port=port,
+        serializer=serializer,
+        security_manager=security_manager,
+    )
+    streamable_handler_cls = _build_streamable_handler(
+        registry,
+        host=host,
+        port=port,
+        serializer=serializer,
+        security_manager=security_manager,
+    )
+
+    class MCPToolHandler(streamable_handler_cls, legacy_handler_cls):
+        server_version = "ToolAnythingMCP/0.2"
+        protocol_version = "HTTP/1.1"
+
+        def handle(self) -> None:  # noqa: D401 - stdlib hook
+            """處理單一 HTTP 連線，忽略 client 主動中止造成的例外。"""
+
+            try:
+                super().handle()
+            except _CLIENT_DISCONNECT_ERRORS:
+                logger.warning("MCP HTTP client disconnected")
+
+        def do_OPTIONS(self) -> None:  # noqa: N802 - stdlib hook
+            parsed = urlparse(self.path)
+            if parsed.path == "/mcp":
+                return streamable_handler_cls.do_OPTIONS(self)
+            return legacy_handler_cls.do_OPTIONS(self)
+
+        def do_GET(self) -> None:  # noqa: N802 - stdlib hook
+            parsed = urlparse(self.path)
+            if parsed.path == "/mcp":
+                return streamable_handler_cls.do_GET(self)
+            return legacy_handler_cls.do_GET(self)
+
+        def do_POST(self) -> None:  # noqa: N802 - stdlib hook
+            parsed = urlparse(self.path)
+            if parsed.path in {"/", "/mcp"}:
+                original_path = self.path
+                try:
+                    if parsed.path == "/":
+                        self.path = "/mcp"
+                    return streamable_handler_cls.do_POST(self)
+                finally:
+                    self.path = original_path
+            return legacy_handler_cls.do_POST(self)
+
+        def do_DELETE(self) -> None:  # noqa: N802 - stdlib hook
+            parsed = urlparse(self.path)
+            if parsed.path == "/mcp":
+                return streamable_handler_cls.do_DELETE(self)
+            return streamable_handler_cls.do_DELETE(self)
+
+    return MCPToolHandler
+
+
 def run_server(port: int, host: str = "127.0.0.1", registry: ToolRegistry | None = None) -> None:
     """啟動 HTTP 形式的 MCP Tool Server。"""
 
@@ -524,6 +595,7 @@ def run_server(port: int, host: str = "127.0.0.1", registry: ToolRegistry | None
     server = ThreadingHTTPServer((host, port), handler_cls)
     print(f"[ToolAnything] MCP Tool Server 已啟動：http://{host}:{port}")
     print("健康檢查：/health，工具列表：/tools")
+    print("新版 MCP：POST /mcp（或容錯接受 POST /），GET /mcp，DELETE /mcp")
     print("Legacy MCP SSE：GET /sse（回傳 endpoint 供 POST /messages/{session_id} 使用）")
     print("工具呼叫：POST /invoke，SSE 呼叫工具：POST /invoke/stream（text/event-stream）")
     print("預設僅允許 localhost Origin；可用 TOOLANYTHING_ALLOWED_ORIGINS 覆寫。")

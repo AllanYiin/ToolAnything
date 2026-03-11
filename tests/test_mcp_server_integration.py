@@ -17,6 +17,10 @@ from toolanything.protocol.mcp_jsonrpc import (
     MCP_METHOD_TOOLS_LIST,
     build_request,
 )
+from toolanything.server.mcp_streamable_http import (
+    MCP_PROTOCOL_VERSION_HEADER,
+    MCP_SESSION_ID_HEADER,
+)
 from toolanything.server.mcp_stdio_server import MCPStdioServer
 from toolanything.server.mcp_tool_server import _build_handler
 from toolanything.state import StateManager
@@ -123,16 +127,44 @@ def test_mcp_http_server_endpoints(registry_with_tools):
         conn.request(
             "POST",
             "/",
-            body=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
-            headers={"Content-Type": "application/json"},
+            body=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"protocolVersion": "2025-11-25"},
+                }
+            ),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                MCP_PROTOCOL_VERSION_HEADER: "2025-11-25",
+            },
         )
         resp = conn.getresponse()
-        wrong_path_body = json.loads(resp.read())
-        assert resp.status == 404
-        assert wrong_path_body["error"] == "not_found"
-        assert wrong_path_body["transport"] == "legacy_sse"
-        assert wrong_path_body["mcp"]["sse"] == "/sse"
-        assert wrong_path_body["mcp"]["messages"] == "/messages/{session_id}"
+        initialize_body = json.loads(resp.read())
+        session_id = resp.getheader(MCP_SESSION_ID_HEADER)
+        protocol_version = resp.getheader(MCP_PROTOCOL_VERSION_HEADER)
+        assert resp.status == 200
+        assert initialize_body["result"]["protocolVersion"] == "2025-11-25"
+        assert session_id
+        assert protocol_version == "2025-11-25"
+
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                MCP_SESSION_ID_HEADER: session_id,
+                MCP_PROTOCOL_VERSION_HEADER: protocol_version,
+            },
+        )
+        resp = conn.getresponse()
+        mcp_tools_body = json.loads(resp.read())
+        assert resp.status == 200
+        assert any(tool["name"] == "echo" for tool in mcp_tools_body["result"]["tools"])
 
         conn.request("POST", "/invoke", body=json.dumps({"arguments": {}}), headers={"Content-Type": "application/json"})
         resp = conn.getresponse()

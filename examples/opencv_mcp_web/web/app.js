@@ -1,4 +1,7 @@
 const STORAGE_KEY = "toolanything.opencv_mcp_web.v2";
+const MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version";
+const MCP_SESSION_ID_HEADER = "Mcp-Session-Id";
+const DEFAULT_PROTOCOL_VERSION = "2025-11-25";
 
 const serverUrlInput = document.getElementById("serverUrl");
 const connectionStatus = document.getElementById("connectionStatus");
@@ -48,14 +51,8 @@ let progressTimer = null;
 let zoomLevel = 1;
 let availableTools = [];
 const recordEntries = [];
-
-class SseNotSupportedError extends Error {
-  constructor(payload) {
-    super(payload?.reason || "SSE 不支援，已改用替代方案");
-    this.name = "SseNotSupportedError";
-    this.payload = payload;
-  }
-}
+let mcpSession = null;
+let mcpRequestId = 1;
 
 function saveSettings() {
   localStorage.setItem(
@@ -168,27 +165,145 @@ function parseSseChunk(chunk) {
   };
 }
 
-async function invokeToolSse(baseUrl, payload, handlers) {
-  const response = await fetch(`${baseUrl}/invoke/stream`, {
+function buildMcpHeaders({ accept, session }) {
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: accept,
+  };
+
+  if (session?.sessionId) {
+    headers[MCP_SESSION_ID_HEADER] = session.sessionId;
+  }
+  if (session?.protocolVersion) {
+    headers[MCP_PROTOCOL_VERSION_HEADER] = session.protocolVersion;
+  }
+
+  return headers;
+}
+
+function buildJsonRpc(method, params) {
+  const id = mcpRequestId++;
+  return {
+    jsonrpc: "2.0",
+    id,
+    method,
+    ...(params ? { params } : {}),
+  };
+}
+
+function decodeToolCallResult(result) {
+  const firstText = result?.content?.[0]?.text;
+  if (typeof firstText !== "string") {
+    return { result, raw_result: null };
+  }
+  try {
+    return { result, raw_result: JSON.parse(firstText) };
+  } catch {
+    return { result, raw_result: firstText };
+  }
+}
+
+async function mcpInitialize(baseUrl) {
+  const response = await fetch(`${baseUrl}/mcp`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
+    headers: buildMcpHeaders({
+      accept: "application/json",
+      session: null,
+    }),
+    body: JSON.stringify(
+      buildJsonRpc("initialize", { protocolVersion: DEFAULT_PROTOCOL_VERSION }),
+    ),
   });
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    if (data?.error === "sse_not_supported") {
-      throw new SseNotSupportedError(data);
-    }
-    const errorMessage = data?.error?.message || "連線失敗，請稍後再試";
+    const errorMessage =
+      data?.error?.message ||
+      data?.error ||
+      "initialize 失敗，請確認 server 是否支援 /mcp";
+    throw new Error(errorMessage);
+  }
+
+  const body = await response.json().catch(() => ({}));
+  const sessionId = response.headers.get(MCP_SESSION_ID_HEADER);
+  const protocolVersion =
+    response.headers.get(MCP_PROTOCOL_VERSION_HEADER) ||
+    body?.result?.protocolVersion ||
+    DEFAULT_PROTOCOL_VERSION;
+
+  if (!sessionId) {
+    throw new Error("initialize 未回傳 session id，請確認 server transport");
+  }
+
+  return { sessionId, protocolVersion };
+}
+
+async function mcpToolsList(baseUrl, session) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: buildMcpHeaders({ accept: "application/json", session }),
+    body: JSON.stringify(buildJsonRpc("tools/list")),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage =
+      data?.error?.message ||
+      data?.error ||
+      "tools/list 失敗，請確認 session/header";
+    throw new Error(errorMessage);
+  }
+
+  const tools = data?.result?.tools || [];
+  return Array.isArray(tools) ? tools : [];
+}
+
+async function mcpToolCallJson(baseUrl, session, toolName, argumentsPayload) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: buildMcpHeaders({ accept: "application/json", session }),
+    body: JSON.stringify(
+      buildJsonRpc("tools/call", { name: toolName, arguments: argumentsPayload }),
+    ),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage =
+      data?.error?.message ||
+      data?.error ||
+      "tools/call 失敗，請稍後再試";
+    throw new Error(errorMessage);
+  }
+
+  if (data?.error) {
+    throw new Error(data.error.message || "tools/call 失敗");
+  }
+
+  return decodeToolCallResult(data?.result);
+}
+
+async function mcpToolCallSse(baseUrl, session, toolName, argumentsPayload, handlers) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: buildMcpHeaders({ accept: "text/event-stream", session }),
+    body: JSON.stringify(
+      buildJsonRpc("tools/call", { name: toolName, arguments: argumentsPayload }),
+    ),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const errorMessage =
+      data?.error?.message ||
+      data?.error ||
+      "tools/call (stream) 失敗，請稍後再試";
     throw new Error(errorMessage);
   }
 
   const contentType = response.headers.get("Content-Type") || "";
   if (!contentType.includes("text/event-stream")) {
-    throw new Error("SSE 連線失敗，請確認伺服器是否支援串流回應");
+    throw new Error("伺服器未回傳 event-stream，可能不支援串流回應");
   }
 
   if (!response.body) {
@@ -218,6 +333,13 @@ async function invokeToolSse(baseUrl, payload, handlers) {
 
       try {
         const parsedData = JSON.parse(data);
+        if (event === "message") {
+          if (parsedData?.error) {
+            handlers.error?.({ payload: { error: parsedData.error } });
+          } else {
+            handlers.result?.(decodeToolCallResult(parsedData?.result));
+          }
+        }
         if (handlers[event]) {
           handlers[event](parsedData);
         }
@@ -238,24 +360,6 @@ async function invokeToolSse(baseUrl, payload, handlers) {
       break;
     }
   }
-}
-
-async function invokeToolJson(baseUrl, payload) {
-  const response = await fetch(`${baseUrl}/invoke`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const errorMessage = data?.error?.message || "連線失敗，請稍後再試";
-    throw new Error(errorMessage);
-  }
-
-  return data;
 }
 
 function getToolDefinition(name) {
@@ -372,13 +476,10 @@ function createDemoImage() {
 }
 
 function applyResult(payload) {
-  resultOutput.textContent = JSON.stringify(
-    payload.raw_result || payload.result,
-    null,
-    2,
-  );
-  if (payload.raw_result?.image_base64) {
-    resultImage.src = payload.raw_result.image_base64;
+  const rawResult = payload?.raw_result;
+  resultOutput.textContent = JSON.stringify(rawResult || payload?.result || payload, null, 2);
+  if (rawResult?.image_base64) {
+    resultImage.src = rawResult.image_base64;
     resultPlaceholder.style.display = "none";
   } else {
     resultImage.src = "";
@@ -438,13 +539,14 @@ async function checkConnection() {
   setBusyState(true);
   try {
     const health = await fetchJson(`${baseUrl}/health`);
-    connectionStatus.textContent = `連線成功：${health.status}`;
-    const tools = await fetchJson(`${baseUrl}/tools`);
-    const toolEntries = tools.tools || [];
+    connectionStatus.textContent = `連線成功：${health.status}，正在建立 MCP session...`;
+
+    mcpSession = await mcpInitialize(baseUrl);
+    const toolEntries = await mcpToolsList(baseUrl, mcpSession);
     renderTools(toolEntries);
     setConnectionBadge("online", "已連線");
     if (toolEntries.length) {
-      connectionStatus.textContent = `連線成功：${health.status}，共 ${toolEntries.length} 個工具`;
+      connectionStatus.textContent = `連線成功：${health.status}，共 ${toolEntries.length} 個工具（Streamable HTTP）`;
       showToast(`MCP Server 已接通，已取得 ${toolEntries.length} 個工具`);
     } else {
       connectionStatus.textContent = `連線成功：${health.status}，但 tools/list 為 0`;
@@ -477,6 +579,15 @@ async function runTool() {
     return;
   }
 
+  if (!mcpSession?.sessionId) {
+    showToast("尚未建立 MCP session，正在重新連線...");
+    await checkConnection();
+    if (!mcpSession?.sessionId) {
+      showToast("連線失敗，請先檢查 MCP Server 狀態");
+      return;
+    }
+  }
+
   const argumentsPayload = { image_base64: currentImageBase64 };
   if (toolName === "opencv.resize") {
     const width = resizeWidthInput.value ? Number(resizeWidthInput.value) : null;
@@ -504,14 +615,8 @@ async function runTool() {
   try {
     startProgress();
     runToolButton.disabled = true;
-    await invokeToolSse(
-      baseUrl,
-      { name: toolName, arguments: argumentsPayload },
-      {
-        progress: (payload) => {
-          const progressValue = Math.min(100, Math.max(0, payload.progress || 0));
-          setProgress(progressValue);
-        },
+    try {
+      await mcpToolCallSse(baseUrl, mcpSession, toolName, argumentsPayload, {
         result: (payload) => {
           applyResult(payload);
           appendRecord({
@@ -535,20 +640,12 @@ async function runTool() {
         done: () => {
           stopProgress();
         },
-      },
-    );
-  } catch (error) {
-    if (error instanceof SseNotSupportedError) {
-      const warning = error.payload?.warning
-        ? `提醒：${error.payload.warning}`
-        : "已切換相容模式";
-      showToast(`偵測到部署環境不支援 inbound SSE，${warning}`);
+      });
+    } catch (error) {
+      showToast("串流呼叫失敗，已改用 JSON 模式重試");
       try {
         startProgress();
-        const response = await invokeToolJson(baseUrl, {
-          name: toolName,
-          arguments: argumentsPayload,
-        });
+        const response = await mcpToolCallJson(baseUrl, mcpSession, toolName, argumentsPayload);
         applyResult(response);
         appendRecord({
           toolName,
@@ -565,15 +662,7 @@ async function runTool() {
       } finally {
         stopProgress();
       }
-      return;
     }
-    stopProgress();
-    showToast(error.message);
-    appendRecord({
-      toolName,
-      status: "失敗",
-      message: error.message,
-    });
   } finally {
     runToolButton.disabled = false;
   }

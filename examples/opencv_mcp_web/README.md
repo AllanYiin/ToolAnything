@@ -13,6 +13,8 @@
 3. 用內建 MCP client 驗證 `initialize` / `tools/list` / `tools/call`
 4. 用專用 Web UI 實際呼叫 `opencv.info`、`opencv.resize`、`opencv.canny`、`opencv.clahe`、`opencv.adjust_color`
 
+這份教學預設走 **Streamable HTTP**（`/mcp`）路線，Web UI 也會直接對 `/mcp` 發送 `tools/list` / `tools/call`。
+
 ## 前置條件
 
 以下命令以「你已安裝 `toolanything` 套件，且工作目錄在 repo 根目錄」為前提。
@@ -32,13 +34,19 @@ $env:TOOLANYTHING_ALLOWED_ORIGINS='http://127.0.0.1:5173,http://localhost:5173'
 ## 步驟 1：啟動 MCP Server
 
 ```powershell
-toolanything serve examples/opencv_mcp_web/server.py --host 127.0.0.1 --port 9091
+toolanything serve examples/opencv_mcp_web/server.py --streamable-http --host 127.0.0.1 --port 9091
 ```
 
 成功後本機會有一個 MCP HTTP server 跑在：
 
 ```text
 http://127.0.0.1:9091
+```
+
+Streamable HTTP 的 MCP 端點是：
+
+```text
+http://127.0.0.1:9091/mcp
 ```
 
 ## 步驟 2：確認 server 真的有起來
@@ -133,7 +141,7 @@ http://127.0.0.1:5173
 ### `toolanything` 指令不存在
 
 ```powershell
-python -m toolanything.cli serve examples/opencv_mcp_web/server.py --host 127.0.0.1 --port 9091
+python -m toolanything.cli serve examples/opencv_mcp_web/server.py --streamable-http --host 127.0.0.1 --port 9091
 ```
 
 ### `cv2` 載入失敗

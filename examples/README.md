@@ -39,6 +39,7 @@
 
 ## MCP transport 範例
 
+- `examples/mcp_transports/README.md`：三種 transport（Streamable HTTP / legacy SSE / stdio）比較、用途與開發指南。
 - `examples/demo_mcp_stdio.py`：最小 stdio 範例，適合本機 client 透過 subprocess 啟動。
 - `examples/demo_mcp_streamable_http.py`：最小 Streamable HTTP server demo。
 - `examples/streamable_http/`：由淺入深的 Streamable HTTP lab，適合你自己寫 client 或想看 raw request/response。

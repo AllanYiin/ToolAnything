@@ -18,7 +18,7 @@ except Exception as exc:  # pragma: no cover - depends on local OpenCV runtime
     ) from exc
 
 from toolanything import ToolError, ToolRegistry, tool
-from toolanything.server.mcp_tool_server import run_server
+from toolanything.server.mcp_streamable_http import run_server
 from toolanything.utils.logger import logger
 
 # 這個範例同時支援：

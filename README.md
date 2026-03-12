@@ -354,6 +354,7 @@ toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
 更多 transport 細節請看：
 
 - [architecture-walkthrough.md](docs/architecture-walkthrough.md)
+- [examples/mcp_transports/README.md](examples/mcp_transports/README.md)
 - [examples/streamable_http/README.md](examples/streamable_http/README.md)
 
 ## Examples
@@ -364,6 +365,7 @@ toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
 | --- | --- | --- |
 | Quickstart | [examples/quickstart/README.md](examples/quickstart/README.md) | 最短路徑跑通 tool 定義、serve、search、call |
 | Streamable HTTP | [examples/streamable_http/README.md](examples/streamable_http/README.md) | 新版 MCP HTTP transport 的 handshake 與 session lifecycle |
+| MCP Transports | [examples/mcp_transports/README.md](examples/mcp_transports/README.md) | 三種 transport 的差異、用途、與 client 開發最小握手 |
 | Tool Selection | [examples/tool_selection/README.md](examples/tool_selection/README.md) | metadata、constraints、strategy 與 semantic retrieval |
 | Protocol Boundary | [examples/protocol_boundary/README.md](examples/protocol_boundary/README.md) | protocol core 與 transport 的責任切割 |
 | Non-function Tools | [examples/non_function_tools/README.md](examples/non_function_tools/README.md) | 直接把 API、SQL、model 變成 tool |

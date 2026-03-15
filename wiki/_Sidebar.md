@@ -1,0 +1,14 @@
+## ToolAnything Wiki
+
+- [Home](Home)
+- [Getting Started](Getting-Started)
+- [Tool Definition and Registration](Tool-Definition-and-Registration)
+- [MCP Serving and Transports](MCP-Serving-and-Transports)
+- [OpenAI Tool Calling](OpenAI-Tool-Calling)
+- [CLI Reference](CLI-Reference)
+- [Examples and Learning Paths](Examples-and-Learning-Paths)
+- [Architecture Walkthrough](Architecture-Walkthrough)
+- [Migration Guide](Migration-Guide)
+- [Diagnostics and Troubleshooting](Diagnostics-and-Troubleshooting)
+- [Documentation and API Reference](Documentation-and-API-Reference)
+- [Maintaining the Wiki](Maintaining-the-Wiki)

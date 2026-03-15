@@ -1,4 +1,5 @@
 from toolanything import ToolRegistry
+from toolanything.adapters.openai_adapter import OpenAIAdapter
 from toolanything.adapters.openai_adapter import export_tools
 from toolanything.decorators import tool
 
@@ -24,7 +25,8 @@ def test_docstring_metadata_attached_and_used_in_description():
     assert "使用時機" in hint
 
     tools = export_tools(registry)
-    entry = next(t for t in tools if t["function"]["name"] == "demo.docs")
+    safe_name = OpenAIAdapter(registry).to_openai_name("demo.docs")
+    entry = next(t for t in tools if t["function"]["name"] == safe_name)
     description = entry["function"]["description"]
 
     assert "使用時機：當需要示範 docstring 擷取時使用" in description

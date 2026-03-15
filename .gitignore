@@ -153,6 +153,7 @@ venv.bak/
 
 # mkdocs documentation
 /site
+.wiki-publish/
 
 # mypy
 .mypy_cache/

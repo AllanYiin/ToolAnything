@@ -36,6 +36,51 @@ cd ToolAnything.wiki
 
 之後把 `wiki/` 內的頁面複製進來，再 commit / push。
 
+如果你想減少手動複製，repo 內現在提供：
+
+`scripts/sync_github_wiki.ps1`
+
+它會把主 repo 的 `wiki/` 內容同步到一個本地的 Wiki git clone。
+
+### 最短用法
+
+先初始化本地 wiki clone：
+
+```powershell
+.\scripts\sync_github_wiki.ps1 -InitClone
+```
+
+若 `ToolAnything.wiki.git` 已存在，這會 clone 到預設的 `.wiki-publish` 目錄。
+
+之後同步內容但先不 commit：
+
+```powershell
+.\scripts\sync_github_wiki.ps1
+```
+
+同步後直接 commit：
+
+```powershell
+.\scripts\sync_github_wiki.ps1 -Commit -Message "docs: sync wiki content"
+```
+
+同步、commit、push 一次完成：
+
+```powershell
+.\scripts\sync_github_wiki.ps1 -Commit -Push -Message "docs: sync wiki content"
+```
+
+### 參數說明
+
+- `-WikiRepoPath`：本地 wiki clone 路徑，預設 `.wiki-publish`
+- `-SourceDir`：Wiki 來源目錄，預設 `wiki`
+- `-RemoteUrl`：Wiki remote，預設 `https://github.com/AllanYiin/ToolAnything.wiki.git`
+- `-InitClone`：目標目錄不存在時先 clone
+- `-Commit`：同步後直接 commit
+- `-Push`：與 `-Commit` 一起使用，直接 push
+
+這支腳本會保留目標 repo 的 `.git`，並用 `wiki/` 內容覆蓋其餘檔案，所以請只把它指向真正的 wiki repo clone，不要指到其他工作目錄。
+
 ## 建議維護節奏
 
 每次有公開功能變動時，依序檢查：

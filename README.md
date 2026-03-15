@@ -1,72 +1,104 @@
 # ToolAnything
 
-> **ToolAnything for Modern AI Toolchains**
+> 一次定義工具，同時接上 MCP 與 OpenAI tool calling。
 
-ToolAnything 是給 AI 開發工程師的工具層。你定義一次 tool，就可以同時接上 **MCP** 與 **OpenAI tool calling**，不用自己再維護兩套 schema、兩套名稱映射、兩套執行迴圈。
+ToolAnything 是一個給 LLM 應用開發者的 Python 工具層。它把最容易失控的整合工作收斂成一套：工具定義、schema 生成、名稱映射、執行 runtime、MCP transport，以及本機診斷與驗證流程。
 
-它的目標不是再做一個 agent framework，而是把最麻煩、最重複的那層 **tool integration glue code** 抽掉：
+如果你正在做 agent、assistant、copilot 或內部 AI 平台，通常真正拖慢進度的不是模型 API 本身，而是這些重複工作：
 
-- 把 Python function 直接變成 MCP / OpenAI 可用的 tool
-- 把 HTTP API、SQL、PyTorch / ONNX inference 直接註冊成 tool
-- 內建 `serve`、`doctor`、`inspect`，方便你啟動、診斷、驗證
-- 內建 `OpenAIChatRuntime`，不只輸出 schema，還能直接跑 OpenAI tool loop
+- 同一個 tool 要維護兩套 schema
+- Python function、HTTP API、SQL、model inference 都要各自包 wrapper
+- tool 可以宣告，但不容易用真實 MCP host 或 OpenAI loop 驗證
+- transport、debug、Claude Desktop 設定與 smoke test 都變成額外成本
 
-如果你正在做：
+ToolAnything 的目標不是再做一個全能 agent framework，而是把這一層 integration glue code 拿掉，讓你把心力放回工具契約、產品邏輯與模型行為。
 
-- AI agent / assistant 的工具層
-- MCP server 或 MCP-compatible integration
-- OpenAI function calling / tool calling 整合
-- 把既有 API、SQL 或 model inference 封裝成可呼叫工具
+## 為什麼 LLM 開發者會想用它
 
-這個 repo 值得你看。
+### 1. 一次定義，同時接 MCP 與 OpenAI
 
-## 為什麼用 ToolAnything
+你可以用一份工具定義，同時得到：
 
-### 你實際省掉的是什麼
+- MCP tool schema
+- OpenAI tool schema
+- OpenAI-safe tool name mapping
+- 一套共用的工具執行 runtime
 
-不用 ToolAnything 時，你通常要自己做：
+這可以直接減少雙協議整合時最常見的 schema drift 問題。
+
+### 2. 不只包 Python function，也能直接包外部來源
+
+ToolAnything 不把「tool = Python function」當成唯一前提。除了 `@tool`，也支援把這些來源直接註冊成正式工具：
+
+- HTTP API
+- SQL query
+- PyTorch inference
+- ONNX inference
+
+這對已經有既有服務、資料庫查詢或模型資產的團隊特別有價值，因為你不必先手寫一層低價值 wrapper 才能把它接進 LLM toolchain。
+
+### 3. 不只輸出 schema，還能真的跑起來
+
+這個 repo 的定位不是 schema helper。它同時提供：
+
+- `toolanything serve`：啟動 MCP server
+- `toolanything doctor`：檢查 initialize、`tools/list`、`tools/call`
+- `toolanything inspect`：用內建 Web inspector 直接測工具與 MCP transcript
+- `OpenAIChatRuntime`：直接跑 OpenAI tool loop
+
+也就是說，你不只可以「宣告工具」，還能用同一套工具做本機驗證、host 整合與 OpenAI roundtrip 測試。
+
+### 4. 有意識地把責任切乾淨
+
+ToolAnything 幫你處理的是 integration 與 protocol plumbing，不是替你決定 agent orchestration。
+
+它很適合拿來做：
+
+- AI 產品的工具層
+- MCP server
+- 雙協議工具輸出層
+- 可重用的 tool runtime
+
+它不打算直接取代：
+
+- workflow / memory / planning framework
+- 完整 agent platform
+- 產品 UI
+
+這個邊界反而是優勢，因為你比較不會被迫接受一整套過重的抽象。
+
+## 你實際省掉的是什麼
+
+沒有 ToolAnything 時，常見流程通常長這樣：
 
 1. 定義 Python function 或外部 API wrapper
-2. 產生 OpenAI tool schema
-3. 產生 MCP tool schema
-4. 處理名稱合法化與映射
-5. 寫 tool execution runtime
-6. 補 `stdio` / HTTP transport
-7. 再做 smoke test、inspector 與 Claude Desktop 設定
+2. 產生 OpenAI tools schema
+3. 產生 MCP tools schema
+4. 處理 tool name mapping 與合法化
+5. 寫一套 tool execution loop
+6. 補 `stdio` 或 HTTP transport
+7. 再補 diagnosis、inspect、Claude Desktop 設定與 smoke test
 
-ToolAnything 把這些常見重工收斂成一套。
+用 ToolAnything 時，這些工作會被收斂進同一套 API、runtime 與 CLI。
 
-### 核心價值
-
-| 能力 | 對開發者的價值 |
-| --- | --- |
-| 一次定義，同時輸出 MCP 與 OpenAI | 少維護兩套 integration，避免 schema 漂移 |
-| Source-based tools | 可以直接包 HTTP、SQL、model，不必再手寫 wrapper function |
-| `OpenAIChatRuntime` | 不只「能 export tools」，而是可以直接跑 tool loop |
-| MCP transports | 同時支援 `stdio`、Streamable HTTP 與 legacy SSE/HTTP |
-| `doctor` / `inspect` | 導入時更快驗證 initialize、tools/list、tools/call |
-| Tool search / metadata / strategy | 工具數量增加後仍能做篩選與策略化選擇 |
-
-## 這個專案適合誰
+## 這個專案最適合誰
 
 適合：
 
-- 想把既有 Python function 快速暴露成 AI tools 的工程師
-- 要同時支援 MCP 與 OpenAI tool calling 的產品 / 平台團隊
-- 想把 REST API、SQL query、model inference 變成正式 tool source 的團隊
-- 想要一套帶有 CLI、診斷與測試工具的 tool runtime
+- 想把既有 Python function 快速暴露成 MCP / OpenAI tools 的開發者
+- 需要同時支援 MCP 與 OpenAI tool calling 的產品團隊
+- 想把 REST API、SQL、model inference 轉成正式 tool source 的平台團隊
+- 希望工具層本身就帶有 CLI、diagnostics 與 examples 的開發者
 
 不適合：
 
-- 你只需要一次性的單一 OpenAI schema 輸出
-- 你要的是完整 agent orchestration / memory / workflow platform
-- 你只想要 UI，不想碰 Python tool runtime
+- 你只需要一次性的 schema 匯出
+- 你要的是完整 agent orchestration / workflow / memory 平台
+- 你不打算碰 Python runtime，只想找純前端或純 SaaS 型方案
 
-## 5 分鐘看懂它怎麼用
+## 60 秒看懂核心體驗
 
-### 先看最極端版本：1 分鐘做出一個 MCP server
-
-如果你已經裝好 Python 與 ToolAnything，做一個可被 MCP host 呼叫的 server，最短可以只要一個檔案加一條命令。
+### Step 1: 定義一個 tool
 
 ```python
 from toolanything import tool
@@ -77,37 +109,37 @@ def add(a: int, b: int) -> int:
     return a + b
 ```
 
+### Step 2: 啟動成 MCP server
+
 ```bash
 toolanything serve tools.py --stdio
 ```
 
-這樣就已經不是「只有一個 Python function」，而是一個有 `tools/list`、`tools/call`、schema 匯出與 stdio transport 的 MCP server。
-
-你沒有手寫的部分包括：
-
-- tool registration
-- input schema 生成
-- MCP tool definition 匯出
-- `tools/call` 路由
-- 回傳值序列化
-- stdio server plumbing
-
-如果要更誠實地說：
-
-- `1 分鐘`：你已經裝好環境，只是在把一個函式暴露成 MCP tool
-- `3 分鐘`：你從 clone repo 到第一次本機跑通 `serve`
-
-### 1. 安裝
-
-目前最穩定的使用方式是直接從 repo 安裝：
+### Step 3: 驗證它真的可呼叫
 
 ```bash
-git clone <your-fork-or-this-repo>
+toolanything doctor --mode stdio --tools tools
+```
+
+做到這裡時，你已經不是只有一個 Python function，而是一個可以被 MCP host 發現與呼叫的工具服務，包含：
+
+- `tools/list`
+- `tools/call`
+- input schema 生成
+- 回傳值序列化
+- stdio transport
+
+## 安裝
+
+目前建議直接從 repo 安裝：
+
+```bash
+git clone <this-repo>
 cd ToolAnything
 pip install -e .
 ```
 
-需要測試工具時：
+如果你要跑測試或開發工具：
 
 ```bash
 pip install -e .[dev]
@@ -117,7 +149,9 @@ pip install -e .[dev]
 
 - Python `>=3.10`
 
-### 2. 定義一個 tool
+## 快速開始
+
+### 1. 用 decorator 定義工具
 
 ```python
 from toolanything import tool
@@ -128,320 +162,162 @@ def get_weather(city: str, unit: str = "c") -> dict:
     return {"city": city, "unit": unit, "temp": 25}
 ```
 
-### `@tool` 的語法糖到底省了什麼
-
-`@tool` 的價值不是幫你少打一份 JSON，而是把「Python function 變成 MCP tool」這件事裡，大部分重複且低價值的整合工作自動化。
-
-以這段函式為例：
-
-```python
-import toolanything
-@tool(name="weather.query", description="取得城市天氣")
-def get_weather(city: str, unit: str = "c") -> dict:
-    """查詢指定城市的即時天氣。"""
-    return {"city": city, "unit": unit, "temp": 25}
-```
-
-ToolAnything 目前會自動把它映射到 MCP tool definition 的核心部分：
-
-| Python 宣告 | ToolAnything 自動處理 | 對應到 MCP |
-| --- | --- | --- |
-| `name="weather.query"` | 註冊穩定 tool name | `name` |
-| `description=...` 或 docstring 摘要 | 組合對外描述文字 | `description` |
-| `city: str`, `unit: str = "c"` | 由 type hints 與 default 產生 JSON Schema | `input_schema`（tool input schema） |
-| 函式本體 | 包成可被 registry / runtime 呼叫的 invoker | `tools/call` 的執行目標 |
-
-換句話說，`@tool` 不是把 Python function 生硬包成字典，而是把「定義、註冊、schema、執行入口」一次接好。
-
-### 3. 啟動 MCP server
+### 2. 啟動 MCP server
 
 ```bash
 toolanything serve examples/quickstart/tools.py --stdio
 ```
 
-或啟動 HTTP transport：
-
-```bash
-toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
-```
-
-### 4. 驗證 transport 與 tool call
-
-```bash
-toolanything doctor --mode stdio --tools examples.quickstart.tools
-```
-
-### 5. 直接跑 OpenAI tool loop
-
-```python
-from toolanything import OpenAIChatRuntime
-
-runtime = OpenAIChatRuntime()
-result = runtime.run(
-    model="gpt-4.1-mini",
-    prompt="請呼叫 weather.query，城市是台北",
-)
-print(result["final_text"])
-```
-
-## 從 Python function 到 MCP tool：隱形成本與可見責任
-
-### ToolAnything 幫你隱形處理掉的技術議題
-
-- 解析函式簽名與 type hints，產生 MCP / OpenAI 共用的 JSON Schema
-- 根據 default 值區分 required / optional 參數
-- 自動略過 `self`、`cls` 與 context 參數，避免把內部實作細節暴露成 tool input
-- 從 `description` 或 docstring 摘要補齊對外說明
-- 把函式註冊進 registry，接上 MCP `tools/list` 與 `tools/call`
-- 將 Python 回傳值序列化成 MCP 可回傳的內容格式
-- 統一處理工具執行錯誤與未預期例外，避免每個 tool 各寫一套錯誤外殼
-- 在 `serve` 模式下補上 MCP capability / server info / transport plumbing
-- 在 OpenAI 路徑下同步輸出 tool schema，並可直接接到內建 tool-calling runtime
-
-### 開發者仍然要自己處理的可見議題
-
-- 工具的業務邏輯是否正確，回傳結果是否真的能支撐 agent 決策
-- tool name、description、參數命名是否清楚且穩定
-- 外部 API、資料庫、模型權限與金鑰管理
-- 重試、超時、rate limit、成本控制與副作用管理
-- 工具輸出的資料結構設計，尤其是給 LLM 消費時的穩定性與可讀性
-- 部署策略與 host 整合選擇，例如要用 `stdio` 還是 HTTP transport
-- 若走 OpenAI tool calling，system prompt、tool policy 與模型選型仍需自己負責
-
-重點是：**ToolAnything 幫你消掉的是 integration glue，不是業務判斷。**  
-你應該把心力放在「這個 tool 該不該存在、契約怎麼設計、結果怎麼讓模型可靠使用」，而不是反覆手刻 schema、registry 與 protocol plumbing。
-
-## 產品輪廓
-
-ToolAnything 可以分成四層理解：
-
-1. **Tool definition layer**
-   你用 `@tool` 或 source-based API 宣告工具。
-2. **Runtime layer**
-   ToolAnything 負責 schema、執行、名稱映射與 tool loop。
-3. **Transport layer**
-   同一份工具可透過 MCP `stdio`、Streamable HTTP、legacy SSE/HTTP 暴露。
-4. **Developer tooling**
-   `serve`、`doctor`、`inspect`、Claude Desktop 設定安裝與 examples。
-
-這個分層的重點是：**你在寫的是 tool，不是在重複寫整合。**
-
-## 主要功能
-
-### 1. 一份工具，同時支援 MCP 與 OpenAI
-
-ToolAnything 內建：
-
-- MCP schema export
-- OpenAI tool schema export
-- OpenAI-safe tool name mapping
-- Tool invocation runtime
-- OpenAI tool-calling roundtrip runtime
-
-對應實作：
-
-- [openai_adapter.py](src/toolanything/adapters/openai_adapter.py)
-- [mcp_adapter.py](src/toolanything/adapters/mcp_adapter.py)
-- [openai_runtime.py](src/toolanything/openai_runtime.py)
-
-### 2. 不只 function，也支援外部來源
-
-你可以直接把下面這些來源變成 tool：
-
-- HTTP API
-- SQL query
-- PyTorch model inference
-- ONNX model inference
-
-相關範例：
-
-- [http_tool.py](examples/non_function_tools/http_tool.py)
-- [sql_tool.py](examples/non_function_tools/sql_tool.py)
-- [onnx_tool.py](examples/non_function_tools/onnx_tool.py)
-- [pytorch_tool.py](examples/non_function_tools/pytorch_tool.py)
-
-### 3. MCP transport 不只一種
-
-目前支援：
-
-| Transport | 用途 |
-| --- | --- |
-| `stdio` | Claude Desktop、IDE、本機 agent host 最直接 |
-| Streamable HTTP | 新版 MCP HTTP transport，建議做網路型整合時使用 |
-| legacy SSE / HTTP | 舊 client 相容層 |
-
-### 4. 內建診斷與檢查工具
-
-#### `doctor`
-
-快速驗證：
-
-- transport 是否接通
-- `initialize`
-- `tools/list`
-- `tools/call`
-
-```bash
-toolanything doctor --mode http --url http://localhost:9090
-```
-
-#### `inspect`
-
-啟動內建 Web inspector：
-
-```bash
-toolanything inspect
-```
-
-它適合：
-
-- 探索工具 schema
-- 手動測 tool arguments
-- 看 MCP transcript
-- 做 OpenAI tool-calling smoke test
-
-## OpenAI tool calling
-
-這裡是 ToolAnything 跟一般「只會吐 schema 的 helper」最大差異之一。
-
-你可以只拿 schema：
-
-```python
-from toolanything.adapters import OpenAIAdapter
-from toolanything.core.registry import ToolRegistry
-
-adapter = OpenAIAdapter(ToolRegistry.global_instance())
-tools = adapter.to_schema()
-```
-
-也可以直接用內建 runtime 跑完整 tool loop：
-
-```python
-from toolanything import OpenAIChatRuntime
-
-runtime = OpenAIChatRuntime()
-result = runtime.run(
-    model="gpt-4.1-mini",
-    prompt="請用工具回答問題",
-    system_prompt="如果工具可以回答，就優先使用工具。",
-)
-```
-
-相關範例：
-
-- [dual_protocol_demo.py](examples/opencv_mcp_web/dual_protocol_demo.py)
-
-## MCP 使用方式
-
-### 啟動 stdio
-
-```bash
-toolanything serve examples/quickstart/tools.py --stdio
-```
-
-### 啟動 Streamable HTTP
+如果你要測 HTTP transport：
 
 ```bash
 toolanything serve examples/quickstart/tools.py --streamable-http --host 127.0.0.1 --port 9092
 ```
 
-### 啟動 legacy HTTP / SSE
+### 3. 檢查 transport 與 tool call
 
 ```bash
-toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
+toolanything doctor --mode stdio --tools examples.quickstart.tools
 ```
 
-更多 transport 細節請看：
+或檢查 HTTP server：
 
-- [architecture-walkthrough.md](docs/architecture-walkthrough.md)
-- [examples/mcp_transports/README.md](examples/mcp_transports/README.md)
-- [examples/streamable_http/README.md](examples/streamable_http/README.md)
+```bash
+toolanything doctor --mode http --url http://127.0.0.1:9092
+```
 
-## Examples
+### 4. 開 inspector 做互動式驗證
 
-如果你第一次接觸這個 repo，建議照這個順序看：
+```bash
+toolanything inspect
+```
 
-| 路線 | 入口 | 你會學到什麼 |
-| --- | --- | --- |
-| Quickstart | [examples/quickstart/README.md](examples/quickstart/README.md) | 最短路徑跑通 tool 定義、serve、search、call |
-| Streamable HTTP | [examples/streamable_http/README.md](examples/streamable_http/README.md) | 新版 MCP HTTP transport 的 handshake 與 session lifecycle |
-| MCP Transports | [examples/mcp_transports/README.md](examples/mcp_transports/README.md) | 三種 transport 的差異、用途、與 client 開發最小握手 |
-| Tool Selection | [examples/tool_selection/README.md](examples/tool_selection/README.md) | metadata、constraints、strategy 與 semantic retrieval |
-| Protocol Boundary | [examples/protocol_boundary/README.md](examples/protocol_boundary/README.md) | protocol core 與 transport 的責任切割 |
-| Non-function Tools | [examples/non_function_tools/README.md](examples/non_function_tools/README.md) | 直接把 API、SQL、model 變成 tool |
-| OpenCV Web Demo | [examples/opencv_mcp_web/README.md](examples/opencv_mcp_web/README.md) | 較完整的 MCP + OpenAI 雙協議範例 |
+它適合拿來：
+
+- 看工具 schema
+- 手動送 `tools/call`
+- 檢查 MCP transcript
+- 做 OpenAI tool-calling smoke test
+
+## 直接跑 OpenAI tool loop
+
+如果你不只想匯出 tool schema，也想直接讓模型透過工具回答：
+
+```python
+from toolanything import OpenAIChatRuntime
+
+runtime = OpenAIChatRuntime()
+result = runtime.run(
+    model="gpt-4.1-mini",
+    prompt="請使用 weather.query 回答問題。",
+)
+
+print(result["final_text"])
+```
+
+## 不只 function，也支援 source-based tools
+
+如果你的工具不是 Python function，而是既有服務或資產，可以直接走 source-based API。
+
+支援範圍：
+
+- HTTP source
+- SQL source
+- Model source
+
+相關範例：
+
+- [examples/non_function_tools/http_tool.py](examples/non_function_tools/http_tool.py)
+- [examples/non_function_tools/sql_tool.py](examples/non_function_tools/sql_tool.py)
+- [examples/non_function_tools/onnx_tool.py](examples/non_function_tools/onnx_tool.py)
+- [examples/non_function_tools/pytorch_tool.py](examples/non_function_tools/pytorch_tool.py)
+
+如果你是從既有 callable-first 寫法遷移過來，舊用法仍可繼續使用；新功能則建議優先採用 source-based API。詳見 [docs/migration-guide.md](docs/migration-guide.md)。
+
+## 核心能力一覽
+
+| 能力 | 對開發者的價值 |
+| --- | --- |
+| 一份工具同時支援 MCP 與 OpenAI | 降低雙協議維護成本，避免 schema 漂移 |
+| `@tool` 與 source-based API 並存 | 先用簡單方式上手，再逐步接 HTTP / SQL / model |
+| `OpenAIChatRuntime` | 不只輸出 schema，還能直接跑 tool loop |
+| `stdio`、Streamable HTTP、legacy SSE/HTTP | 可以依 host 與部署情境切換 transport |
+| `doctor`、`inspect`、Claude Desktop integration | 導入與除錯成本更低 |
+| tool metadata 與 search strategy | 工具數量變多後仍可做篩選、排序與策略化選擇 |
+
+## MCP transport 支援
+
+| Transport | 典型場景 |
+| --- | --- |
+| `stdio` | Claude Desktop、IDE、本機 agent host |
+| Streamable HTTP | 新版 MCP HTTP 整合，適合服務間連線 |
+| legacy SSE / HTTP | 相容舊 client |
+
+如果你要做新的 MCP 網路整合，建議優先用 Streamable HTTP。
+
+## 專案導覽
+
+如果你第一次進 repo，建議照這個順序閱讀：
+
+| 想解決的問題 | 先看哪裡 |
+| --- | --- |
+| 我要先跑通最小可用流程 | [examples/quickstart/README.md](examples/quickstart/README.md) |
+| 我要理解不同 transport 差異 | [examples/mcp_transports/README.md](examples/mcp_transports/README.md) |
+| 我要做新版 MCP HTTP 整合 | [examples/streamable_http/README.md](examples/streamable_http/README.md) |
+| 我要把 HTTP / SQL / model 變成 tool | [examples/non_function_tools/README.md](examples/non_function_tools/README.md) |
+| 我要做工具搜尋與選擇策略 | [examples/tool_selection/README.md](examples/tool_selection/README.md) |
+| 我要理解架構與擴充點 | [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md) |
+| 我要評估遷移成本 | [docs/migration-guide.md](docs/migration-guide.md) |
 
 ## Claude Desktop 整合
 
-ToolAnything 內建兩種方式：
-
-### 產生設定片段
+產生設定片段：
 
 ```bash
-toolanything init-claude --module examples/opencv_mcp_web/server.py --port 9091
+toolanything init-claude --module examples/opencv_mcp_web/server.py --port 9090
 ```
 
-### 直接寫入設定檔
+直接寫入設定檔：
 
 ```bash
-toolanything install-claude --config "~/Library/Application Support/Claude/config.json" --port 9090 --module examples/opencv_mcp_web/server.py
+toolanything install-claude --module examples/opencv_mcp_web/server.py --port 9090
 ```
 
-如果你的目標是讓 MCP Desktop 類型 host 直接吃 stdio，這會比手動抄設定穩定很多。
+## 架構定位
 
-## 遷移與相容性
+可以把 ToolAnything 想成四層：
 
-如果你已經在用舊的 callable-first 方式，現在仍然可以繼續用：
+1. Tool definition layer
+2. Runtime layer
+3. Transport layer
+4. Developer tooling layer
 
-- `@tool`
-- `ToolSpec.from_function()`
-- `ToolRegistry.get() -> callable`
-- `ToolRegistry.execute_tool_async()`
+這個分層的意義是：你寫的是工具與工具契約，不是一次又一次地重寫 protocol 與 integration plumbing。
 
-但新功能建議優先採用 source-based API。
-
-詳細說明：
-
-- [migration-guide.md](docs/migration-guide.md)
-
-## 架構與設計
-
-如果你正在評估「這東西能不能撐長期維護」，再往下讀這份文件：
-
-- [architecture-walkthrough.md](docs/architecture-walkthrough.md)
-
-你會看到：
-
-- 為什麼 protocol core 與 transport 分開
-- 為什麼從 callable-first 轉向 invoker-first
-- 如何新增 transport
-- 如何新增 source
-- 如何新增 tool search strategy
-
-這些內容應該放在第二層閱讀，而不是 README 首屏；但如果你在乎可擴充性，這份文件很重要。
+如果你在意長期維護與擴充點，請直接看 [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md)。
 
 ## 專案狀態
 
-目前 `pyproject.toml` 中的版本是 `0.1.0`，定位仍偏早期，但已具備完整可跑的：
+- 目前版本：`0.1.0`
+- Python requirement：`>=3.10`
+- 開發狀態：Alpha
 
-- tool definition
-- MCP transports
-- OpenAI tool runtime
-- doctor / inspect
-- examples 與 migration 文件
+目前已具備：
 
-如果你是要評估導入，最合理的方式不是先看 roadmap，而是先跑：
+- callable-first 與 source-based 兩條工具定義路徑
+- MCP `stdio`、Streamable HTTP、legacy SSE/HTTP
+- OpenAI tool schema adapter 與 tool loop runtime
+- `doctor`、`inspect`、Claude Desktop integration
+- examples、migration 文件與測試
 
-1. [examples/quickstart/README.md](examples/quickstart/README.md)
-2. `toolanything doctor`
-3. [examples/opencv_mcp_web/dual_protocol_demo.py](examples/opencv_mcp_web/dual_protocol_demo.py)
+這代表它已經適合拿來做原型、內部平台整合與架構驗證；若你要導入正式產品，建議先從自己的真實工具與 host 組合做一輪 smoke test。
 
 ## 文件索引
 
 - [docs/docs-map.md](docs/docs-map.md)
-- [architecture-walkthrough.md](docs/architecture-walkthrough.md)
-- [migration-guide.md](docs/migration-guide.md)
-- [mcp-test-client-spec.md](docs/mcp-test-client-spec.md)
+- [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md)
+- [docs/migration-guide.md](docs/migration-guide.md)
+- [docs/mcp-test-client-spec.md](docs/mcp-test-client-spec.md)
 
 ## License
 

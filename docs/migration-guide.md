@@ -4,7 +4,7 @@
 
 ## 先講結論
 
-- 舊的 `@tool`、`ToolSpec.from_function()`、`ToolManager.register(function)` 仍然可用。
+- 舊的 `@tool`、`ToolSpec.from_function()`、`ToolManager.register(function)` 仍然可用；其中 callable 相容層現在也涵蓋 class method。
 - 新核心不再把 Python callable 視為唯一工具來源。
 - 建議新功能優先使用 source-based API：
   - HTTP API：`register_http_tool(...)`
@@ -21,7 +21,7 @@ def add(a: int, b: int = 1) -> int:
     return a + b
 ```
 
-這個用法仍然有效，內部會自動包成 `CallableInvoker`，並透過 invoker runtime 執行。
+這個用法仍然有效，內部會自動包成 `CallableInvoker`，並透過 invoker runtime 執行。若你是用 `@tool` 搭配 `@classmethod`，現在也同樣會先解析成正確的 bound class method 再註冊。
 
 ## 新用法：invoker-first / source-based
 
@@ -87,7 +87,7 @@ manager.register_model_tool(
 
 ## 何時用哪種 source
 
-- `callable`：你本來就有 Python 函式，且它是核心業務邏輯本體。
+- `callable`：你本來就有 Python 函式或 class method，且它是核心業務邏輯本體。
 - `http`：你要包裝外部 REST API，而且不想再手寫 wrapper function。
 - `sql`：你要暴露固定模板查詢，並希望 schema 自動從 bind params 推導。
 - `model`：你要把 inference runtime 納入正式工具來源，而不是塞進一般函式裡。

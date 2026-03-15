@@ -4,7 +4,7 @@
 
 範例大致分成兩條路線：
 
-1. 先學會怎麼把 Python function 註冊成 tool，並透過 MCP 呼叫。
+1. 先學會怎麼把 Python function / class method 註冊成 tool，並透過 MCP 呼叫。
 2. 再進一步把 HTTP API、SQL 查詢、PyTorch/ONNX 模型直接註冊成 tool，不再手寫 wrapper function。
 
 如果你是第一次接觸 ToolAnything，請先跑「情境式學習路線」；如果你已經知道自己要把哪種來源接進來，可以直接跳到對應範例。

@@ -4,9 +4,9 @@
 
 ## Repo 定位與三類使用者
 
-ToolAnything 的定位是「跨協議 AI 工具中介層」：一份工具定義可以輸出到 MCP 與 OpenAI Tool Calling。現在核心已從 callable-first 重構為 invoker-first，一份工具不一定要綁定 Python function，也可以來自 HTTP、SQL 或 model inference source。對應三類使用者：
+ToolAnything 的定位是「跨協議 AI 工具中介層」：一份工具定義可以輸出到 MCP 與 OpenAI Tool Calling。現在核心已從 callable-first 重構為 invoker-first，一份工具不一定要綁定 Python function；`@tool` 也可直接處理 class method，另外工具也可以來自 HTTP、SQL 或 model inference source。對應三類使用者：
 
-1. **初學者**：只需要把 Python 函式變成可呼叫的工具。
+1. **初學者**：只需要把 Python 函式或 class method 變成可呼叫的工具。
 2. **已有 MCP 概念者**：關注協議邊界、transport 與 protocol core 的責任切割。
 3. **進階使用者**：需要搜尋、排序與策略化選擇工具。
 
@@ -46,10 +46,13 @@ flowchart LR
 ```python
 from toolanything.decorators import tool
 
+
 @tool(name="quickstart.greet", description="打招呼")
 def greet(name: str) -> str:
     return f"Hello {name}"
 ```
+
+若你要的是 class method 版本，另可參考 `examples/class_method_tools/README.md`。
 
 ## 為什麼 protocol 要獨立（指出 protocol core 的入口與責任）
 

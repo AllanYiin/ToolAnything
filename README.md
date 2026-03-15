@@ -7,7 +7,7 @@ ToolAnything 是一個給 LLM 應用開發者的 Python 工具層。它把最容
 如果你正在做 agent、assistant、copilot 或內部 AI 平台，通常真正拖慢進度的不是模型 API 本身，而是這些重複工作：
 
 - 同一個 tool 要維護兩套 schema
-- Python function、HTTP API、SQL、model inference 都要各自包 wrapper
+- Python function、class method、HTTP API、SQL、model inference 都要各自包 wrapper
 - tool 可以宣告，但不容易用真實 MCP host 或 OpenAI loop 驗證
 - transport、debug、Claude Desktop 設定與 smoke test 都變成額外成本
 
@@ -26,9 +26,9 @@ ToolAnything 的目標不是再做一個全能 agent framework，而是把這一
 
 這可以直接減少雙協議整合時最常見的 schema drift 問題。
 
-### 2. 不只包 Python function，也能直接包外部來源
+### 2. 不只包 Python function / class method，也能直接包外部來源
 
-ToolAnything 不把「tool = Python function」當成唯一前提。除了 `@tool`，也支援把這些來源直接註冊成正式工具：
+ToolAnything 不把「tool = Python function」當成唯一前提。除了 `@tool` 直接裝飾 Python function 與 class method，也支援把這些來源直接註冊成正式工具：
 
 - HTTP API
 - SQL query
@@ -71,7 +71,7 @@ ToolAnything 幫你處理的是 integration 與 protocol plumbing，不是替你
 
 沒有 ToolAnything 時，常見流程通常長這樣：
 
-1. 定義 Python function 或外部 API wrapper
+1. 定義 Python function、class method 或外部 API wrapper
 2. 產生 OpenAI tools schema
 3. 產生 MCP tools schema
 4. 處理 tool name mapping 與合法化
@@ -85,7 +85,7 @@ ToolAnything 幫你處理的是 integration 與 protocol plumbing，不是替你
 
 適合：
 
-- 想把既有 Python function 快速暴露成 MCP / OpenAI tools 的開發者
+- 想把既有 Python function / class method 快速暴露成 MCP / OpenAI tools 的開發者
 - 需要同時支援 MCP 與 OpenAI tool calling 的產品團隊
 - 想把 REST API、SQL、model inference 轉成正式 tool source 的平台團隊
 - 希望工具層本身就帶有 CLI、diagnostics 與 examples 的開發者
@@ -99,6 +99,11 @@ ToolAnything 幫你處理的是 integration 與 protocol plumbing，不是替你
 ## 60 秒看懂核心體驗
 
 ### Step 1: 定義一個 tool
+
+`@tool` 目前支援：
+
+- module-level function
+- class method（`@tool` 與 `@classmethod` 兩種順序都可）
 
 ```python
 from toolanything import tool
@@ -121,7 +126,7 @@ toolanything serve tools.py --stdio
 toolanything doctor --mode stdio --tools tools
 ```
 
-做到這裡時，你已經不是只有一個 Python function，而是一個可以被 MCP host 發現與呼叫的工具服務，包含：
+做到這裡時，你已經不是只有一個 Python function / class method，而是一個可以被 MCP host 發現與呼叫的工具服務，包含：
 
 - `tools/list`
 - `tools/call`
@@ -145,6 +150,9 @@ pip install -e .
 pip install -e .[dev]
 ```
 
+`.[dev]` 會額外安裝測試與 model tool 需要的套件，例如 `httpx`、`onnx`、
+`onnxruntime`、`torch`，避免測試收集階段因缺少依賴而失敗。
+
 需求：
 
 - Python `>=3.10`
@@ -152,6 +160,8 @@ pip install -e .[dev]
 ## 快速開始
 
 ### 1. 用 decorator 定義工具
+
+`@tool` 可直接用在一般函數，也可用在 class method。class method 的完整教程見 [examples/class_method_tools/README.md](examples/class_method_tools/README.md)。
 
 ```python
 from toolanything import tool
@@ -217,7 +227,7 @@ print(result["final_text"])
 
 ## 不只 function，也支援 source-based tools
 
-如果你的工具不是 Python function，而是既有服務或資產，可以直接走 source-based API。
+如果你的工具不是 Python function / class method，而是既有服務或資產，可以直接走 source-based API。
 
 支援範圍：
 

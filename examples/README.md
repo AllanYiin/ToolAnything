@@ -13,13 +13,15 @@
 
 1. **Quickstart** — `examples/quickstart/`  
    從 `@tool` 開始，跑通最小流程：定義工具、啟動 server、`tools/list`、CLI search、`tools/call`。
-2. **Streamable HTTP Lab** — `examples/streamable_http/`  
+2. **Class Method Tools** — `examples/class_method_tools/`  
+   看懂 `@tool` 與 `@classmethod` 的兩種 decorator 順序，理解 ToolAnything 如何把 class method 變成正式 tool。
+3. **Streamable HTTP Lab** — `examples/streamable_http/`  
    用 3 支小範例看懂新版 `/mcp` transport：initialize、response mode、session resume/close。
-3. **Source-based tools** — `examples/non_function_tools/`  
+4. **Source-based tools** — `examples/non_function_tools/`  
    把 HTTP API、SQL、ONNX、PyTorch 直接變成 tool，理解新的 source-based / invoker-first 設計。
-4. **Tool Selection** — `examples/tool_selection/`  
+5. **Tool Selection** — `examples/tool_selection/`  
    了解 metadata、constraints、strategy 如何影響搜尋與排序。
-5. **Protocol Boundary** — `examples/protocol_boundary/`  
+6. **Protocol Boundary** — `examples/protocol_boundary/`  
    了解 protocol、runtime、transport 的邊界，避免把功能改在錯誤層級。
 
 ## Source-based tools 範例
@@ -53,10 +55,12 @@
 - `examples/mcp_server_demo/`：簡單 client/server 對接示範。
 - `examples/weather_tool/`：模組化工具定義範例。
 - `examples/finance_tools/pipeline_demo.py`：金融工具管線示範。
+- `examples/class_method_tools/`：獨立教程，示範 `@tool` 與 `@classmethod` 的兩種疊法、底層機制與取捨。
 
 ## 你可以怎麼選
 
 - 想先理解最小工具流程：從 `examples/quickstart/` 開始。
+- 想理解 class method 為什麼也能直接變成 tool：看 `examples/class_method_tools/`。
 - 想把新版 `/mcp` transport 看懂：先跑 `examples/streamable_http/`。
 - 想把外部系統直接接成 tool：直接看 HTTP / SQL / model 範例。
 - 想釐清 MCP transport 與 runtime 邊界：看 `examples/protocol_boundary/`。

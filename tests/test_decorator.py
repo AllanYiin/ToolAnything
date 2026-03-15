@@ -1,3 +1,5 @@
+import pytest
+
 from toolanything import ToolRegistry
 from toolanything.pipeline import PipelineContext
 from toolanything.decorators import pipeline, tool
@@ -29,6 +31,43 @@ def test_global_registry_auto_registration():
     assert registered.description == "auto"
     assert registered.func("ping") == {"auto": "ping"}
     ToolRegistry._global_instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_classmethod_tool_registration_supports_outermost_tool_decorator():
+    registry = ToolRegistry()
+
+    class Greeter:
+        @tool(name="demo.outer", description="outer", registry=registry)
+        @classmethod
+        def greet(cls, text: str) -> str:
+            return f"{cls.__name__}:{text}"
+
+    registered = registry.get_tool("demo.outer")
+    assert registered.parameters["properties"] == {"text": {"type": "string"}}
+    assert registered.func("hi") == "Greeter:hi"
+    assert Greeter.greet("hi") == "Greeter:hi"
+    assert await registry.invoke_tool_async("demo.outer", arguments={"text": "hi"}) == "Greeter:hi"
+    assert not any(name.startswith("__toolanything_pending_tool__") for name in Greeter.__dict__)
+
+
+@pytest.mark.asyncio
+async def test_classmethod_tool_registration_supports_innermost_tool_decorator():
+    registry = ToolRegistry()
+
+    class Greeter:
+        @classmethod
+        @tool(name="demo.inner", description="inner", registry=registry)
+        def greet(cls, text: str) -> str:
+            return f"{cls.__name__}:{text}"
+
+    registered = registry.get_tool("demo.inner")
+    assert registered.parameters["properties"] == {"text": {"type": "string"}}
+    assert registered.func("hi") == "Greeter:hi"
+    assert Greeter.greet("hi") == "Greeter:hi"
+    assert await registry.invoke_tool_async("demo.inner", arguments={"text": "hi"}) == "Greeter:hi"
+    assert Greeter.__dict__["greet"].__func__.tool_spec.name == "demo.inner"
+    assert not any(name.startswith("__toolanything_pending_tool__") for name in Greeter.__dict__)
 
 
 def test_pipeline_auto_registration():

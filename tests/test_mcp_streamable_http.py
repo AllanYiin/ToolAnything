@@ -100,6 +100,12 @@ def test_streamable_http_initialize_list_call_and_stream():
         assert resp.status == 200
         assert any(tool["name"] == "echo" for tool in tools_body["result"]["tools"])
 
+        conn.request("GET", "/tools")
+        resp = conn.getresponse()
+        direct_tools_body = json.loads(resp.read())
+        assert resp.status == 200
+        assert direct_tools_body["tools"] == tools_body["result"]["tools"]
+
         conn.request(
             "POST",
             "/mcp",
@@ -553,6 +559,76 @@ def test_streamable_http_rejects_protocol_mismatch_invalid_accept_and_supports_d
         body = json.loads(resp.read())
         assert resp.status == 404
         assert body["error"] == "session_not_found"
+    finally:
+        conn.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_streamable_http_initialize_negotiates_supported_protocol_version():
+    registry = _build_registry()
+    server, thread = _start_server(build_streamable_handler(registry, host="127.0.0.1", port=0))
+    port = server.server_address[1]
+
+    try:
+        for requested_version in ("2024-11-05", "2025-06-18"):
+            conn = http.client.HTTPConnection("localhost", port, timeout=5)
+            try:
+                conn.request(
+                    "POST",
+                    "/mcp",
+                    body=json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "initialize",
+                            "params": {"protocolVersion": requested_version},
+                        }
+                    ),
+                    headers=_streamable_headers(protocol_version=requested_version),
+                )
+                resp = conn.getresponse()
+                body = json.loads(resp.read())
+                session_id = resp.getheader(MCP_SESSION_ID_HEADER)
+                negotiated_version = resp.getheader(MCP_PROTOCOL_VERSION_HEADER)
+
+                assert resp.status == 200
+                assert body["result"]["protocolVersion"] == "2025-11-25"
+                assert negotiated_version == "2025-11-25"
+                assert session_id
+            finally:
+                conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_streamable_http_initialize_rejects_mismatched_protocol_sources():
+    registry = _build_registry()
+    server, thread = _start_server(build_streamable_handler(registry, host="127.0.0.1", port=0))
+    port = server.server_address[1]
+    conn = http.client.HTTPConnection("localhost", port, timeout=5)
+
+    try:
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"protocolVersion": "2024-11-05"},
+                }
+            ),
+            headers=_streamable_headers(protocol_version="2025-06-18"),
+        )
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        assert resp.status == 400
+        assert body["error"] == "protocol_version_mismatch"
     finally:
         conn.close()
         server.shutdown()

@@ -410,11 +410,12 @@ def _build_handler(
             if method == "initialize":
                 params = (payload or {}).get("params", {}) or {}
                 requested_version = params.get("protocolVersion")
-                if requested_version and requested_version != protocol_version:
-                    self._protocol_error("unsupported_protocol_version")
-                    return None
-                if header_version and header_version != protocol_version:
-                    self._protocol_error("unsupported_protocol_version")
+                if (
+                    header_version
+                    and requested_version
+                    and header_version != requested_version
+                ):
+                    self._protocol_error("protocol_version_mismatch")
                     return None
                 return protocol_version
 

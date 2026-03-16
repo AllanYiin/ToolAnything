@@ -3,6 +3,7 @@
 - [Docs Home](index.md)：文件站首頁，先看文件定位、閱讀順序與維護原則。
 - [Build Docs](build-docs.md)：本機生成 API reference、建置與預覽文件站的步驟。
 - [Architecture Walkthrough](architecture-walkthrough.md)：架構動機、協議邊界、擴充方式與端到端流程。
+- [CLI Export](cli-export.md)：如何把同一份 ToolContract 匯出成 CLI command tree、保存 project config 與執行 launcher。
 - `examples/quickstart/README.md`：可直接執行的最小流程（註冊工具、啟動伺服器、tools/list、tools/call、工具搜尋）。
 - `examples/tool_selection/README.md`：metadata / constraints / strategy 的搜尋示範。
 - `examples/protocol_boundary/README.md`：protocol/core 與 server/transport 邊界對照。

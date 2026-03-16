@@ -21,10 +21,22 @@ ToolAnything 的目標不是再做一個全能 agent framework，而是把這一
 
 - MCP tool schema
 - OpenAI tool schema
+- CLI command tree
 - OpenAI-safe tool name mapping
 - 一套共用的工具執行 runtime
 
 這可以直接減少雙協議整合時最常見的 schema drift 問題。
+
+### 1.5 同一份 ToolContract 也能直接變成 CLI
+
+如果你想在 shell、CI 或人工 smoke test 直接跑工具，不需要再自己包 argparse：
+
+```bash
+toolanything cli export --module tests.fixtures.sample_tools --app-name mytools
+toolanything cli run --config toolanything.cli.json -- math add --a 2 --b 3 --json
+```
+
+CLI 仍走同一個 registry / runtime / invoker 執行鏈，不會分叉成另一套邏輯。
 
 ### 2. 不只包 Python function / class method，也能直接包外部來源
 
@@ -44,6 +56,7 @@ ToolAnything 不把「tool = Python function」當成唯一前提。除了 `@too
 - `toolanything serve`：啟動 MCP server
 - `toolanything doctor`：檢查 initialize、`tools/list`、`tools/call`
 - `toolanything inspect`：用內建 Web inspector 直接測工具與 MCP transcript
+- `toolanything cli`：把 ToolContract 匯出為 CLI app 並直接執行
 - `OpenAIChatRuntime`：直接跑 OpenAI tool loop
 
 也就是說，你不只可以「宣告工具」，還能用同一套工具做本機驗證、host 整合與 OpenAI roundtrip 測試。
@@ -293,6 +306,24 @@ toolanything init-claude --module examples/opencv_mcp_web/server.py --port 9090
 toolanything install-claude --module examples/opencv_mcp_web/server.py --port 9090
 ```
 
+## CLI Export
+
+如果你想把同一份工具定義直接變成命令列介面：
+
+```bash
+toolanything cli export --module tests.fixtures.sample_tools --app-name mytools
+toolanything cli run --config toolanything.cli.json -- math add --a 2 --b 3
+```
+
+也可以輸出 launcher：
+
+```bash
+toolanything cli export --module tests.fixtures.sample_tools --app-name mytools --launcher .toolanything/mytools.py
+python .toolanything/mytools.py math add --a 2 --b 3 --json
+```
+
+詳細規格與限制見 [docs/cli-export.md](docs/cli-export.md)。
+
 ## 架構定位
 
 可以把 ToolAnything 想成四層：
@@ -327,6 +358,7 @@ toolanything install-claude --module examples/opencv_mcp_web/server.py --port 90
 - [docs/docs-map.md](docs/docs-map.md)
 - [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md)
 - [docs/migration-guide.md](docs/migration-guide.md)
+- [docs/cli-export.md](docs/cli-export.md)
 - [docs/mcp-test-client-spec.md](docs/mcp-test-client-spec.md)
 
 ## License

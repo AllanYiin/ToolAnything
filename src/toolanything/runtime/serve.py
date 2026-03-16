@@ -40,7 +40,7 @@ def _resolve_tool_module_path(module: str) -> Path | None:
     return None
 
 
-def load_tool_module(module: str) -> None:
+def load_tool_module(module: str):
     """載入使用者工具模組，觸發 @tool 註冊。"""
 
     resolved = _resolve_tool_module_path(module)
@@ -52,7 +52,7 @@ def load_tool_module(module: str) -> None:
         loaded = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = loaded
         spec.loader.exec_module(loaded)
-        return
+        return loaded
 
     if _looks_like_file_path(module):
         raise FileNotFoundError(
@@ -61,7 +61,7 @@ def load_tool_module(module: str) -> None:
             f" 請改用絕對路徑，或切到 repo root：{_REPO_ROOT}"
         )
 
-    importlib.import_module(module)
+    return importlib.import_module(module)
 
 
 def serve(

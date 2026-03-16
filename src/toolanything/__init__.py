@@ -62,6 +62,20 @@ from toolanything.exceptions import (
     ToolNotFoundError,
 )
 from toolanything.state import StateManager
+from toolanything.cli_export import (
+    CLIApp,
+    CLIAppInspection,
+    CLIArgumentSpec,
+    CLICommandDefinition,
+    CLICommandOverride,
+    CLIExportOptions,
+    CLIInvocationEnvelope,
+    CLIProjectConfig,
+    build_cli_app,
+    export_cli_project,
+    load_cli_project,
+    save_cli_project,
+)
 
 from toolanything.runtime import run, serve
 from toolanything.openai_runtime import OpenAIChatRuntime
@@ -70,6 +84,20 @@ from toolanything.openai_runtime import OpenAIChatRuntime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .cli_export import (
+        CLIApp,
+        CLIAppInspection,
+        CLIArgumentSpec,
+        CLICommandDefinition,
+        CLICommandOverride,
+        CLIExportOptions,
+        CLIInvocationEnvelope,
+        CLIProjectConfig,
+        build_cli_app,
+        export_cli_project,
+        load_cli_project,
+        save_cli_project,
+    )
     from .core import (
         BaseToolSelectionStrategy,
         CallableInvoker,
@@ -199,6 +227,20 @@ _PIPELINE_EXPORTS = ["PipelineContext"]
 _STATE_EXPORTS = ["StateManager"]
 _RUNTIME_EXPORTS = ["run", "serve"]
 _OPENAI_EXPORTS = ["OpenAIChatRuntime"]
+_CLI_EXPORTS = [
+    "CLIApp",
+    "CLIAppInspection",
+    "CLIArgumentSpec",
+    "CLICommandDefinition",
+    "CLICommandOverride",
+    "CLIExportOptions",
+    "CLIInvocationEnvelope",
+    "CLIProjectConfig",
+    "build_cli_app",
+    "export_cli_project",
+    "load_cli_project",
+    "save_cli_project",
+]
 _CORE_EXPORTS_SET = set(_CORE_EXPORTS)
 _EXCEPTION_EXPORTS_SET = set(_EXCEPTION_EXPORTS)
 _DECORATOR_EXPORTS_SET = set(_DECORATOR_EXPORTS)
@@ -206,6 +248,7 @@ _PIPELINE_EXPORTS_SET = set(_PIPELINE_EXPORTS)
 _STATE_EXPORTS_SET = set(_STATE_EXPORTS)
 _RUNTIME_EXPORTS_SET = set(_RUNTIME_EXPORTS)
 _OPENAI_EXPORTS_SET = set(_OPENAI_EXPORTS)
+_CLI_EXPORTS_SET = set(_CLI_EXPORTS)
 
 __all__ = [
     *_CORE_EXPORTS,
@@ -214,6 +257,7 @@ __all__ = [
     *_PIPELINE_EXPORTS,
     *_RUNTIME_EXPORTS,
     *_OPENAI_EXPORTS,
+    *_CLI_EXPORTS,
     *_EXCEPTION_EXPORTS,
 ]
 
@@ -247,4 +291,8 @@ def __getattr__(name: str):
         from . import openai_runtime
 
         return getattr(openai_runtime, name)
+    if name in _CLI_EXPORTS_SET:
+        from . import cli_export
+
+        return getattr(cli_export, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

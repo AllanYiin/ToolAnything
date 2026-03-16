@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .failure_log import FailureLogManager
 from .invokers import CallableInvoker, Invoker
 from .models import PipelineDefinition, ToolSpec
-from .runtime_types import ExecutionContext
+from .runtime_types import ExecutionContext, StreamEmitter
 from ..state import StateManager
 
 
@@ -252,6 +252,7 @@ class ToolRegistry:
         user_id: str | None = None,
         state_manager: StateManager | None = None,
         failure_log: FailureLogManager | None = None,
+        stream: StreamEmitter | None = None,
         inject_context: bool = False,
         context_arg: str = "context",
     ) -> Any:
@@ -273,6 +274,7 @@ class ToolRegistry:
                 result = await invoker.invoke(
                     arguments,
                     context,
+                    stream=stream,
                     inject_context=inject_context,
                     context_arg=context_arg,
                 )
@@ -287,6 +289,7 @@ class ToolRegistry:
             result = await invoker.invoke(
                 arguments,
                 context,
+                stream=stream,
                 inject_context=inject_context,
                 context_arg=context_arg,
             )
@@ -304,6 +307,7 @@ class ToolRegistry:
         user_id: str | None = None,
         state_manager: StateManager | None = None,
         failure_log: FailureLogManager | None = None,
+        stream: StreamEmitter | None = None,
         inject_context: bool = False,
         context_arg: str = "context",
     ) -> Any:
@@ -313,6 +317,7 @@ class ToolRegistry:
             user_id=user_id,
             state_manager=state_manager,
             failure_log=failure_log,
+            stream=stream,
             inject_context=inject_context,
             context_arg=context_arg,
         )
@@ -325,6 +330,7 @@ class ToolRegistry:
         user_id: str | None = None,
         state_manager: StateManager | None = None,
         failure_log: FailureLogManager | None = None,
+        stream: StreamEmitter | None = None,
         inject_context: bool = False,
         context_arg: str = "context",
     ) -> Any:
@@ -342,6 +348,7 @@ class ToolRegistry:
                     user_id=user_id,
                     state_manager=state_manager,
                     failure_log=failure_log,
+                    stream=stream,
                     inject_context=inject_context,
                     context_arg=context_arg,
                 )

@@ -12,11 +12,21 @@ import subprocess
 import sys
 import time
 
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict
 from urllib import request as url_request
 from urllib.parse import urljoin
 
+from .cli_export import (
+    DEFAULT_CONFIG_FILENAME,
+    CLIExportOptions,
+    build_cli_app,
+    export_cli_project,
+    load_cli_project,
+    write_cli_launcher,
+)
+from .cli_export.config import cli_project_to_dict
 from .core import FailureLogManager, ToolRegistry, ToolSearchTool
 from .core.connection_tester import ConnectionTester, render_report
 from .utils.logger import logger
@@ -97,6 +107,156 @@ def _serve_module(
         stdio=stdio,
         streamable_http=streamable_http,
     )
+
+
+def _load_cli_registry(module: str) -> ToolRegistry:
+    from .runtime.serve import load_tool_module
+
+    loaded_module = load_tool_module(module)
+    module_registry = getattr(loaded_module, "registry", None)
+    if isinstance(module_registry, ToolRegistry):
+        return module_registry
+
+    tool_registry = getattr(loaded_module, "tool_registry", None)
+    if isinstance(tool_registry, ToolRegistry):
+        return tool_registry
+
+    return ToolRegistry.global_instance()
+
+
+def _resolve_cli_context(
+    *,
+    module: str | None,
+    config_path: str | None,
+    app_name: str | None = None,
+    app_description: str | None = None,
+    default_output_mode: str | None = None,
+    include_tools: list[str] | None = None,
+    exclude_tools: list[str] | None = None,
+    overwrite: bool = False,
+):
+    project_config = load_cli_project(config_path) if config_path else None
+    resolved_module = module or (project_config.module if project_config else None)
+    if not resolved_module:
+        raise ValueError("CLI export 需要 --module 或 config 中的 module")
+
+    registry = _load_cli_registry(resolved_module)
+    effective_include = include_tools or (project_config.tools if project_config else None)
+    effective_output_mode = (
+        default_output_mode
+        or (project_config.default_output_mode if project_config else "text")
+    )
+    options = CLIExportOptions(
+        app_name=app_name or (project_config.app_name if project_config else "tools"),
+        app_description=app_description or (project_config.app_description if project_config else None),
+        default_output_mode=effective_output_mode,
+        include_tools=effective_include,
+        exclude_tools=exclude_tools,
+        overwrite=overwrite,
+    )
+    app = build_cli_app(registry, options, project_config=project_config)
+    return app, project_config, resolved_module
+
+
+def _run_cli_export(args: argparse.Namespace) -> None:
+    config_path = args.config
+    app, project_config, resolved_module = _resolve_cli_context(
+        module=args.module,
+        config_path=config_path if Path(config_path).exists() else None,
+        app_name=args.app_name,
+        app_description=args.app_description,
+        default_output_mode=args.default_output_mode,
+        include_tools=args.include_tools,
+        exclude_tools=args.exclude_tools,
+        overwrite=args.overwrite,
+    )
+    config = export_cli_project(
+        app.registry,
+        config_path,
+        app.options,
+        module=resolved_module,
+        launcher_path=args.launcher,
+        command_overrides=project_config.command_overrides if project_config else None,
+    )
+    if args.launcher:
+        launcher_path = Path(args.launcher)
+        if launcher_path.exists():
+            if not args.overwrite:
+                raise FileExistsError(f"{launcher_path} 已存在，如要覆寫請加入 --overwrite")
+            launcher_path.unlink()
+        write_cli_launcher(config_path, args.launcher)
+    inspection = app.inspect()
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "config": cli_project_to_dict(config),
+                    "inspection": asdict(inspection),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(f"已輸出 CLI project config: {config_path}")
+        print(f"app: {inspection.app_name}")
+        for command in inspection.commands:
+            print(f"- {' '.join(command['command_path'])} -> {command['tool_name']}")
+        if args.launcher:
+            print(f"launcher: {args.launcher}")
+
+
+def _run_cli_dynamic(args: argparse.Namespace) -> None:
+    app, _, _ = _resolve_cli_context(
+        module=args.module,
+        config_path=args.config,
+        app_name=args.app_name,
+        app_description=args.app_description,
+        default_output_mode=args.default_output_mode,
+        include_tools=args.include_tools,
+        exclude_tools=args.exclude_tools,
+        overwrite=args.overwrite,
+    )
+    argv = list(args.argv or [])
+    if argv[:1] == ["--"]:
+        argv = argv[1:]
+    raise SystemExit(app.run(argv))
+
+
+def _run_cli_inspect(args: argparse.Namespace) -> None:
+    app, project_config, resolved_module = _resolve_cli_context(
+        module=args.module,
+        config_path=args.config,
+        app_name=args.app_name,
+        app_description=args.app_description,
+        default_output_mode=args.default_output_mode,
+        include_tools=args.include_tools,
+        exclude_tools=args.exclude_tools,
+    )
+    inspection = asdict(app.inspect())
+    inspection["module"] = resolved_module
+    inspection["config"] = cli_project_to_dict(project_config) if project_config else None
+    print(json.dumps(inspection, ensure_ascii=False, indent=2))
+
+
+def _run_cli_show_config(args: argparse.Namespace) -> None:
+    config = load_cli_project(args.config)
+    print(json.dumps(cli_project_to_dict(config), ensure_ascii=False, indent=2))
+
+
+def _run_cli_delete_project(args: argparse.Namespace) -> None:
+    config = load_cli_project(args.config)
+    config_path = Path(args.config)
+    launcher_path = Path(config.launcher_path) if config.launcher_path else None
+    config_path.unlink(missing_ok=False)
+    if args.delete_launcher and launcher_path and launcher_path.exists():
+        launcher_path.unlink()
+    print(f"已刪除 CLI project config: {config_path}")
+
+
+def run_exported_cli(config_path: str, argv: list[str]) -> int:
+    app, _, _ = _resolve_cli_context(module=None, config_path=config_path)
+    return app.run(argv)
 
 
 def _run_inspector_ui(host: str, port: int, timeout: float, no_open: bool) -> None:
@@ -585,6 +745,103 @@ def _build_parser() -> argparse.ArgumentParser:
             no_open=args.no_open,
         )
     )
+
+    cli_parser = subparsers.add_parser(
+        "cli",
+        help="將同一份 ToolContract 匯出為 CLI command tree",
+    )
+    cli_subparsers = cli_parser.add_subparsers(dest="cli_command", required=True)
+
+    cli_export_parser = cli_subparsers.add_parser("export", help="保存 CLI project config")
+    cli_export_parser.add_argument("--module", required=True, help="工具模組或檔案路徑")
+    cli_export_parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_FILENAME,
+        help="CLI project config 路徑",
+    )
+    cli_export_parser.add_argument("--app-name", required=True, help="CLI app 名稱")
+    cli_export_parser.add_argument("--app-description", help="CLI app 說明")
+    cli_export_parser.add_argument(
+        "--default-output-mode",
+        choices=["text", "json"],
+        default="text",
+        help="預設輸出模式",
+    )
+    cli_export_parser.add_argument(
+        "--include-tools",
+        nargs="*",
+        default=None,
+        help="只匯出指定工具名稱",
+    )
+    cli_export_parser.add_argument(
+        "--exclude-tools",
+        nargs="*",
+        default=None,
+        help="排除指定工具名稱",
+    )
+    cli_export_parser.add_argument("--launcher", help="輸出可執行 launcher 路徑")
+    cli_export_parser.add_argument("--overwrite", action="store_true", help="允許覆寫")
+    cli_export_parser.add_argument("--json", action="store_true", help="輸出 JSON")
+    cli_export_parser.set_defaults(func=_run_cli_export)
+
+    cli_run_parser = cli_subparsers.add_parser(
+        "run",
+        help="用動態 CLI app 執行工具",
+        description="用動態 CLI app 執行工具；建議以 -- 後接實際 command argv。",
+    )
+    cli_run_parser.add_argument("--module", help="工具模組或檔案路徑")
+    cli_run_parser.add_argument("--config", help="CLI project config 路徑")
+    cli_run_parser.add_argument("--app-name", help="覆寫 CLI app 名稱")
+    cli_run_parser.add_argument("--app-description", help="覆寫 CLI app 說明")
+    cli_run_parser.add_argument(
+        "--default-output-mode",
+        choices=["text", "json"],
+        help="覆寫預設輸出模式",
+    )
+    cli_run_parser.add_argument("--include-tools", nargs="*", default=None)
+    cli_run_parser.add_argument("--exclude-tools", nargs="*", default=None)
+    cli_run_parser.add_argument("--overwrite", action="store_true")
+    cli_run_parser.add_argument(
+        "argv",
+        nargs=argparse.REMAINDER,
+        help="CLI command argv（建議格式：-- <command> <subcommand> ...）",
+    )
+    cli_run_parser.set_defaults(func=_run_cli_dynamic)
+
+    cli_inspect_parser = cli_subparsers.add_parser("inspect", help="檢視 CLI command tree")
+    cli_inspect_parser.add_argument("--module", help="工具模組或檔案路徑")
+    cli_inspect_parser.add_argument("--config", help="CLI project config 路徑")
+    cli_inspect_parser.add_argument("--app-name", help="覆寫 CLI app 名稱")
+    cli_inspect_parser.add_argument("--app-description", help="覆寫 CLI app 說明")
+    cli_inspect_parser.add_argument(
+        "--default-output-mode",
+        choices=["text", "json"],
+        help="覆寫預設輸出模式",
+    )
+    cli_inspect_parser.add_argument("--include-tools", nargs="*", default=None)
+    cli_inspect_parser.add_argument("--exclude-tools", nargs="*", default=None)
+    cli_inspect_parser.set_defaults(func=_run_cli_inspect)
+
+    cli_show_parser = cli_subparsers.add_parser("show-config", help="顯示 CLI project config")
+    cli_show_parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_FILENAME,
+        help="CLI project config 路徑",
+    )
+    cli_show_parser.set_defaults(func=_run_cli_show_config)
+
+    cli_delete_parser = cli_subparsers.add_parser("delete-project", help="刪除 CLI project config")
+    cli_delete_parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_FILENAME,
+        help="CLI project config 路徑",
+    )
+    cli_delete_parser.add_argument(
+        "--delete-launcher",
+        action="store_true",
+        help="同時刪除 config 內記錄的 launcher",
+    )
+    cli_delete_parser.set_defaults(func=_run_cli_delete_project)
 
     return parser
 

@@ -4,11 +4,27 @@
 
 優先從便宜到昂貴：
 
-1. 匯入或執行模組，確認沒有註冊期例外。
-2. 直接用 registry 或 `ToolManager` 呼叫。
-3. 跑 `doctor` 驗證 `tools/list` 與 `tools/call`。
-4. 真有 transport 需求時才啟動 `serve`。
-5. 需要手動觀察 transcript 時再開 `inspect`。
+1. 安裝驗證：wheel 已重裝、skill 已同步到對應 host 路徑。
+2. import 驗證：`python -c "import toolanything; print(toolanything.__file__)"`
+3. registry / `ToolManager` 驗證。
+4. `doctor` 驗證 `tools/list` 與 `tools/call`。
+5. 真有 transport 需求時才啟動 `serve`。
+6. 需要手動觀察 transcript 時再開 `inspect`。
+
+## 本地 bundle 驗證
+
+先做：
+
+```powershell
+python scripts/install_local_bundle.py --host auto
+python -c "import toolanything; print(toolanything.__file__)"
+```
+
+如果 `toolanything` 不在 PATH，後續 CLI 一律改用：
+
+```powershell
+python -m toolanything.cli ...
+```
 
 ## 常用命令
 
@@ -49,11 +65,4 @@ print(registry.execute_tool("calculator.add", arguments={"a": 1, "b": 2}))
 3. 名稱、description、參數型別與副作用訊號一致。
 4. 若使用 class method，不需要手動補 `cls`。
 5. 若用 source-based tool，沒有多餘 wrapper 夾層。
-
-## 常見失敗點
-
-1. 忘了 description，`strict=True` 下會失敗。
-2. 函數簽名不清楚，導致 schema 不穩。
-3. 以為 ToolAnything 只支援普通函數，錯過 class method 與 source-based API。
-4. 只產 schema 沒做呼叫驗證，結果註冊成功但 runtime 失敗。
-5. 修改了不相干的 transport / runtime 程式，只為了包一支新工具。
+6. 交付時能說清楚 wheel 與 skill 安裝到了哪裡。

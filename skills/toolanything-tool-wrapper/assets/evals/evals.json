@@ -3,62 +3,63 @@
   "evals": [
     {
       "id": 1,
-      "name": "wrap-python-function-with-tool",
-      "prompt": "請在這個 ToolAnything repo 幫我把一個 Python function 包成 agent 可呼叫的 tool，順便驗證 tools/list 和 tools/call。",
-      "expected_output": "會選擇 @tool 路徑，建立或修改 callable-backed tool，並至少做一次 registry 或 doctor 驗證。",
+      "name": "offline-local-install-codex",
+      "prompt": "這台 Codex 環境不能連外，請先用 skill 內附的 ToolAnything wheel 強制更新本機，再把這個 skill 裝到正確本地位置。",
+      "expected_output": "會先執行本地 bundle 安裝流程，從 wheels/ 取 wheel，使用 pip --upgrade --force-reinstall，並把 skill 同步到 Codex 的本地 skills 路徑。",
       "files": [],
       "expectations": [
-        "會先讀 README 與 quickstart 相關檔案",
+        "會先跑 install_local_bundle.py 或等價本地流程",
+        "會使用 wheels/ 優先，必要時才相容 wheel/ 或 dist/",
+        "不會先要求使用者去 GitHub repo 看安裝文件"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "openclaw-path-correction",
+      "prompt": "幫我把這個 ToolAnything skill 安裝到 ~/.openclaw/skills/toolanything-tool-wrapper，然後再開始包工具。",
+      "expected_output": "會直接糾正 OpenClaw 預設路徑應是 ~/.openclaw/workspace/skills/toolanything-tool-wrapper，並以該路徑或 OPENCLAW_WORKSPACE 覆寫路徑落實安裝。",
+      "files": [],
+      "expectations": [
+        "會指出 ~/.openclaw/skills 不是預設路徑",
+        "會在糾正後繼續推進本地安裝流程",
+        "不會只停在口頭糾正"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "claude-code-subagent-generation",
+      "prompt": "這次是在 Claude Code，用同一份本地 ToolAnything skill 幫我安裝，之後都以本地版本敘事。",
+      "expected_output": "會辨識 Claude Code 需要落地成 ~/.claude/agents/toolanything-tool-wrapper.md，而不是直接複製整個 skill folder 到某個 skills 目錄。",
+      "files": [],
+      "expectations": [
+        "會區分 Claude Code 與 Codex/OpenClaw 的載入形式",
+        "會生成本地 subagent 檔",
+        "後續敘事會以本地 bundle 為主"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "wrap-python-function-after-local-install",
+      "prompt": "先把本地 ToolAnything bundle 裝好，然後在這個 repo 幫我把一個 Python function 包成 agent 可呼叫的 tool，順便驗證 tools/list 和 tools/call。",
+      "expected_output": "會先完成本地安裝，再選擇 @tool 路徑，建立或修改 callable-backed tool，並至少做一次 registry 或 doctor 驗證。",
+      "files": [],
+      "expectations": [
+        "會先處理本地 bundle 安裝",
         "會使用 @tool 或等價原生註冊流程",
         "會提到 tools/list 或 tools/call 的驗證",
         "不會另外發明第二套 schema"
       ]
     },
     {
-      "id": 2,
-      "name": "wrap-classmethod-tool",
-      "prompt": "我想把 classmethod 包成 ToolAnything tool，請直接改成 repo 支援的寫法。",
-      "expected_output": "會辨識 ToolAnything 已支援 @tool 和 @classmethod 的兩種順序，並依現有風格實作與驗證。",
-      "files": [],
-      "expectations": [
-        "會讀 class_method_tools 教程或等價實作",
-        "不會手寫多餘 descriptor workaround",
-        "會說明 decorator 順序的選擇理由"
-      ]
-    },
-    {
-      "id": 3,
+      "id": 5,
       "name": "avoid-thin-wrapper-for-http",
-      "prompt": "幫我用 ToolAnything 把這個 REST API 變成工具，但我不想多寫一層只是轉呼叫的 Python function。",
-      "expected_output": "會改用 HttpSourceSpec 與 register_http_tool，而不是硬包普通 function。",
+      "prompt": "先用本地 wheel 把 ToolAnything 裝好，再幫我把這個 REST API 變成工具，但我不想多寫一層只是轉呼叫的 Python function。",
+      "expected_output": "會先完成本地安裝，再改用 HttpSourceSpec 與 register_http_tool，而不是硬包普通 function。",
       "files": [],
       "expectations": [
         "會明確指出這不是 function-first 問題",
         "會選 source-based API",
         "不會硬做低價值 wrapper"
-      ]
-    },
-    {
-      "id": 4,
-      "name": "verification-path-selection",
-      "prompt": "我新增完 tool 後，請幫我在 repo 裡用最短路徑驗證 MCP 真的能呼叫它。",
-      "expected_output": "會優先使用 doctor，必要時再用 serve 或 inspect，並考慮 python -m toolanything.cli 這條更穩的路徑。",
-      "files": [],
-      "expectations": [
-        "會從便宜驗證開始",
-        "會包含 doctor 指令",
-        "不會一上來就改 transport 核心"
-      ]
-    },
-    {
-      "id": 5,
-      "name": "should-not-trigger-generic-agent-framework",
-      "prompt": "請幫我設計一個完整 agent framework，包含長期記憶、規劃、路由和觀察者模式。",
-      "expected_output": "此 skill 不應把任務誤判成單純的 ToolAnything 包裝需求；若被載入，也應主動糾正 ToolAnything 的邊界。",
-      "files": [],
-      "expectations": [
-        "會指出 ToolAnything 主要解的是 tool definition、runtime 與 transport",
-        "不會把 generic agent framework 任務硬套成包 function"
       ]
     }
   ]

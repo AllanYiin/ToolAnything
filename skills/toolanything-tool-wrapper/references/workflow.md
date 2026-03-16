@@ -1,18 +1,26 @@
 # Workflow
 
-## 決策矩陣
+## 本地優先流程
+
+### A. 先安裝 bundle，再做任何 ToolAnything 任務
+
+1. 執行 `python scripts/install_local_bundle.py --host auto`。
+2. 若回報多個 host 候選，改成顯式 `--host codex|openclaw|claude-code`。
+3. 確認 `toolanything` import 成功，再進入後續實作。
+
+### B. 判斷工具來源
 
 | 情況 | 優先做法 | 不要做什麼 | 依據 |
 | --- | --- | --- | --- |
 | 已有純 Python function | 用 `@tool` 直接註冊 | 再包一層多餘 adapter | `examples/quickstart/01_define_tools.py` |
-| 已有 class method | 用 `@tool` 加 `@classmethod` 任一支援順序 | 自己重寫 descriptor 邏輯 | `examples/class_method_tools/README.md` |
+| 已有 class method | 用 `@tool` 加 `@classmethod` 的支援順序 | 自己重寫 descriptor 邏輯 | `examples/class_method_tools/README.md` |
 | 實際來源是 HTTP API | 用 `HttpSourceSpec` + `register_http_tool` | 人工再寫一支只會轉呼叫的薄 wrapper | `examples/non_function_tools/http_tool.py` |
 | 實際來源是 SQL query | 用 `SqlSourceSpec` + `register_sql_tool` | 把 SQL 塞進普通函數後假裝是 function tool | `examples/non_function_tools/sql_tool.py` |
 | 實際來源是 model artifact | 用 `ModelSourceSpec` + `register_model_tool` | 先多包一層無意義 service | `README.md` 與 `examples/non_function_tools/` |
 
 ## 最短路徑
 
-### A. 新增一般函數 tool
+### 1. 新增一般函數 tool
 
 1. 在最接近業務邏輯的模組新增函數。
 2. 補上型別標註。
@@ -31,7 +39,7 @@ def add(a: int, b: int) -> int:
     return a + b
 ```
 
-### B. 新增 class method tool
+### 2. 新增 class method tool
 
 兩種 decorator 順序都支援，但要維持同一模組風格一致：
 
@@ -43,7 +51,7 @@ class Greeter:
         return f"{cls.__name__} says hello to {name}"
 ```
 
-### C. 換成 source-based tool
+### 3. 換成 source-based tool
 
 當需求其實是「把外部能力宣告成工具」時，用 source-based API 比 function wrapper 更誠實：
 
@@ -63,17 +71,9 @@ manager.register_http_tool(
 )
 ```
 
-## 命名規則
-
-1. 名稱優先用穩定的領域與動作，像 `domain.action`。
-2. 避免把暫時實作細節寫進 tool name。
-3. description 直接描述工具做什麼，不要寫成開發者備忘錄。
-4. 如果工具可能有副作用，metadata 要明確標示，不要讓 agent 猜。
-
 ## 何時要直接糾正使用者
-
-遇到以下情況要直接說明，而不是照做：
 
 1. 使用者要求手寫第二套 MCP / OpenAI schema，但 repo 已有對應輸出。
 2. 使用者想把 HTTP / SQL / model 問題硬說成「只是包個 function」。
 3. 使用者要求為了單一案例改壞既有工具名稱或公開契約。
+4. 使用者要求把 OpenClaw 裝到 `~/.openclaw/skills`，或把 Claude Code 當成可直接吃 `SKILL.md` 資料夾。

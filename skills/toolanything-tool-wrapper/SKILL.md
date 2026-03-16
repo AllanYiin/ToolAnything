@@ -1,6 +1,6 @@
 ---
 name: toolanything-tool-wrapper
-description: 當使用者要用 ToolAnything 把 Python function、class method 或既有程式入口包裝成可供 agent、MCP 或 OpenAI tool calling 使用的工具時使用。適用於新增 @tool、調整 ToolRegistry 註冊、把既有函數暴露成 tools、驗證 tools/list 與 tools/call，或判斷何時該改用 register_http_tool、register_sql_tool、register_model_tool 而不是硬寫 wrapper。
+description: 當使用者要在 Codex、OpenClaw 或 Claude Code 的本地環境中，優先用 skill 內附的 ToolAnything wheel 離網或低網依賴地安裝/更新 ToolAnything，並把 Python function、class method、HTTP API、SQL 或 model source 包成 MCP / OpenAI tool 時使用。適用於偵測 host、同步本地 skill、強制更新 wheel、選擇 @tool 或 source-based API、驗證 tools/list 與 tools/call；不應先把使用者丟回 GitHub repo 自行研究安裝流程。
 version: 2026.3.16
 license: MIT
 metadata:
@@ -10,11 +10,50 @@ metadata:
 
 # ToolAnything Tool Wrapper
 
-這個 skill 的目標是讓 agent 用 ToolAnything 的原生 API，把可呼叫能力正確暴露成工具，而不是額外堆一層脆弱 glue code。
+這個 skill 的目標是把 ToolAnything 的使用流程改成「本地 bundle 優先」：先用 skill 內附 wheel 更新本機套件、把 skill 同步到正確平台目錄，再進入 tool wrapper 實作與驗證，而不是先叫使用者去上游 GitHub repo 自行摸索。
 
-## 先做什麼
+## 第一件事一定先做本地安裝
 
-先讀最小必要上下文，不要一開始就把整個 repo 掃過一遍：
+先在這個 skill 資料夾內執行：
+
+```bash
+python scripts/install_local_bundle.py --host auto
+```
+
+如果同一台機器同時偵測到多個 host，不要猜，改用明確參數：
+
+```bash
+python scripts/install_local_bundle.py --host codex
+python scripts/install_local_bundle.py --host openclaw
+python scripts/install_local_bundle.py --host claude-code
+```
+
+這支腳本必須按順序完成三件事：
+
+1. 從 `wheels/` 挑最新的 `toolanything-*.whl`；若缺檔才相容舊的 `wheel/`，最後才回退到 repo `dist/`。
+2. 用 `python -m pip install --upgrade --force-reinstall <wheel>` 強制更新本機 ToolAnything。
+3. 依 host 把本地 bundle 同步到正確位置：
+   - Codex：`$CODEX_HOME/skills/toolanything-tool-wrapper`，若沒有 `CODEX_HOME` 則用 `~/.codex/skills/toolanything-tool-wrapper`
+   - OpenClaw：預設 `~/.openclaw/workspace/skills/toolanything-tool-wrapper`
+   - Claude Code：產生 `~/.claude/agents/toolanything-tool-wrapper.md`
+
+若腳本找不到 wheel，就停止並回報 skill bundle 打包缺口，不要改成叫使用者去 clone repo 安裝。
+
+## 先糾正幾個容易錯的假設
+
+1. OpenClaw 不是預設裝到 `~/.openclaw/skills/...`；這個 skill 一律以 `~/.openclaw/workspace/skills/...` 為預設，必要時用 `OPENCLAW_WORKSPACE` 覆寫。
+2. Claude Code 不是同一種 `SKILL.md` 目錄模型；要落地的是 local subagent 檔，不是直接複製整個 skill folder 當成 Claude skill。
+3. 離網只代表 ToolAnything 本體可以從內附 wheel 重裝；若環境缺少 wheel 之外的相依套件，仍要事先準備本地 mirror 或既有依賴。
+
+## 完成本地安裝後，才讀最小必要上下文
+
+先讀 skill 自己的本地說明：
+
+1. `references/local-install.md`
+2. `references/workflow.md`
+3. `references/verification.md`
+
+只有在任務真的要改 repo 程式碼時，才往 ToolAnything repo 本體讀最小必要內容：
 
 1. `README.md`
 2. `examples/quickstart/README.md`
@@ -22,106 +61,105 @@ metadata:
 4. `src/toolanything/decorators/tool.py`
 5. `src/toolanything/core/models.py`
 
-只有在需求真的涉及 class method、source-based tool 或 transport 驗證時，再往下讀：
-
-- class method：`examples/class_method_tools/README.md`
-- source-based tool：`examples/non_function_tools/README.md` 與對應範例
-- CLI / 驗證：`src/toolanything/cli.py`
+若需求才涉及 class method、source-based tool 或 transport 驗證，再讀對應例子。
 
 ## 核心 use cases
 
-### 1. 把 Python function 包成可調用 tool
+### 1. 先把本地 bundle 裝好
+
+常見 trigger：
+
+- 「先用 skill 內附 wheel 安裝 ToolAnything」
+- 「這個環境離網，別叫我去 GitHub 裝」
+- 「幫我判斷是 Codex、OpenClaw 還是 Claude Code，然後把本地 skill 裝好」
+
+Done looks like：
+
+- 正確判斷或要求明確指定 host
+- wheel 已強制重裝成功
+- skill / subagent 已同步到正確本地路徑
+
+### 2. 把 Python function 或 class method 包成 tool
 
 常見 trigger：
 
 - 「用 ToolAnything 把這個函數包成 tool」
-- 「讓 agent 可以呼叫這個 Python function」
-- 「把這個 function 暴露成 MCP / OpenAI tools」
+- 「把這個 class method 變成 MCP / OpenAI tool」
 
 Done looks like：
 
-- 使用 `@tool(...)` 或等價 registry 流程完成註冊
-- 工具名稱、description、參數 schema 都合理
-- 至少做一次本地註冊或呼叫驗證
+- 使用 `@tool(...)` 或 repo 既有原生註冊流程
+- class method 沒有手寫多餘 descriptor workaround
+- 至少做一次本地呼叫或 registry 驗證
 
-### 2. 把 class method 包成 tool
+### 3. 判斷其實應該改走 source-based API
 
 常見 trigger：
 
-- 「把這個 class method 變成 tool」
-- 「ToolAnything 能不能包 classmethod」
+- 「把這個 HTTP API / SQL / model 接成 tool，但不要多包一層薄 wrapper」
 
 Done looks like：
 
-- 使用 repo 已支援的 decorator 疊法
-- 不需要手動傳 `cls`
-- 能透過 registry 或 CLI 驗證 callable 正常
+- 明確指出該走 `register_http_tool`、`register_sql_tool` 或 `register_model_tool`
+- 沒有硬把外部來源偽裝成普通 function-first 問題
 
-### 3. 判斷不該硬寫 wrapper 的情況
+### 4. 驗證 MCP / OpenAI tool calling
 
 常見 trigger：
 
-- 「把 HTTP API / SQL / model 接成 tool」
-- 「我不想再多寫一層 Python wrapper」
+- 「幫我驗證 tools/list 和 tools/call」
+- 「確認這支 tool 真的能被 MCP host 叫到」
 
 Done looks like：
 
-- 明確指出應改走 `register_http_tool`、`register_sql_tool` 或 `register_model_tool`
-- 使用對應 `SourceSpec`
-- 沒有額外發明低價值 wrapper
+- 至少做一層便宜驗證，能做兩層更好
+- 知道 `toolanything` 不在 PATH 時要改用 `python -m toolanything.cli`
 
 ## 執行流程
 
-### Phase 1. 先判斷是哪一種工具來源
+### Phase 1. 先做本地 bundle 安裝
 
-1. 如果來源本來就是穩定的 Python callable，優先用 `@tool`。
-2. 如果來源其實是 HTTP endpoint、SQL query 或 model artifact，優先用 source-based API，不要硬包成薄 wrapper。
-3. 如果使用者把 ToolAnything 當成全能 agent framework，直接糾正：這個 repo 主要處理 tool definition、schema、runtime 與 transport，不負責替你設計完整 orchestration。
+1. 先跑 `python scripts/install_local_bundle.py --host auto`。
+2. 若偵測到多個 host，改用顯式 `--host`，不要自作主張。
+3. 安裝完成後，先確認 `python -c "import toolanything; print(toolanything.__file__)"` 指向剛更新後的環境。
 
-### Phase 2. 實作 callable-backed tool
+### Phase 2. 判斷工具來源
 
-1. 保持函數簽名清楚，參數型別要能穩定轉成 schema。
-2. 預設顯式寫 `@tool(name=..., description=...)`，不要把穩定契約賭在自動推導名稱。
-3. 若要讓工具搜尋、成本或副作用可控，再補 `tags` 與 `metadata`；不要無意義塞滿欄位。
-4. 工具名稱優先用穩定的領域名稱，例如 `weather.query`、`calculator.add`，不要用臨時命名。
-5. 若需要隔離測試或避免污染全域 registry，再傳入顯式 `registry=`；否則可接受全域 registry。
+1. 穩定的 Python callable，優先用 `@tool`。
+2. 真正來源若是 HTTP、SQL 或 model artifact，優先用 source-based API。
+3. 若使用者把 ToolAnything 誤當成全能 agent framework，直接糾正：這個 repo 主要處理 tool definition、runtime、transport 與驗證，不負責替你做完整 orchestration。
 
-### Phase 3. 實作 class method tool
+### Phase 3. 實作
 
-1. ToolAnything 已支援 `@tool` 與 `@classmethod` 兩種順序。
-2. 若專案附近已有慣例，跟隨現有風格。
-3. 若沒有既有慣例，優先讓 `@tool(...)` 放外層，因為 metadata 較容易掃讀。
-4. 不要自己手寫 descriptor workaround；repo 內建註冊流程已處理這件事。
+1. 預設顯式寫 `@tool(name=..., description=...)`，不要把公開契約賭在自動推導。
+2. class method 跟隨專案既有 decorator 順序；沒有慣例時，優先讓 `@tool(...)` 放外層。
+3. 若是 source-based tool，直接用對應 `SourceSpec` 與 `register_*_tool`。
 
 ### Phase 4. 驗證
 
-至少做一層驗證，能做兩層更好：
-
-1. 模組層：匯入模組或執行腳本，確認工具確實註冊。
-2. Registry 層：列出工具、直接呼叫 `execute_tool`，或跑對應範例。
-3. CLI 層：用 `toolanything doctor` 驗證 `tools/list` / `tools/call`。
-4. Transport 層：若需求包含網路連線，再用 `serve` 啟動 `stdio` 或 `streamable-http`。
-5. 偵錯層：需要看 transcript 或手動 call 時再開 `toolanything inspect`。
-
-如果不確定 `toolanything` 命令是否已安裝在 PATH，優先用 `python -m toolanything.cli ...`。
+1. 先做安裝驗證與 import 驗證。
+2. 再做 registry / `execute_tool` 或 quickstart 層驗證。
+3. 需要 MCP 連線時，再跑 `doctor`、`serve` 或 `inspect`。
 
 ## 必守邊界
 
-1. 不要為了「看起來像工具」去改動 runtime、transport 或 adapter 的核心行為，除非需求真的在那裡。
-2. 不要為了單一任務隨意更名既有工具；工具名稱通常就是契約。
-3. 不要重造第二套 schema 或 name mapping，ToolAnything 已處理 MCP 與 OpenAI schema。
-4. 不要把 source-based tool 偽裝成 function-only 問題，這會讓解法退化。
-5. 若使用者的想法不對，直接指出錯誤並說明為什麼，例如「這個需求其實不是再包 function，而是應該直接註冊 HTTP source」。
+1. 不要把「先裝本地 bundle」省略掉，又退回要求使用者看 GitHub repo 安裝。
+2. 不要把 OpenClaw、Codex、Claude Code 當成同一種目錄結構。
+3. 不要為了包一支新工具去亂改 runtime、transport 或 adapter 核心。
+4. 不要重造第二套 schema 或 name mapping，ToolAnything 已處理 MCP 與 OpenAI schema。
+5. 若使用者的想法不對，直接指出錯誤並說明原因。
 
 ## 交付時要回報什麼
 
-至少交代三件事：
+至少交代四件事：
 
-1. 你選了 `@tool` 還是 source-based API，理由是什麼。
-2. 改了哪些檔案，工具名稱與契約如何定義。
-3. 跑了哪些驗證；若沒跑，阻塞點是什麼。
+1. 偵測到的 host 與實際安裝路徑。
+2. 使用了哪個 wheel，以及 wheel 是從 `wheels/`、`wheel/` 還是 `dist/` 取得。
+3. 你選了 `@tool` 還是 source-based API，理由是什麼。
+4. 跑了哪些驗證；若沒跑，阻塞點是什麼。
 
-需要具體範例、判斷矩陣與命令清單時，讀：
+需要平台矩陣、命令清單與驗證細節時，讀：
 
+- `references/local-install.md`
 - `references/workflow.md`
 - `references/verification.md`

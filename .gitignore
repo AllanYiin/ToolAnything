@@ -20,6 +20,8 @@ parts/
 sdist/
 var/
 wheels/
+!skills/toolanything-tool-wrapper/wheels/
+!skills/toolanything-tool-wrapper/wheels/**
 share/python-wheels/
 *.egg-info/
 .installed.cfg

@@ -1,4 +1,4 @@
-"""Convert BFCL-style tool calling datasets into retrieval JSONL."""
+"""Convert BFCL-style tool calling datasets into retrieval JSON or JSONL."""
 from __future__ import annotations
 
 import argparse
@@ -94,10 +94,31 @@ def convert_records(
     return converted, stats
 
 
-def write_jsonl(rows: Iterable[dict[str, Any]], path: str | Path) -> None:
+def write_records(rows: Iterable[dict[str, Any]], path: str | Path, *, file_format: str = "auto") -> None:
     file_path = Path(path)
-    lines = [json.dumps(row, ensure_ascii=False) for row in rows]
-    file_path.write_text("\n".join(lines), encoding="utf-8")
+    resolved_format = _resolve_file_format(file_path, file_format)
+    materialized_rows = list(rows)
+    if resolved_format == "jsonl":
+        lines = [json.dumps(row, ensure_ascii=False) for row in materialized_rows]
+        file_path.write_text("\n".join(lines), encoding="utf-8")
+        return
+    if resolved_format == "json":
+        file_path.write_text(
+            json.dumps(materialized_rows, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return
+    raise ValueError(f"Unsupported format: {resolved_format}")
+
+
+def write_jsonl(rows: Iterable[dict[str, Any]], path: str | Path) -> None:
+    write_records(rows, path, file_format="jsonl")
+
+
+def _resolve_file_format(path: Path, file_format: str) -> str:
+    if file_format == "auto":
+        return "jsonl" if path.suffix.lower() == ".jsonl" else "json"
+    return file_format
 
 
 def extract_query(row: dict[str, Any]) -> str:
@@ -232,9 +253,9 @@ def _extract_tool_names(raw: Any) -> list[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert BFCL-style rows into retrieval JSONL.")
+    parser = argparse.ArgumentParser(description="Convert BFCL-style rows into retrieval JSON or JSONL.")
     parser.add_argument("--input", required=True, help="Path to a local JSON or JSONL dataset file.")
-    parser.add_argument("--output", required=True, help="Output JSONL path.")
+    parser.add_argument("--output", required=True, help="Output JSON/JSONL path.")
     parser.add_argument("--split", default="eval", help="Split label written into the output rows.")
     parser.add_argument(
         "--query-lang",
@@ -247,6 +268,12 @@ def main() -> None:
         action="store_true",
         help="Keep rows with multiple expected tools by taking the first one. Default is to skip them.",
     )
+    parser.add_argument(
+        "--format",
+        choices=["auto", "json", "jsonl"],
+        default="auto",
+        help="Output format. Default is inferred from the output path suffix.",
+    )
     args = parser.parse_args()
 
     rows = load_records(args.input)
@@ -257,7 +284,7 @@ def main() -> None:
         single_tool_only=not args.allow_multi_tool,
         fallback_to_single_tool=True,
     )
-    write_jsonl(converted, args.output)
+    write_records(converted, args.output, file_format=args.format)
     print(json.dumps({"output": str(args.output), **stats}, ensure_ascii=False, indent=2))
 
 

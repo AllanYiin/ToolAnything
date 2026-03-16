@@ -53,7 +53,7 @@ python examples/tool_selection/03_custom_strategy.py
 ```powershell
 python -m examples.tool_selection.bfcl_pipeline `
   --workdir path\to\bfcl_run `
-  --input path\to\bfcl_eval.jsonl `
+  --input path\to\bfcl_eval.json `
   --split eval `
   --backend fake `
   --profile full `
@@ -67,16 +67,18 @@ python -m examples.tool_selection.bfcl_pipeline `
 python -m examples.tool_selection.hf_dataset_exporter `
   --dataset-id gorilla-llm/Berkeley-Function-Calling-Leaderboard `
   --repo-file BFCL_v3_simple.json `
-  --output path\to\bfcl_eval.jsonl `
+  --output path\to\bfcl_eval.json `
   --limit 200
 ```
 
-### 轉成 retrieval JSONL
+如果你要拿去給 Excel / Power Query 看，請優先用 `.json`，不要用 `.jsonl`。
+
+### 轉成 retrieval JSON
 
 ```powershell
 python -m examples.tool_selection.bfcl_converter `
-  --input path\to\bfcl_eval.jsonl `
-  --output path\to\bfcl_retrieval.jsonl `
+  --input path\to\bfcl_eval.json `
+  --output path\to\bfcl_retrieval.json `
   --split eval
 ```
 
@@ -85,8 +87,8 @@ python -m examples.tool_selection.bfcl_converter `
 ```powershell
 python -m examples.tool_selection.semantic_benchmark `
   --backend fake `
-  --dataset jsonl `
-  --dataset-path path\to\bfcl_retrieval.jsonl `
+  --dataset json `
+  --dataset-path path\to\bfcl_retrieval.json `
   --split eval `
   --profile full `
   --tool-doc-langs en,zh `

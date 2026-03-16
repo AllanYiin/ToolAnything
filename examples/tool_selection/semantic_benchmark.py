@@ -114,8 +114,8 @@ class SyntheticMultilingualDatasetAdapter(BenchmarkDatasetAdapter):
         return list(self._cases[split])
 
 
-class JsonlDatasetAdapter(BenchmarkDatasetAdapter):
-    """Load retrieval cases from a local JSONL file."""
+class JsonFileDatasetAdapter(BenchmarkDatasetAdapter):
+    """Load retrieval cases from a local JSON or JSONL file."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -125,23 +125,54 @@ class JsonlDatasetAdapter(BenchmarkDatasetAdapter):
             raise FileNotFoundError(f"Dataset file not found: {self.path}")
 
         cases: list[BenchmarkCase] = []
-        with self.path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                payload = json.loads(stripped)
-                if split != "all" and payload.get("split", "all") != split:
-                    continue
-                cases.append(
-                    BenchmarkCase(
-                        query=str(payload["query"]),
-                        expected=str(payload["expected"]),
-                        query_lang=str(payload.get("query_lang", "unknown")),
-                        tools=tuple(_parse_benchmark_tools(payload.get("tools", []))),
-                    )
+        for payload in _load_dataset_rows(self.path):
+            if split != "all" and payload.get("split", "all") != split:
+                continue
+            cases.append(
+                BenchmarkCase(
+                    query=str(payload["query"]),
+                    expected=str(payload["expected"]),
+                    query_lang=str(payload.get("query_lang", "unknown")),
+                    tools=tuple(_parse_benchmark_tools(payload.get("tools", []))),
                 )
+            )
         return cases
+
+
+JsonlDatasetAdapter = JsonFileDatasetAdapter
+
+
+def _load_dataset_rows(path: Path) -> list[dict[str, Any]]:
+    if path.suffix.lower() == ".jsonl":
+        return _load_jsonl_rows(path)
+
+    content = path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return _load_jsonl_rows(path)
+
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("data", "records", "examples"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    raise ValueError(f"Unsupported dataset payload in {path}")
+
+
+def _load_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            payload = json.loads(stripped)
+            if isinstance(payload, dict):
+                rows.append(payload)
+    return rows
 
 
 class KeywordEmbeddingProvider:
@@ -411,10 +442,10 @@ def _build_provider(
 def _build_dataset_adapter(dataset: str, *, dataset_path: str | None = None) -> BenchmarkDatasetAdapter:
     if dataset == "synthetic":
         return SyntheticMultilingualDatasetAdapter()
-    if dataset == "jsonl":
+    if dataset in {"json", "jsonl"}:
         if not dataset_path:
-            raise ValueError("--dataset-path is required when dataset=jsonl")
-        return JsonlDatasetAdapter(dataset_path)
+            raise ValueError("--dataset-path is required when dataset=json")
+        return JsonFileDatasetAdapter(dataset_path)
     raise ValueError(f"Unknown dataset: {dataset}")
 
 
@@ -514,16 +545,16 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=1)
     parser.add_argument(
         "--dataset",
-        choices=["synthetic", "jsonl"],
+        choices=["synthetic", "json", "jsonl"],
         default="synthetic",
-        help="Benchmark source. Use jsonl to evaluate a local BFCL-style export.",
+        help="Benchmark source. Use json to evaluate a local BFCL-style export. Existing jsonl files are still accepted.",
     )
     parser.add_argument(
         "--split",
         default="mixed",
         help="Dataset split. For the synthetic dataset: mixed, zh, en, cross-zh-en, cross-en-zh.",
     )
-    parser.add_argument("--dataset-path", default=None, help="Local JSONL file when dataset=jsonl.")
+    parser.add_argument("--dataset-path", default=None, help="Local JSON/JSONL file when dataset=json.")
     parser.add_argument(
         "--tool-doc-langs",
         default="en,zh",

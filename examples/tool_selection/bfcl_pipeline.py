@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .bfcl_converter import convert_records, load_records, write_jsonl
+from .bfcl_converter import convert_records, load_records, write_records
 from .hf_dataset_exporter import export_dataset_split
 from .semantic_benchmark import run_benchmark
 
@@ -31,14 +31,14 @@ def run_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if dataset_id:
-        raw_path = output_dir / "hf_export.jsonl"
+        raw_path = output_dir / "hf_export.json"
         export_summary = export_dataset_split(
             dataset_id=dataset_id,
             config_name=config_name,
             split=split,
             output_path=raw_path,
             limit=limit,
-            file_format="jsonl",
+            file_format="json",
             cache_dir=cache_dir,
         )
     elif input_path:
@@ -54,13 +54,13 @@ def run_pipeline(
         query_lang=query_lang,
         single_tool_only=not allow_multi_tool,
     )
-    retrieval_path = output_dir / "retrieval_eval.jsonl"
-    write_jsonl(converted_rows, retrieval_path)
+    retrieval_path = output_dir / "retrieval_eval.json"
+    write_records(converted_rows, retrieval_path, file_format="json")
 
     benchmark_output = run_benchmark(
         backend=backend,
         profile=profile,
-        dataset="jsonl",
+        dataset="json",
         split=split,
         dataset_path=str(retrieval_path),
         tool_doc_langs=tool_doc_langs,

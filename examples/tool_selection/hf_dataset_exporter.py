@@ -1,4 +1,4 @@
-"""Export Hugging Face dataset splits or raw repo files to local JSONL or JSON files."""
+"""Export Hugging Face dataset splits or raw repo files to local JSON or JSONL files."""
 from __future__ import annotations
 
 import argparse
@@ -20,7 +20,7 @@ def export_dataset_split(
     config_name: str | None = None,
     repo_file: str | None = None,
     limit: int | None = None,
-    file_format: str = "jsonl",
+    file_format: str = "auto",
     cache_dir: str | None = None,
     module_loader: Callable[[str], Any] | None = None,
 ) -> dict[str, Any]:
@@ -44,15 +44,16 @@ def export_dataset_split(
             rows.append(dict(row))
 
     output = Path(output_path)
-    if file_format == "jsonl":
+    resolved_format = _resolve_file_format(output, file_format)
+    if resolved_format == "jsonl":
         output.write_text(
             "\n".join(json.dumps(row, ensure_ascii=False) for row in rows),
             encoding="utf-8",
         )
-    elif file_format == "json":
+    elif resolved_format == "json":
         output.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
     else:
-        raise ValueError(f"Unsupported format: {file_format}")
+        raise ValueError(f"Unsupported format: {resolved_format}")
 
     return {
         "dataset_id": dataset_id,
@@ -61,8 +62,14 @@ def export_dataset_split(
         "repo_file": repo_file,
         "rows": len(rows),
         "output_path": str(output),
-        "format": file_format,
+        "format": resolved_format,
     }
+
+
+def _resolve_file_format(output_path: Path, file_format: str) -> str:
+    if file_format == "auto":
+        return "jsonl" if output_path.suffix.lower() == ".jsonl" else "json"
+    return file_format
 
 
 def _load_datasets_module(module_loader: Callable[[str], Any] | None) -> Any:
@@ -150,7 +157,7 @@ def _load_rows_from_json_lines(path: str | Path) -> list[dict[str, Any]]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export a Hugging Face dataset split or repo file to a local file.")
+    parser = argparse.ArgumentParser(description="Export a Hugging Face dataset split or repo file to a local JSON file.")
     parser.add_argument(
         "--dataset-id",
         required=True,
@@ -162,14 +169,14 @@ def main() -> None:
         default=None,
         help="Optional raw file inside the dataset repo, for example BFCL_v3_simple.json",
     )
-    parser.add_argument("--output", required=True, help="Destination JSONL/JSON file path")
+    parser.add_argument("--output", required=True, help="Destination JSON/JSONL file path")
     parser.add_argument("--config", default=None, help="Optional dataset config name")
     parser.add_argument("--limit", type=int, default=None, help="Optional row limit for quick sampling")
     parser.add_argument(
         "--format",
         dest="file_format",
-        choices=["jsonl", "json"],
-        default="jsonl",
+        choices=["auto", "json", "jsonl"],
+        default="auto",
     )
     parser.add_argument("--cache-dir", default=None, help="Optional Hugging Face cache directory")
     args = parser.parse_args()

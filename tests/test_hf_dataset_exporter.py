@@ -29,22 +29,21 @@ class _FakeDatasetsModule:
         ]
 
 
-def test_export_dataset_split_writes_jsonl(tmp_path):
-    output_path = tmp_path / "sample.jsonl"
+def test_export_dataset_split_writes_json_by_default(tmp_path):
+    output_path = tmp_path / "sample.json"
     result = export_dataset_split(
         dataset_id="demo/dataset",
         config_name="default",
         split="eval",
         output_path=output_path,
         limit=2,
-        file_format="jsonl",
         module_loader=lambda name: _FakeDatasetsModule if name == "datasets" else None,
     )
 
-    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    rows = json.loads(output_path.read_text(encoding="utf-8"))
     assert len(rows) == 2
     assert result["rows"] == 2
-    assert result["format"] == "jsonl"
+    assert result["format"] == "json"
 
 
 def test_export_dataset_split_supports_raw_repo_file(tmp_path):
@@ -53,7 +52,7 @@ def test_export_dataset_split_supports_raw_repo_file(tmp_path):
         json.dumps([{"question": "one"}, {"question": "two"}], ensure_ascii=False),
         encoding="utf-8",
     )
-    output_path = tmp_path / "sample.jsonl"
+    output_path = tmp_path / "sample.json"
 
     class _FakeHubModule:
         @staticmethod
@@ -72,10 +71,27 @@ def test_export_dataset_split_supports_raw_repo_file(tmp_path):
         module_loader=lambda name: _FakeHubModule if name == "huggingface_hub" else None,
     )
 
-    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    rows = json.loads(output_path.read_text(encoding="utf-8"))
     assert len(rows) == 1
     assert rows[0]["question"] == "one"
     assert result["repo_file"] == "BFCL_v3_simple.json"
+
+
+def test_export_dataset_split_still_supports_jsonl_output(tmp_path):
+    output_path = tmp_path / "sample.jsonl"
+    result = export_dataset_split(
+        dataset_id="demo/dataset",
+        config_name="default",
+        split="eval",
+        output_path=output_path,
+        limit=2,
+        file_format="jsonl",
+        module_loader=lambda name: _FakeDatasetsModule if name == "datasets" else None,
+    )
+
+    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 2
+    assert result["format"] == "jsonl"
 
 
 def test_export_dataset_split_supports_json_lines_with_json_suffix(tmp_path):
@@ -84,7 +100,7 @@ def test_export_dataset_split_supports_json_lines_with_json_suffix(tmp_path):
         '{"question":"one"}\n{"question":"two"}\n',
         encoding="utf-8",
     )
-    output_path = tmp_path / "sample.jsonl"
+    output_path = tmp_path / "sample.json"
 
     class _FakeHubModule:
         @staticmethod
@@ -99,7 +115,7 @@ def test_export_dataset_split_supports_json_lines_with_json_suffix(tmp_path):
         module_loader=lambda name: _FakeHubModule if name == "huggingface_hub" else None,
     )
 
-    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    rows = json.loads(output_path.read_text(encoding="utf-8"))
     assert len(rows) == 2
     assert rows[1]["question"] == "two"
     assert result["rows"] == 2
@@ -110,7 +126,7 @@ def test_export_dataset_split_raises_clear_error_without_dependency(tmp_path):
         export_dataset_split(
             dataset_id="demo/dataset",
             split="eval",
-            output_path=tmp_path / "sample.jsonl",
+            output_path=tmp_path / "sample.json",
             module_loader=lambda _name: (_ for _ in ()).throw(ImportError("missing")),
         )
     except OptionalDependencyNotAvailable as exc:
@@ -129,7 +145,7 @@ def test_hf_dataset_exporter_script_runs(tmp_path):
         "sys.modules['datasets'] = module\n",
         encoding="utf-8",
     )
-    output_path = tmp_path / "dataset.jsonl"
+    output_path = tmp_path / "dataset.json"
     env = os.environ.copy()
     env["PYTHONPATH"] = str(tmp_path) + os.pathsep + str(ROOT / "src")
 
@@ -157,7 +173,7 @@ def test_hf_dataset_exporter_script_runs(tmp_path):
     )
     assert completed.returncode == 0, completed.stderr
     assert output_path.exists()
-    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    rows = json.loads(output_path.read_text(encoding="utf-8"))
     assert len(rows) == 1
 
 
@@ -172,7 +188,7 @@ def test_hf_dataset_exporter_script_supports_repo_file(tmp_path):
         "sys.modules['huggingface_hub'] = module\n",
         encoding="utf-8",
     )
-    output_path = tmp_path / "dataset.jsonl"
+    output_path = tmp_path / "dataset.json"
     env = os.environ.copy()
     env["PYTHONPATH"] = str(tmp_path) + os.pathsep + str(ROOT / "src")
 
@@ -197,5 +213,5 @@ def test_hf_dataset_exporter_script_supports_repo_file(tmp_path):
         check=False,
     )
     assert completed.returncode == 0, completed.stderr
-    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    rows = json.loads(output_path.read_text(encoding="utf-8"))
     assert len(rows) == 1

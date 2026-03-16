@@ -122,7 +122,7 @@ def test_convert_records_can_fallback_to_single_tool_when_ground_truth_missing()
 
 def test_bfcl_converter_script_runs_end_to_end(tmp_path):
     source_path = tmp_path / "bfcl.json"
-    output_path = tmp_path / "retrieval.jsonl"
+    output_path = tmp_path / "retrieval.json"
     source_rows = [
         {
             "question": "請寄送電子郵件給 Bob",
@@ -160,6 +160,6 @@ def test_bfcl_converter_script_runs_end_to_end(tmp_path):
     )
     assert completed.returncode == 0, completed.stderr
     assert output_path.exists()
-    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = json.loads(output_path.read_text(encoding="utf-8"))
     assert rows[0]["expected"] == "send_email"
     assert rows[0]["query_lang"] == "zh"

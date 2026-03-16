@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import locale
 import os
 import re
 import shutil
@@ -19,6 +20,20 @@ CLAUDE_DESCRIPTION = (
     "local wheel before wrapping Python callables, HTTP/SQL/model sources, or validating "
     "MCP and OpenAI tool calling."
 )
+AGENTS_BLOCK_START = "<!-- toolanything-tool-wrapper:BEGIN -->"
+AGENTS_BLOCK_END = "<!-- toolanything-tool-wrapper:END -->"
+AGENTS_HEADING = "## ToolAnything tool wrapper"
+AGENTS_INSTRUCTIONS = {
+    "en": (
+        "Before executing each task step, think about whether any tool or skill applies. "
+        "If the task needs a tool but no suitable tool can solve it, load the skill: "
+        "ToolAnything tool wrapper (`toolanything-tool-wrapper`)."
+    ),
+    "zh-TW": (
+        "執行每個任務步驟前，先思考是否有適合的工具或 skill；若任務需要工具，但目前沒有適合工具可解決，"
+        "則載入 skill: ToolAnything tool wrapper（`toolanything-tool-wrapper`）。"
+    ),
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -168,6 +183,61 @@ def write_text(target: Path, content: str, dry_run: bool) -> None:
     target.write_text(content, encoding="utf-8")
 
 
+def preferred_language_hint() -> str | None:
+    for key in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(key)
+        if value:
+            return value
+
+    language, _ = locale.getlocale()
+    return language
+
+
+def contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", text))
+
+
+def resolve_agents_language(existing_content: str, locale_hint: str | None = None) -> str:
+    if contains_cjk(existing_content):
+        return "zh-TW"
+    if locale_hint and locale_hint.lower().startswith("zh"):
+        return "zh-TW"
+    return "en"
+
+
+def render_agents_block(language: str) -> str:
+    instruction = AGENTS_INSTRUCTIONS["zh-TW" if language == "zh-TW" else "en"]
+    return (
+        f"{AGENTS_BLOCK_START}\n"
+        f"{AGENTS_HEADING}\n"
+        f"{instruction}\n"
+        f"{AGENTS_BLOCK_END}\n"
+    )
+
+
+def upsert_agents_content(
+    existing_content: str,
+    *,
+    locale_hint: str | None = None,
+) -> tuple[str, str]:
+    language = resolve_agents_language(existing_content, locale_hint)
+    block = render_agents_block(language)
+    pattern = re.compile(
+        rf"{re.escape(AGENTS_BLOCK_START)}.*?{re.escape(AGENTS_BLOCK_END)}\n?",
+        re.DOTALL,
+    )
+    if pattern.search(existing_content):
+        updated = pattern.sub(block, existing_content)
+        return updated.rstrip() + "\n", language
+
+    if existing_content.strip():
+        updated = existing_content.rstrip() + "\n\n" + block
+        return updated, language
+
+    updated = "# AGENTS\n\n" + block
+    return updated, language
+
+
 def codex_target(home: Path) -> Path:
     codex_home = Path(os.environ.get("CODEX_HOME", home / ".codex")).expanduser()
     return codex_home / "skills" / SKILL_NAME
@@ -182,6 +252,38 @@ def openclaw_target(home: Path) -> Path:
 
 def claude_target(home: Path) -> Path:
     return home / ".claude" / "agents" / CLAUDE_AGENT_NAME
+
+
+def agents_target(home: Path, host: str) -> Path:
+    if host == "codex":
+        codex_home = Path(os.environ.get("CODEX_HOME", home / ".codex")).expanduser()
+        return codex_home / "AGENTS.md"
+
+    if host == "openclaw":
+        workspace = Path(
+            os.environ.get("OPENCLAW_WORKSPACE", home / ".openclaw" / "workspace")
+        ).expanduser()
+        return workspace / "AGENTS.md"
+
+    if host == "claude-code":
+        return home / ".claude" / "AGENTS.md"
+
+    raise SystemExit(f"不支援的 host: {host}")
+
+
+def sync_agents_instruction(home: Path, host: str, dry_run: bool) -> Path:
+    target = agents_target(home, host)
+    existing_content = target.read_text(encoding="utf-8") if target.exists() else ""
+    updated_content, language = upsert_agents_content(
+        existing_content,
+        locale_hint=preferred_language_hint(),
+    )
+
+    print(f"Updating AGENTS.md instruction ({language}): {target}")
+    if not dry_run:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(updated_content, encoding="utf-8")
+    return target
 
 
 def sync_bundle(skill_path: Path, host: str, home: Path, dry_run: bool) -> Path:
@@ -223,7 +325,9 @@ def main(argv: list[str] | None = None) -> int:
 
     pip_install(wheel_path, args.dry_run)
     target = sync_bundle(skill_path, host, home, args.dry_run)
+    agents_path = sync_agents_instruction(home, host, args.dry_run)
     print_post_install_hint(host, target)
+    print(f"Updated AGENTS.md: {agents_path}")
     return 0
 
 

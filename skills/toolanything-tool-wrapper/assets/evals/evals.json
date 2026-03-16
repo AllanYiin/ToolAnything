@@ -61,6 +61,30 @@
         "會選 source-based API",
         "不會硬做低價值 wrapper"
       ]
+    },
+    {
+      "id": 6,
+      "name": "agents-md-instruction-sync",
+      "prompt": "安裝 ToolAnything tool wrapper 時，請在確認平台類型後自動更新對應語言的 AGENTS.md，加入『執行每個任務步驟前，先思考是否有適合的工具或 skill；若任務需要工具，但目前沒有適合工具可解決，則載入 skill: ToolAnything tool wrapper』。",
+      "expected_output": "會把 AGENTS.md 視為安裝流程的一部分，自動選擇正確 host 路徑、語言與去重更新策略，而不是只在回覆中口頭提醒。",
+      "files": [],
+      "expectations": [
+        "會更新對應 host 的 AGENTS.md 或等價全域 agent 指示檔",
+        "會處理繁中或英文版本",
+        "會避免每次安裝重複插入同一段規則"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "shared-custom-mcp-server-policy",
+      "prompt": "幫我新增一支 agent 自訂工具，但不要每執行一次就產生一個新的 MCP server；要把工具整合進既有的自訂工具專用 server，固定路徑、固定 port，並支援系統重啟後自動啟動。",
+      "expected_output": "會要求使用共用自訂工具專用 server，使用既定 root、`127.0.0.1:9092`、streamable-http 與平台對應的自動啟動方式，而不是為單一工具另開新 server。",
+      "files": [],
+      "expectations": [
+        "會明確反對一工具一 server",
+        "會指定 canonical server root",
+        "會指定固定 port 與自動啟動策略"
+      ]
     }
   ]
 }

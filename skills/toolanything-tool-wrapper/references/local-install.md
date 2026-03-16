@@ -10,6 +10,20 @@
 
 如果同時符合多個條件，停止並要求顯式 `--host`；不要猜。
 
+## AGENTS.md 同步矩陣
+
+| Host | 指示檔目標 | 備註 |
+| --- | --- | --- |
+| Codex | `$CODEX_HOME/AGENTS.md` 或 `~/.codex/AGENTS.md` | 寫入全域 Codex agent 指示 |
+| OpenClaw | `$OPENCLAW_WORKSPACE/AGENTS.md` 或 `~/.openclaw/workspace/AGENTS.md` | 跟 workspace 綁定 |
+| Claude Code | `~/.claude/AGENTS.md` | 作為本機 Claude agent 指示 |
+
+安裝腳本必須：
+
+1. 自動判斷要更新哪一份 `AGENTS.md`。
+2. 依既有內容或 locale 選繁中 / 英文。
+3. 用固定 marker 更新，避免每次安裝重複插入同一段。
+
 ## 安裝命令
 
 自動偵測：
@@ -65,4 +79,5 @@ python -m pip install --upgrade --force-reinstall <wheel>
 
 1. `python -c "import toolanything; print(toolanything.__file__)"` 成功。
 2. 本地目標路徑存在最新 skill / subagent。
-3. 後續敘事與操作都以這份本地 bundle 為主，而不是把使用者丟回上游 GitHub 安裝文件。
+3. 對應 `AGENTS.md` 已存在 ToolAnything tool wrapper 指示，且沒有重複段落。
+4. 後續敘事與操作都以這份本地 bundle 為主，而不是把使用者丟回上游 GitHub 安裝文件。

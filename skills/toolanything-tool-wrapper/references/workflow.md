@@ -6,7 +6,8 @@
 
 1. 執行 `python scripts/install_local_bundle.py --host auto`。
 2. 若回報多個 host 候選，改成顯式 `--host codex|openclaw|claude-code`。
-3. 確認 `toolanything` import 成功，再進入後續實作。
+3. 確認對應 `AGENTS.md` 已被更新成正確語言的 ToolAnything 指示。
+4. 確認 `toolanything` import 成功，再進入後續實作。
 
 ### B. 判斷工具來源
 
@@ -17,6 +18,14 @@
 | 實際來源是 HTTP API | 用 `HttpSourceSpec` + `register_http_tool` | 人工再寫一支只會轉呼叫的薄 wrapper | `examples/non_function_tools/http_tool.py` |
 | 實際來源是 SQL query | 用 `SqlSourceSpec` + `register_sql_tool` | 把 SQL 塞進普通函數後假裝是 function tool | `examples/non_function_tools/sql_tool.py` |
 | 實際來源是 model artifact | 用 `ModelSourceSpec` + `register_model_tool` | 先多包一層無意義 service | `README.md` 與 `examples/non_function_tools/` |
+
+### C. 共用自訂工具專用 MCP server
+
+| 情況 | 優先做法 | 不要做什麼 | 依據 |
+| --- | --- | --- | --- |
+| 新增 agent 可重用工具 | 併入 `~/.toolanything/agent-mcp/` 既有 server | 一工具一 server | `references/custom-mcp-server-policy.md` |
+| 需要固定 port 與自動重啟 | 用 `streamable-http` 維持 `127.0.0.1:9092` | 偷改成隨機 port | `examples/mcp_transports/README.md` |
+| Desktop host 單次直連驗證 | 先用 `stdio` 做便宜驗證 | 一開始就改 runtime 核心 | `examples/protocol_boundary/README.md` |
 
 ## 最短路徑
 
@@ -77,3 +86,4 @@ manager.register_http_tool(
 2. 使用者想把 HTTP / SQL / model 問題硬說成「只是包個 function」。
 3. 使用者要求為了單一案例改壞既有工具名稱或公開契約。
 4. 使用者要求把 OpenClaw 裝到 `~/.openclaw/skills`，或把 Claude Code 當成可直接吃 `SKILL.md` 資料夾。
+5. 使用者要求每新增一支工具就開一個新的 MCP server。

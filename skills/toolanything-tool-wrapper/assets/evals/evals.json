@@ -1,0 +1,65 @@
+{
+  "skill_name": "toolanything-tool-wrapper",
+  "evals": [
+    {
+      "id": 1,
+      "name": "wrap-python-function-with-tool",
+      "prompt": "請在這個 ToolAnything repo 幫我把一個 Python function 包成 agent 可呼叫的 tool，順便驗證 tools/list 和 tools/call。",
+      "expected_output": "會選擇 @tool 路徑，建立或修改 callable-backed tool，並至少做一次 registry 或 doctor 驗證。",
+      "files": [],
+      "expectations": [
+        "會先讀 README 與 quickstart 相關檔案",
+        "會使用 @tool 或等價原生註冊流程",
+        "會提到 tools/list 或 tools/call 的驗證",
+        "不會另外發明第二套 schema"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "wrap-classmethod-tool",
+      "prompt": "我想把 classmethod 包成 ToolAnything tool，請直接改成 repo 支援的寫法。",
+      "expected_output": "會辨識 ToolAnything 已支援 @tool 和 @classmethod 的兩種順序，並依現有風格實作與驗證。",
+      "files": [],
+      "expectations": [
+        "會讀 class_method_tools 教程或等價實作",
+        "不會手寫多餘 descriptor workaround",
+        "會說明 decorator 順序的選擇理由"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "avoid-thin-wrapper-for-http",
+      "prompt": "幫我用 ToolAnything 把這個 REST API 變成工具，但我不想多寫一層只是轉呼叫的 Python function。",
+      "expected_output": "會改用 HttpSourceSpec 與 register_http_tool，而不是硬包普通 function。",
+      "files": [],
+      "expectations": [
+        "會明確指出這不是 function-first 問題",
+        "會選 source-based API",
+        "不會硬做低價值 wrapper"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "verification-path-selection",
+      "prompt": "我新增完 tool 後，請幫我在 repo 裡用最短路徑驗證 MCP 真的能呼叫它。",
+      "expected_output": "會優先使用 doctor，必要時再用 serve 或 inspect，並考慮 python -m toolanything.cli 這條更穩的路徑。",
+      "files": [],
+      "expectations": [
+        "會從便宜驗證開始",
+        "會包含 doctor 指令",
+        "不會一上來就改 transport 核心"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "should-not-trigger-generic-agent-framework",
+      "prompt": "請幫我設計一個完整 agent framework，包含長期記憶、規劃、路由和觀察者模式。",
+      "expected_output": "此 skill 不應把任務誤判成單純的 ToolAnything 包裝需求；若被載入，也應主動糾正 ToolAnything 的邊界。",
+      "files": [],
+      "expectations": [
+        "會指出 ToolAnything 主要解的是 tool definition、runtime 與 transport",
+        "不會把 generic agent framework 任務硬套成包 function"
+      ]
+    }
+  ]
+}

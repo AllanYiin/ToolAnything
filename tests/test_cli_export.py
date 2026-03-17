@@ -137,6 +137,24 @@ def test_cli_app_validates_aspect_ratio(capsys: pytest.CaptureFixture[str]):
     assert "aspect ratio" in output
 
 
+def test_cli_app_parses_nullable_scalar_arguments(capsys: pytest.CaptureFixture[str]):
+    registry = ToolRegistry()
+
+    @tool(name="image.resize", description="調整尺寸", registry=registry)
+    def resize(target_width: int | None = None, target_height: int | None = None) -> dict:
+        return {"target_width": target_width, "target_height": target_height}
+
+    app = build_cli_app(registry, CLIExportOptions(app_name="mytools"))
+
+    exit_code = app.run(["image", "resize", "--target-width", "80", "--json"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    payload = json.loads(output)
+    assert payload["result"]["target_width"] == 80
+    assert payload["result"]["target_height"] is None
+
+
 def test_cli_export_and_run_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     config_path = tmp_path / "toolanything.cli.json"
     launcher_path = tmp_path / "mytools.py"
@@ -173,6 +191,42 @@ def test_cli_command_override_changes_path():
     registry = ToolRegistry()
 
     @tool(name="weather.query", description="查天氣", registry=registry)
+    def weather(city: str) -> dict:
+        return {"city": city}
+
+    app = build_cli_app(
+        registry,
+        CLIExportOptions(app_name="mytools"),
+        project_config=load_cli_project_from_override("mytools"),
+    )
+    assert app.command_defs[0].command_path == ["wx", "current"]
+
+
+def test_tool_decorator_cli_command_changes_path():
+    registry = ToolRegistry()
+
+    @tool(
+        name="weather.query",
+        description="查天氣",
+        registry=registry,
+        cli_command="wx current",
+    )
+    def weather(city: str) -> dict:
+        return {"city": city}
+
+    app = build_cli_app(registry, CLIExportOptions(app_name="mytools"))
+    assert app.command_defs[0].command_path == ["wx", "current"]
+
+
+def test_project_config_override_precedes_tool_cli_command():
+    registry = ToolRegistry()
+
+    @tool(
+        name="weather.query",
+        description="查天氣",
+        registry=registry,
+        cli_command="weather now",
+    )
     def weather(city: str) -> dict:
         return {"city": city}
 

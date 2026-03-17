@@ -35,19 +35,38 @@ def _json_or_file(value: str) -> Any:
         raise CLIArgumentValidationError(f"JSON 解析失敗: {exc.msg}") from exc
 
 
+def _resolve_effective_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    for keyword in ("oneOf", "anyOf"):
+        variants = schema.get(keyword)
+        if not isinstance(variants, list):
+            continue
+        non_null_variants = [variant for variant in variants if variant.get("type") != "null"]
+        if len(non_null_variants) != 1 or len(non_null_variants) == len(variants):
+            continue
+
+        merged = dict(non_null_variants[0])
+        for key in ("default", "description", "enum"):
+            if key in schema and key not in merged:
+                merged[key] = schema[key]
+        return merged
+    return schema
+
+
 def _infer_path_like(name: str, schema: dict[str, Any], help_text: str | None) -> bool:
-    if schema.get("format") in {"path", "file-path"}:
+    effective_schema = _resolve_effective_schema(schema)
+    if effective_schema.get("format") in {"path", "file-path"}:
         return True
-    description = (schema.get("description") or help_text or "").lower()
+    description = (effective_schema.get("description") or help_text or "").lower()
     lowered_name = name.lower()
     return any(token in lowered_name or token in description for token in PATH_HINT_TOKENS)
 
 
 def _schema_kind(schema: dict[str, Any]) -> str:
-    schema_type = schema.get("type")
+    effective_schema = _resolve_effective_schema(schema)
+    schema_type = effective_schema.get("type")
     if schema_type == "array":
         return "array"
-    if schema_type == "object" or schema.get("properties") or schema.get("additionalProperties"):
+    if schema_type == "object" or effective_schema.get("properties") or effective_schema.get("additionalProperties"):
         return "object"
     if schema_type == "boolean":
         return "boolean"
@@ -55,7 +74,7 @@ def _schema_kind(schema: dict[str, Any]) -> str:
 
 
 def _scalar_type(schema: dict[str, Any]):
-    schema_type = schema.get("type")
+    schema_type = _resolve_effective_schema(schema).get("type")
     if schema_type == "integer":
         return int
     if schema_type == "number":
@@ -94,13 +113,14 @@ def add_argument_to_parser(parser: argparse.ArgumentParser, arg_spec: CLIArgumen
         "help": arg_spec.help_text,
     }
     schema = arg_spec.schema
+    effective_schema = _resolve_effective_schema(schema)
     kind = arg_spec.kind
 
-    if "enum" in schema:
-        kwargs["choices"] = list(schema["enum"])
+    if "enum" in effective_schema:
+        kwargs["choices"] = list(effective_schema["enum"])
 
     if kind == "array":
-        item_schema = schema.get("items", {})
+        item_schema = effective_schema.get("items", {})
         kwargs["action"] = "append"
         kwargs["type"] = _scalar_type(item_schema)
         kwargs["required"] = arg_spec.required
@@ -114,8 +134,8 @@ def add_argument_to_parser(parser: argparse.ArgumentParser, arg_spec: CLIArgumen
         parser.add_argument(*arg_spec.option_strings, **kwargs)
         return
 
-    if schema.get("type") == "boolean":
-        default = schema.get("default", None)
+    if effective_schema.get("type") == "boolean":
+        default = schema.get("default", effective_schema.get("default", None))
         if default is True:
             parser.add_argument(
                 f"--no-{arg_spec.name.replace('_', '-')}",
@@ -137,7 +157,7 @@ def add_argument_to_parser(parser: argparse.ArgumentParser, arg_spec: CLIArgumen
                 parser.set_defaults(**{arg_spec.dest: False})
             return
 
-    kwargs["type"] = _scalar_type(schema)
+    kwargs["type"] = _scalar_type(effective_schema)
     if "default" in schema:
         kwargs["default"] = schema["default"]
     elif arg_spec.required:

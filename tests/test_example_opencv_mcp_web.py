@@ -1,5 +1,6 @@
 import importlib
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -9,8 +10,18 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from toolanything.cli import _build_parser, run_exported_cli
+from toolanything.cli_export import load_cli_project
 from toolanything.inspector.service import MCPInspectorService
 from toolanything.server.mcp_tool_server import _build_handler
+
+
+def _example_subprocess_env() -> dict[str, str]:
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    src_path = str(Path.cwd() / "src")
+    env["PYTHONPATH"] = src_path if not existing else f"{src_path}{os.pathsep}{existing}"
+    return env
 
 
 def _start_http_server(registry):
@@ -57,6 +68,7 @@ def test_opencv_example_exposes_tools_and_accepts_inspector_calls():
         tools_result = service.list_tools({"mode": "http", "url": f"http://127.0.0.1:{port}"})
         tool_names = [tool["name"] for tool in tools_result["tools"]]
         assert "__ping__" in tool_names
+        assert "opencv.demo_image" in tool_names
         assert "opencv.info" in tool_names
         assert "opencv.resize" in tool_names
         assert "opencv.canny" in tool_names
@@ -126,6 +138,8 @@ def test_repo_opencv_example_readme_uses_external_file_paths():
     assert "python examples/opencv_mcp_web/web_server.py" in readme
     assert "python examples/opencv_mcp_web/smoke_test.py" in readme
     assert "python examples/opencv_mcp_web/dual_protocol_demo.py" in readme
+    assert "toolanything cli run --module examples/opencv_mcp_web/server.py" in readme
+    assert "toolanything cli export --module examples/opencv_mcp_web/server.py" in readme
 
 
 def test_repo_opencv_example_includes_web_assets():
@@ -189,6 +203,7 @@ def test_opencv_dual_protocol_demo_runs_as_direct_file():
     completed = subprocess.run(
         [sys.executable, "examples/opencv_mcp_web/dual_protocol_demo.py", "--mode", "local"],
         cwd=Path.cwd(),
+        env=_example_subprocess_env(),
         capture_output=True,
         text=True,
         check=True,
@@ -202,9 +217,109 @@ def test_opencv_smoke_test_runs_as_direct_file():
     completed = subprocess.run(
         [sys.executable, "examples/opencv_mcp_web/smoke_test.py"],
         cwd=Path.cwd(),
+        env=_example_subprocess_env(),
         capture_output=True,
         text=True,
         check=True,
     )
     assert "[opencv_mcp_web] Inspector 已接通" in completed.stdout
     assert "opencv.info" in completed.stdout
+
+
+def test_opencv_example_runs_via_dynamic_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    module = _import_opencv_example_module()
+    parser = _build_parser()
+    demo_path = tmp_path / "demo.png"
+    resized_path = tmp_path / "demo-resized.png"
+
+    args = parser.parse_args(
+        [
+            "cli",
+            "run",
+            "--module",
+            "examples/opencv_mcp_web/server.py",
+            "--",
+            "opencv",
+            "demo-image",
+            "--save-as",
+            str(demo_path),
+            "--json",
+        ]
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        args.func(args)
+    assert exc_info.value.code == 0
+    demo_payload = json.loads(capsys.readouterr().out)
+    assert demo_payload["ok"] is True
+    assert Path(demo_payload["result"]["output_path"]).exists()
+
+    args = parser.parse_args(
+        [
+            "cli",
+            "run",
+            "--module",
+            "examples/opencv_mcp_web/server.py",
+            "--",
+            "opencv",
+            "resize",
+            "--input-path",
+            str(demo_path),
+            "--save-as",
+            str(resized_path),
+            "--target-width",
+            "80",
+            "--json",
+        ]
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        args.func(args)
+    assert exc_info.value.code == 0
+    resize_payload = json.loads(capsys.readouterr().out)
+    assert resize_payload["ok"] is True
+    assert resize_payload["result"]["width"] == 80
+    output_image = module.cv2.imread(str(resized_path), module.cv2.IMREAD_UNCHANGED)
+    assert output_image is not None
+    assert output_image.shape[1] == 80
+    assert output_image.shape[0] == resize_payload["result"]["height"]
+
+
+def test_opencv_example_exports_launcher_and_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    _import_opencv_example_module()
+    parser = _build_parser()
+    config_path = tmp_path / "opencv-demo.cli.json"
+    launcher_path = tmp_path / "opencv-demo.py"
+    demo_path = tmp_path / "demo.png"
+
+    args = parser.parse_args(
+        [
+            "cli",
+            "export",
+            "--module",
+            "examples/opencv_mcp_web/server.py",
+            "--config",
+            str(config_path),
+            "--app-name",
+            "opencv-demo",
+            "--launcher",
+            str(launcher_path),
+        ]
+    )
+    args.func(args)
+    export_output = capsys.readouterr().out
+
+    assert "opencv demo-image -> opencv.demo_image" in export_output
+    assert config_path.exists()
+    assert launcher_path.exists()
+    project = load_cli_project(str(config_path))
+    assert "opencv.demo_image" in project.tools
+
+    exit_code = run_exported_cli(
+        str(config_path),
+        ["opencv", "demo-image", "--save-as", str(demo_path), "--json"],
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    payload = json.loads(output)
+    assert payload["ok"] is True
+    assert Path(payload["result"]["output_path"]).exists()

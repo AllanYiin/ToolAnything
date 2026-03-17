@@ -40,6 +40,22 @@ python .toolanything/mytools.py math add --a 2 --b 3
 - 單段工具名直接成為單一命令
 - 非英數字元會正規化成 `-`
 - 命名或 alias 衝突會中止生成並回傳專屬錯誤
+- 若要直接在 `@tool(...)` 指定 CLI 指令，可加 `cli_command="wx current"`
+
+```python
+from toolanything import tool
+
+
+@tool(
+    name="weather.query",
+    description="查詢目前天氣",
+    cli_command="wx current",
+)
+def weather(city: str) -> dict:
+    return {"city": city}
+```
+
+`toolanything.cli.json` 內的 `command_overrides` 仍有最高優先權，適合在不改原始 tool 定義時做最後覆寫。
 
 ## 參數映射
 

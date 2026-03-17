@@ -50,6 +50,7 @@ class _ToolDecoratorWrapper:
         adapters: list[str] | None,
         tags: list[str] | None,
         strict: bool,
+        cli_command: str | None,
         metadata: dict[str, Any] | None,
         registry: ToolRegistry | None,
     ) -> None:
@@ -59,6 +60,7 @@ class _ToolDecoratorWrapper:
         self._adapters = adapters
         self._tags = tags
         self._strict = strict
+        self._cli_command = cli_command
         self._metadata = metadata
         self._registry = registry
         self._registered = False
@@ -115,6 +117,7 @@ class _ToolDecoratorWrapper:
             adapters=self._adapters,
             tags=self._tags,
             strict=self._strict,
+            cli_command=self._cli_command,
             metadata=self._metadata,
         )
 
@@ -132,6 +135,7 @@ def tool(
     adapters: list[str] | None = None,
     tags: list[str] | None = None,
     strict: bool = True,
+    cli_command: str | None = None,
     metadata: dict[str, Any] | None = None,
     registry: Optional[ToolRegistry] = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]] | Callable[..., Any]:
@@ -149,6 +153,7 @@ def tool(
             adapters=adapters,
             tags=tags,
             strict=strict,
+            cli_command=cli_command,
             metadata=metadata,
             registry=registry,
         )

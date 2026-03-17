@@ -198,7 +198,8 @@ Done looks like：
 1. 預設顯式寫 `@tool(name=..., description=...)`，不要把公開契約賭在自動推導。
 2. class method 跟隨專案既有 decorator 順序；沒有慣例時，優先讓 `@tool(...)` 放外層。
 3. 若是 source-based tool，直接用對應 `SourceSpec` 與 `register_*_tool`。
-4. 若要掛到共用自訂工具專用 server，新增或更新 `tools/*.py`，再把載入邏輯掛進共用 `server.py`；不要另開第二個 server entrypoint。
+4. 若同一支工具同時要給 MCP / Web / CLI 使用，優先維持同一份 tool module，直接在 `@tool(...)` 補 `cli_command` 或在同一函式加入 CLI 需要的可選參數；不要再額外做一份 `cli_binding.py` 之類的陰影模組。
+5. 若要掛到共用自訂工具專用 server，新增或更新 `tools/*.py`，再把載入邏輯掛進共用 `server.py`；不要另開第二個 server entrypoint。
 
 ### Phase 4. 驗證
 

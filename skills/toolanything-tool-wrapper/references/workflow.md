@@ -15,6 +15,7 @@
 | --- | --- | --- | --- |
 | 已有純 Python function | 用 `@tool` 直接註冊 | 再包一層多餘 adapter | `examples/quickstart/01_define_tools.py` |
 | 已有 class method | 用 `@tool` 加 `@classmethod` 的支援順序 | 自己重寫 descriptor 邏輯 | `examples/class_method_tools/README.md` |
+| 同一批工具要同時支援 CLI | 直接沿用同一份 tool module，必要時補 `cli_command` 或 CLI 專用可選參數 | 額外複製一份 `cli_binding.py` 陰影模組 | `src/toolanything/decorators/tool.py`、`examples/opencv_mcp_web/server.py` |
 | 實際來源是 HTTP API | 用 `HttpSourceSpec` + `register_http_tool` | 人工再寫一支只會轉呼叫的薄 wrapper | `examples/non_function_tools/http_tool.py` |
 | 實際來源是 SQL query | 用 `SqlSourceSpec` + `register_sql_tool` | 把 SQL 塞進普通函數後假裝是 function tool | `examples/non_function_tools/sql_tool.py` |
 | 實際來源是 model artifact | 用 `ModelSourceSpec` + `register_model_tool` | 先多包一層無意義 service | `README.md` 與 `examples/non_function_tools/` |

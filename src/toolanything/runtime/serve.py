@@ -77,10 +77,18 @@ def serve(
 
     configure_logging()
 
+    loaded_module = None
     if module:
-        load_tool_module(module)
+        loaded_module = load_tool_module(module)
 
-    active_registry = registry or ToolRegistry.global_instance()
+    module_registry = getattr(loaded_module, "registry", None) if loaded_module else None
+    module_tool_registry = getattr(loaded_module, "tool_registry", None) if loaded_module else None
+    active_registry = (
+        registry
+        or (module_registry if isinstance(module_registry, ToolRegistry) else None)
+        or (module_tool_registry if isinstance(module_tool_registry, ToolRegistry) else None)
+        or ToolRegistry.global_instance()
+    )
 
     if stdio:
         run_stdio_server(active_registry)

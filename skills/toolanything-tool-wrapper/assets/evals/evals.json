@@ -85,6 +85,18 @@
         "會指定 canonical server root",
         "會指定固定 port 與自動啟動策略"
       ]
+    },
+    {
+      "id": 8,
+      "name": "avoid-shadow-cli-binding-module",
+      "prompt": "這批 ToolAnything 工具已經有同一份 MCP/Web module，現在我要再補 CLI 支援；請不要幫我另外複製一份 cli_binding.py，而是沿用同一份工具定義處理。",
+      "expected_output": "會優先維持同一份 tool module，選擇直接在 `@tool(...)` 補 `cli_command` 或在同一函式加入 CLI 需要的可選參數，而不是額外建立陰影 CLI 綁定模組。",
+      "files": [],
+      "expectations": [
+        "會明確反對額外複製 cli_binding.py",
+        "會優先沿用同一份 tool module",
+        "會提到 `cli_command` 或同一函式上的 CLI 可選參數"
+      ]
     }
   ]
 }

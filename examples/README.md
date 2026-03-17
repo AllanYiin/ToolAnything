@@ -46,7 +46,7 @@
 - `examples/demo_mcp_streamable_http.py`：最小 Streamable HTTP server demo。
 - `examples/streamable_http/`：由淺入深的 Streamable HTTP lab，適合你自己寫 client 或想看 raw request/response。
 - `examples/demo_mcp.py`：傳統 HTTP/SSE server demo（legacy compatibility）。
-- `examples/opencv_mcp_web/`：較完整的 Web 範例，示範外部檔案路徑工作流。
+- `examples/opencv_mcp_web/`：較完整的 Web 範例；同一份 `server.py` 同時支援 MCP/Web 與 CLI，不再另外維護 CLI 綁定模組。
 
 如果你要做新的遠端 MCP 整合，請優先使用 Streamable HTTP transport；舊的 SSE 路徑保留給相容既有 client 的情境。
 

@@ -24,6 +24,58 @@ def tool_name_to_command_path(tool_name: str, command_naming: str = "grouped") -
     return segments or ["tool"]
 
 
+def _command_path_from_cli_metadata(cli_metadata: dict[str, object]) -> list[str]:
+    raw_command_path = cli_metadata.get("command_path")
+    if isinstance(raw_command_path, list):
+        return [
+            normalize_cli_segment(str(part))
+            for part in raw_command_path
+            if str(part).strip()
+        ]
+
+    raw_command = cli_metadata.get("command")
+    if isinstance(raw_command, str):
+        return [
+            normalize_cli_segment(segment)
+            for segment in raw_command.split()
+            if segment.strip()
+        ]
+    return []
+
+
+def _metadata_override(tool: ToolSpec) -> CLICommandOverride | None:
+    raw_cli = tool.metadata.get("cli")
+    if not isinstance(raw_cli, dict):
+        return None
+
+    command_path = _command_path_from_cli_metadata(raw_cli)
+    aliases_value = raw_cli.get("aliases")
+    aliases = (
+        [str(alias) for alias in aliases_value if str(alias).strip()]
+        if isinstance(aliases_value, list)
+        else []
+    )
+    examples_value = raw_cli.get("examples")
+    examples = (
+        [str(example) for example in examples_value if str(example).strip()]
+        if isinstance(examples_value, list)
+        else []
+    )
+    summary = raw_cli.get("summary")
+    hidden = bool(raw_cli.get("hidden", False))
+
+    if not any((command_path, aliases, examples, summary, hidden)):
+        return None
+
+    return CLICommandOverride(
+        command_path=command_path,
+        aliases=aliases,
+        hidden=hidden,
+        summary=str(summary) if summary is not None else None,
+        examples=examples,
+    )
+
+
 def _override_aliases(
     tool_name: str,
     override: CLICommandOverride | None,
@@ -58,7 +110,7 @@ def build_command_definitions(
     alias_paths: defaultdict[tuple[str, ...], list[str]] = defaultdict(list)
 
     for tool in tools:
-        override = overrides.get(tool.name)
+        override = overrides.get(tool.name) or _metadata_override(tool)
         command_path = (
             [normalize_cli_segment(part) for part in override.command_path]
             if override and override.command_path

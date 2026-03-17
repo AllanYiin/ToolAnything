@@ -12,6 +12,7 @@
 2. 啟動本機 MCP Server
 3. 用內建 MCP client 驗證 `initialize` / `tools/list` / `tools/call`
 4. 用專用 Web UI 實際呼叫 `opencv.info`、`opencv.resize`、`opencv.canny`、`opencv.clahe`、`opencv.adjust_color`
+5. 用 ToolAnything CLI 直接執行同一份 `server.py` 裡的 OpenCV 工具
 
 這份教學預設走 **Streamable HTTP**（`/mcp`）路線，Web UI 也會直接對 `/mcp` 發送 `tools/list` / `tools/call`。
 
@@ -126,6 +127,45 @@ python examples/opencv_mcp_web/web_server.py --port 5173
 
 ```text
 http://127.0.0.1:5173
+```
+
+## 步驟 7：直接跑同一份工具的 CLI
+
+這個範例不再另外維護 `cli_binding.py`。
+
+- MCP / Web UI 仍然用 `image_base64`
+- CLI 直接使用同一份 `examples/opencv_mcp_web/server.py`
+- 需要走檔案工作流時，改傳 `input_path` / `save_as`
+
+先列出 CLI command tree：
+
+```powershell
+toolanything cli inspect --module examples/opencv_mcp_web/server.py
+```
+
+先產生一張示範圖片：
+
+```powershell
+toolanything cli run --module examples/opencv_mcp_web/server.py -- opencv demo-image --save-as .tmp-opencv/demo.png --json
+```
+
+讀取圖片資訊：
+
+```powershell
+toolanything cli run --module examples/opencv_mcp_web/server.py -- opencv info --input-path .tmp-opencv/demo.png --json
+```
+
+輸出縮放結果：
+
+```powershell
+toolanything cli run --module examples/opencv_mcp_web/server.py -- opencv resize --input-path .tmp-opencv/demo.png --save-as .tmp-opencv/demo-resized.png --target-width 128 --json
+```
+
+如果你要生成可重複使用的 launcher：
+
+```powershell
+toolanything cli export --module examples/opencv_mcp_web/server.py --app-name opencv-demo --config .tmp-opencv/opencv-demo.cli.json --launcher .tmp-opencv/opencv-demo.py --overwrite
+python .tmp-opencv/opencv-demo.py opencv canny --input-path .tmp-opencv/demo.png --save-as .tmp-opencv/demo-edges.png --threshold1 40 --threshold2 120 --json
 ```
 
 ## 成功標準

@@ -122,10 +122,16 @@ ToolAnything 幫你處理的是 integration 與 protocol plumbing，不是替你
 from toolanything import tool
 
 
-@tool(name="calculator.add", description="加總兩個整數")
+@tool(
+    name="calculator.add",
+    description="加總兩個整數",
+    cli_command="calc add",
+)
 def add(a: int, b: int) -> int:
     return a + b
 ```
+
+如果你希望 CLI 指令名和 tool name 分開，直接在 `@tool(...)` 補 `cli_command` 即可；CLI export config 的 `command_overrides` 仍可做最後覆寫。
 
 ### Step 2: 啟動成 MCP server
 

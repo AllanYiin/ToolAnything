@@ -23,6 +23,21 @@ def _derive_default_name(func: Callable[..., Any]) -> str:
     return getattr(func, "__name__", "")
 
 
+def _merge_cli_metadata(
+    metadata: Dict[str, Any] | None,
+    cli_command: str | None,
+) -> Dict[str, Any]:
+    merged = dict(metadata or {})
+    if not cli_command:
+        return merged
+
+    raw_cli = merged.get("cli")
+    cli_metadata = dict(raw_cli) if isinstance(raw_cli, dict) else {}
+    cli_metadata.setdefault("command", cli_command)
+    merged["cli"] = cli_metadata
+    return merged
+
+
 class DefinitionMixin:
     """工具與 Pipeline 的共用基底類別 (Mixin)。"""
 
@@ -130,6 +145,7 @@ class ToolSpec(ToolContract):
         tags: list[str] | Tuple[str, ...] | None = None,
         strict: bool = True,
         metadata: Optional[Dict[str, Any]] = None,
+        cli_command: str | None = None,
     ) -> "ToolSpec":
         normalized_func = getattr(func, "__func__", func)
         documentation = parse_docstring(normalized_func)
@@ -146,7 +162,7 @@ class ToolSpec(ToolContract):
             adapters=tuple(adapters) if adapters is not None else None,
             tags=tuple(tags or ()),
             strict=strict,
-            metadata=dict(metadata or {}),
+            metadata=_merge_cli_metadata(metadata, cli_command),
             documentation=documentation,
             source_type="callable",
             invoker_id=name or _derive_default_name(normalized_func),

@@ -97,6 +97,7 @@ def _serve_module(
     port: int,
     stdio: bool,
     streamable_http: bool,
+    legacy_http: bool,
 ) -> None:
     from .runtime import run
 
@@ -106,6 +107,7 @@ def _serve_module(
         port=port,
         stdio=stdio,
         streamable_http=streamable_http,
+        legacy_http=legacy_http,
     )
 
 
@@ -544,15 +546,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     serve_parser.add_argument("--port", type=int, default=9090, help="監聽 port，預設 9090")
     serve_parser.add_argument("--host", default="127.0.0.1", help="監聽 host，預設 127.0.0.1")
-    serve_parser.add_argument(
+    transport_group = serve_parser.add_mutually_exclusive_group()
+    transport_group.add_argument(
         "--stdio",
         action="store_true",
         help="改用 stdio 啟動（供 MCP Desktop 類型使用）",
     )
-    serve_parser.add_argument(
+    transport_group.add_argument(
         "--streamable-http",
         action="store_true",
         help="改用 MCP Streamable HTTP 啟動（/mcp）",
+    )
+    transport_group.add_argument(
+        "--legacy-http",
+        action="store_true",
+        help="改用 legacy HTTP/SSE 啟動（相容舊 client）",
     )
     serve_parser.set_defaults(
         func=lambda args: _serve_module(
@@ -561,6 +569,7 @@ def _build_parser() -> argparse.ArgumentParser:
             port=args.port,
             stdio=args.stdio,
             streamable_http=args.streamable_http,
+            legacy_http=args.legacy_http,
         )
     )
 
@@ -687,8 +696,8 @@ def _build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument(
         "--mode",
         choices=["stdio", "http"],
-        default="stdio",
-        help="診斷模式（stdio 或 http），預設 stdio",
+        default="http",
+        help="診斷模式（stdio 或 http），預設 http",
     )
     doctor_parser.add_argument(
         "--cmd",

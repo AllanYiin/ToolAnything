@@ -26,7 +26,7 @@ Version scope：這份參考頁以 `0.1.0` 版 CLI 為準。
 ## `serve`
 
 ```bash
-toolanything serve <module-or-path> [--host 127.0.0.1] [--port 9090] [--stdio] [--streamable-http]
+toolanything serve <module-or-path> [--host 127.0.0.1] [--port 9090] [--stdio|--streamable-http|--legacy-http]
 ```
 
 重點：
@@ -34,13 +34,15 @@ toolanything serve <module-or-path> [--host 127.0.0.1] [--port 9090] [--stdio] [
 - `module` 同時支援 Python 模組路徑與 `.py` 檔案路徑
 - `--stdio` 用於 Desktop host
 - `--streamable-http` 用於新版 `/mcp`
-- 不帶 transport flag 時，會啟動 legacy HTTP/SSE
+- `--legacy-http` 用於舊 client 相容
+- 不帶 transport flag 時，會啟動 Streamable HTTP
 
 範例：
 
 ```bash
+toolanything serve examples/quickstart/tools.py
 toolanything serve examples/quickstart/tools.py --stdio
-toolanything serve examples/quickstart/tools.py --streamable-http --port 9092
+toolanything serve examples/quickstart/tools.py --legacy-http --port 9090
 ```
 
 ### Parameters pattern

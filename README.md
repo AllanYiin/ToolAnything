@@ -136,13 +136,13 @@ def add(a: int, b: int) -> int:
 ### Step 2: 啟動成 MCP server
 
 ```bash
-toolanything serve tools.py --stdio
+toolanything serve tools.py --streamable-http --host 127.0.0.1 --port 9092
 ```
 
 ### Step 3: 驗證它真的可呼叫
 
 ```bash
-toolanything doctor --mode stdio --tools tools
+toolanything doctor --mode http --url http://127.0.0.1:9092
 ```
 
 做到這裡時，你已經不是只有一個 Python function / class method，而是一個可以被 MCP host 發現與呼叫的工具服務，包含：
@@ -151,7 +151,7 @@ toolanything doctor --mode stdio --tools tools
 - `tools/call`
 - input schema 生成
 - 回傳值序列化
-- stdio transport
+- Streamable HTTP transport
 
 ## 安裝
 
@@ -194,25 +194,25 @@ def get_weather(city: str, unit: str = "c") -> dict:
 ### 2. 啟動 MCP server
 
 ```bash
-toolanything serve examples/quickstart/tools.py --stdio
+toolanything serve examples/quickstart/tools.py --streamable-http --host 127.0.0.1 --port 9092
 ```
 
-如果你要測 HTTP transport：
+如果你要接 Claude Desktop 這類 Desktop host，再改用 stdio：
 
 ```bash
-toolanything serve examples/quickstart/tools.py --streamable-http --host 127.0.0.1 --port 9092
+toolanything serve examples/quickstart/tools.py --stdio
 ```
 
 ### 3. 檢查 transport 與 tool call
 
 ```bash
-toolanything doctor --mode stdio --tools examples.quickstart.tools
+toolanything doctor --mode http --url http://127.0.0.1:9092
 ```
 
-或檢查 HTTP server：
+或檢查 Desktop/stdio server：
 
 ```bash
-toolanything doctor --mode http --url http://127.0.0.1:9092
+toolanything doctor --mode stdio --tools examples.quickstart.tools
 ```
 
 ### 4. 開 inspector 做互動式驗證
@@ -282,7 +282,7 @@ print(result["final_text"])
 | Streamable HTTP | 新版 MCP HTTP 整合，適合服務間連線 |
 | legacy SSE / HTTP | 相容舊 client |
 
-如果你要做新的 MCP 網路整合，建議優先用 Streamable HTTP。
+如果你要做新的 MCP 整合，預設先用 Streamable HTTP；只有 Desktop host 或既有舊 client 相容需求時再改用 stdio / legacy。
 
 ## 專案導覽
 

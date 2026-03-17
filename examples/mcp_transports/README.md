@@ -46,7 +46,7 @@ MCP 端點是 `http://127.0.0.1:9092/mcp`。
 #### Legacy SSE（相容用途）
 
 ```bash
-toolanything serve your_module.py --host 127.0.0.1 --port 9090
+toolanything serve your_module.py --legacy-http --host 127.0.0.1 --port 9090
 ```
 
 此模式會暴露 `/sse` 與 `/messages/{session_id}`。
@@ -103,4 +103,3 @@ toolanything doctor --mode stdio --cmd "python -m toolanything.cli serve your_mo
 ```powershell
 $env:TOOLANYTHING_ALLOWED_ORIGINS='http://127.0.0.1:5173,http://localhost:5173'
 ```
-

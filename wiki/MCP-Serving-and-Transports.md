@@ -13,16 +13,10 @@
 | Transport | 啟動方式 | 典型場景 | 注意事項 |
 | --- | --- | --- | --- |
 | `stdio` | `toolanything serve <module> --stdio` | Claude Desktop、IDE、本機 agent host | 需要用 subprocess 啟動 |
-| Streamable HTTP | `toolanything serve <module> --streamable-http --port 9092` | 新版 MCP HTTP 整合、服務間連線 | 端點在 `/mcp`，需先 `initialize` 建 session |
-| legacy HTTP/SSE | `toolanything serve <module>` | 舊 client 相容路徑 | 新整合不建議優先從這條開始 |
+| Streamable HTTP | `toolanything serve <module> --streamable-http --port 9092` 或直接 `toolanything serve <module>` | 新版 MCP HTTP 整合、服務間連線 | 端點在 `/mcp`，需先 `initialize` 建 session；也是 `serve` 預設 |
+| legacy HTTP/SSE | `toolanything serve <module> --legacy-http` | 舊 client 相容路徑 | 新整合不建議優先從這條開始 |
 
 ## 啟動方式
-
-### Stdio
-
-```bash
-toolanything serve examples/quickstart/tools.py --stdio
-```
 
 ### Streamable HTTP
 
@@ -36,10 +30,16 @@ MCP 端點：
 http://127.0.0.1:9092/mcp
 ```
 
+### Stdio
+
+```bash
+toolanything serve examples/quickstart/tools.py --stdio
+```
+
 ### Legacy HTTP/SSE
 
 ```bash
-toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
+toolanything serve examples/quickstart/tools.py --legacy-http --host 127.0.0.1 --port 9090
 ```
 
 這會啟動 legacy server。現有文件描述的端點包含 `/sse` 與 `/messages/{session_id}`。
@@ -56,16 +56,16 @@ toolanything serve examples/quickstart/tools.py --host 127.0.0.1 --port 9090
 
 ## 驗證 transport
 
+### 驗證 Streamable HTTP
+
+```bash
+toolanything doctor --mode http --url http://127.0.0.1:9092
+```
+
 ### 驗證 stdio
 
 ```bash
 toolanything doctor --mode stdio --tools examples.quickstart.tools
-```
-
-### 驗證 HTTP
-
-```bash
-toolanything doctor --mode http --url http://127.0.0.1:9092
 ```
 
 ### 互動式檢查

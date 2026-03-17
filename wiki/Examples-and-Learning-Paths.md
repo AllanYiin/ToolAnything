@@ -18,7 +18,7 @@
 建議順序：
 
 1. `examples/quickstart/README.md`
-2. `toolanything doctor --mode stdio --tools examples.quickstart.tools`
+2. `toolanything doctor --mode http --url http://127.0.0.1:9092`
 3. `toolanything inspect`
 
 目標：

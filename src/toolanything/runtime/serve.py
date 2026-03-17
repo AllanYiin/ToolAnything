@@ -71,6 +71,7 @@ def serve(
     port: int = 9090,
     stdio: bool = False,
     streamable_http: bool = False,
+    legacy_http: bool = False,
     registry: Optional[ToolRegistry] = None,
 ) -> None:
     """啟動 ToolAnything 伺服器。"""
@@ -90,12 +91,16 @@ def serve(
         or ToolRegistry.global_instance()
     )
 
+    selected_transports = sum(bool(flag) for flag in (stdio, streamable_http, legacy_http))
+    if selected_transports > 1:
+        raise ValueError("stdio、streamable_http、legacy_http 只能擇一啟用")
+
     if stdio:
         run_stdio_server(active_registry)
-    elif streamable_http:
-        run_streamable_http_server(port=port, host=host, registry=active_registry)
-    else:
+    elif legacy_http:
         run_legacy_http_server(port=port, host=host, registry=active_registry)
+    else:
+        run_streamable_http_server(port=port, host=host, registry=active_registry)
 
 
 def run(
@@ -105,6 +110,7 @@ def run(
     port: int = 9090,
     stdio: bool = False,
     streamable_http: bool = False,
+    legacy_http: bool = False,
     registry: Optional[ToolRegistry] = None,
 ) -> None:
     """安全啟動入口，內建錯誤處理與 log。"""
@@ -116,6 +122,7 @@ def run(
             port=port,
             stdio=stdio,
             streamable_http=streamable_http,
+            legacy_http=legacy_http,
             registry=registry,
         )
     except Exception:

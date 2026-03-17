@@ -44,23 +44,24 @@ def add(a: int, b: int) -> int:
 
 ## Step 2: 啟動 MCP server
 
-本機最短路徑建議先用 `stdio`：
-
-```bash
-toolanything serve examples/quickstart/tools.py --stdio
-```
-
-如果你要做 HTTP 型整合，再改用 Streamable HTTP：
+一般自訂 MCP server 建議先用 Streamable HTTP：
 
 ```bash
 toolanything serve examples/quickstart/tools.py --streamable-http --host 127.0.0.1 --port 9092
+```
+
+如果你要接 Claude Desktop 這類 Desktop host，再改用 `stdio`：
+
+```bash
+toolanything serve examples/quickstart/tools.py --stdio
 ```
 
 說明：
 
 - `--stdio` 適合 Claude Desktop 這類會用 subprocess 啟動工具的 host
 - `--streamable-http` 會在 `/mcp` 提供新版 MCP HTTP transport
-- 如果你不加任何 transport flag，`serve` 預設會啟動 legacy HTTP/SSE server
+- `serve` 若不加任何 transport flag，預設會啟動 Streamable HTTP
+- `--legacy-http` 保留給舊 client 相容需求
 
 ## Steps
 
@@ -73,16 +74,16 @@ toolanything serve examples/quickstart/tools.py --streamable-http --host 127.0.0
 
 ## Step 3: 驗證 server 真的可用
 
+### 驗證 Streamable HTTP
+
+```bash
+toolanything doctor --mode http --url http://127.0.0.1:9092
+```
+
 ### 驗證 stdio
 
 ```bash
 toolanything doctor --mode stdio --tools examples.quickstart.tools
-```
-
-### 驗證 HTTP
-
-```bash
-toolanything doctor --mode http --url http://127.0.0.1:9092
 ```
 
 如果你想自己開一個互動式檢查畫面：

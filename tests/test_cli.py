@@ -65,6 +65,54 @@ def test_cli_inspect_dispatch(monkeypatch):
     }
 
 
+def test_cli_serve_passes_transport_flags(monkeypatch):
+    called = {}
+
+    def fake_serve_module(
+        *,
+        module: str,
+        host: str,
+        port: int,
+        stdio: bool,
+        streamable_http: bool,
+        legacy_http: bool,
+    ) -> None:
+        called["serve"] = {
+            "module": module,
+            "host": host,
+            "port": port,
+            "stdio": stdio,
+            "streamable_http": streamable_http,
+            "legacy_http": legacy_http,
+        }
+
+    monkeypatch.setattr("toolanything.cli._serve_module", fake_serve_module)
+    parser = _build_parser()
+
+    args = parser.parse_args(["serve", "examples/quickstart/tools.py"])
+    args.func(args)
+    assert called["serve"] == {
+        "module": "examples/quickstart/tools.py",
+        "host": "127.0.0.1",
+        "port": 9090,
+        "stdio": False,
+        "streamable_http": False,
+        "legacy_http": False,
+    }
+
+    args = parser.parse_args(["serve", "examples/quickstart/tools.py", "--legacy-http"])
+    args.func(args)
+    assert called["serve"]["legacy_http"] is True
+    assert called["serve"]["stdio"] is False
+    assert called["serve"]["streamable_http"] is False
+
+
+def test_cli_doctor_defaults_to_http():
+    parser = _build_parser()
+    args = parser.parse_args(["doctor"])
+    assert args.mode == "http"
+
+
 def test_cli_init_claude(tmp_path):
     parser = _build_parser()
     output = tmp_path / "claude_config.json"

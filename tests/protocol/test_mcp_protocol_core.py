@@ -205,7 +205,7 @@ def test_golden_initialize_response() -> None:
         capabilities={
             "protocolVersion": "2024-02-01",
             "serverInfo": {"name": "golden", "version": "1.0.0"},
-            "dependencies": [{"name": "toolanything", "version": "0.1.0"}],
+            "dependencies": [{"name": "toolanything", "version": "0.5.0"}],
         }
     )
     request = {
@@ -223,7 +223,7 @@ def test_golden_initialize_response() -> None:
         "result": {
             "protocolVersion": "2024-02-01",
             "serverInfo": {"name": "golden", "version": "1.0.0"},
-            "dependencies": [{"name": "toolanything", "version": "0.1.0"}],
+            "dependencies": [{"name": "toolanything", "version": "0.5.0"}],
         },
     }
 

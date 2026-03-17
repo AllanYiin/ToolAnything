@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = (
     ROOT
     / "skills"
-    / "toolanything-tool-wrapper"
+    / "toolanything-platform-ops"
     / "scripts"
     / "install_local_bundle.py"
 )
@@ -33,27 +33,45 @@ def test_upsert_agents_content_uses_zh_tw_for_empty_file():
 
     assert language == "zh-TW"
     assert updated.startswith("# AGENTS\n\n")
-    assert module.AGENTS_BLOCK_START in updated
-    assert "執行每個任務步驟前" in updated
-    assert updated.count(module.AGENTS_BLOCK_START) == 1
+    assert module.PRIMARY_BLOCK_START in updated
+    assert "toolanything-mcp-router" in updated
+    assert updated.count(module.PRIMARY_BLOCK_START) == 1
 
 
 def test_upsert_agents_content_replaces_existing_block_without_duplication():
     module = _load_install_script_module()
     existing = (
         "# AGENTS\n\n"
-        f"{module.AGENTS_BLOCK_START}\n"
+        f"{module.PRIMARY_BLOCK_START}\n"
         "old content\n"
-        f"{module.AGENTS_BLOCK_END}\n"
+        f"{module.PRIMARY_BLOCK_END}\n"
     )
 
     updated, language = module.upsert_agents_content(existing, locale_hint="en_US")
 
     assert language == "en"
     assert "old content" not in updated
-    assert "Before executing each task step" in updated
-    assert updated.count(module.AGENTS_BLOCK_START) == 1
-    assert updated.count(module.AGENTS_BLOCK_END) == 1
+    assert "load the skill: ToolAnything MCP router" in updated
+    assert updated.count(module.PRIMARY_BLOCK_START) == 1
+    assert updated.count(module.PRIMARY_BLOCK_END) == 1
+
+
+def test_upsert_agents_content_replaces_legacy_tool_wrapper_block():
+    module = _load_install_script_module()
+    legacy_start, legacy_end = module.LEGACY_BLOCKS[0]
+    existing = (
+        "# AGENTS\n\n"
+        f"{legacy_start}\n"
+        "legacy fallback\n"
+        f"{legacy_end}\n"
+    )
+
+    updated, language = module.upsert_agents_content(existing, locale_hint="zh_TW")
+
+    assert language == "zh-TW"
+    assert "legacy fallback" not in updated
+    assert legacy_start not in updated
+    assert "toolanything-mcp-router" in updated
 
 
 def test_sync_agents_instruction_writes_host_specific_agents_file(tmp_path, monkeypatch):
@@ -67,5 +85,5 @@ def test_sync_agents_instruction_writes_host_specific_agents_file(tmp_path, monk
 
     assert target == codex_home / "AGENTS.md"
     content = target.read_text(encoding="utf-8")
-    assert "ToolAnything tool wrapper" in content
-    assert "執行每個任務步驟前" in content
+    assert "ToolAnything MCP Router" in content
+    assert "toolanything-platform-ops" in content

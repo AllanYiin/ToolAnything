@@ -22,6 +22,8 @@ var/
 wheels/
 !skills/toolanything-tool-wrapper/wheels/
 !skills/toolanything-tool-wrapper/wheels/**
+!skills/toolanything-platform-ops/wheels/
+!skills/toolanything-platform-ops/wheels/**
 share/python-wheels/
 *.egg-info/
 .installed.cfg

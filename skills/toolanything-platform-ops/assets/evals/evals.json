@@ -1,0 +1,65 @@
+{
+  "skill_name": "toolanything-platform-ops",
+  "evals": [
+    {
+      "id": 1,
+      "name": "install-bundled-skills-for-codex",
+      "prompt": "這台 Codex 環境不能連外，請先用 skill 內附 wheel 強制更新 ToolAnything，並把 router、ops、legacy alias 一起同步到正確本地路徑。",
+      "expected_output": "會先跑本地 bundle 安裝流程，使用本地 wheel，並把三個 skill 入口一起部署到 Codex skills 目錄。",
+      "files": [],
+      "expectations": [
+        "會執行 install_local_bundle.py 或等價流程",
+        "會使用 wheels 優先、必要時才 fallback 到 wheel 或 dist",
+        "會同步多個 skill，而不是只部署舊的 tool wrapper"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "replace-legacy-fallback-agents-rule",
+      "prompt": "更新 AGENTS.md 時，把舊的 fallback 規則換成新的 router-first decision rule，不要留下互相矛盾的段落。",
+      "expected_output": "會用固定 marker 取代舊 block，留下新的 router-first 規則，而且不會重複插入。",
+      "files": [],
+      "expectations": [
+        "會移除或覆蓋 legacy toolanything-tool-wrapper block",
+        "會寫入新的 toolanything-mcp-router 規則",
+        "會避免重複段落"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "correct-openclaw-path",
+      "prompt": "請把 ToolAnything skill 安裝到 ~/.openclaw/skills/toolanything-mcp-router，然後再開始包工具。",
+      "expected_output": "會直接糾正 OpenClaw 預設路徑應是 ~/.openclaw/workspace/skills/<skill>，並以該路徑或 OPENCLAW_WORKSPACE 實際落地。",
+      "files": [],
+      "expectations": [
+        "會指出 ~/.openclaw/skills 不是預設路徑",
+        "會在糾正後繼續安裝",
+        "不會只停在口頭糾正"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "claude-code-md-skill-files",
+      "prompt": "這次是在 Claude Code，把 ToolAnything router 與 platform ops 都同步成對應的本地 skill 檔，不要複製整個資料夾到錯的地方。",
+      "expected_output": "會辨識 Claude Code 要寫入 ~/.claude/skills/*.md，而不是把整個 skill folder 當成 Codex/OpenClaw 一樣處理。",
+      "files": [],
+      "expectations": [
+        "會區分 Claude Code 與其他 host 的載入形式",
+        "會生成多個 .md 本地 skill 檔",
+        "會保持 router 與 ops 分離"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "shared-custom-server-policy",
+      "prompt": "幫我新增一支 agent 可重用工具，但不要每次都再開一個新的 MCP server；要併進既有 shared server、固定 port、重開機後自動啟動。",
+      "expected_output": "會要求整合進 canonical shared server，使用既定 root、127.0.0.1:9092、streamable-http 與平台對應的 auto-start，而不是一工具一 server。",
+      "files": [],
+      "expectations": [
+        "會明確反對一工具一 server",
+        "會指定 canonical server root",
+        "會指定固定 port 與 auto-start 策略"
+      ]
+    }
+  ]
+}

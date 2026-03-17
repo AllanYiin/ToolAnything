@@ -1,6 +1,6 @@
 [project]
 name = "toolanything"
-version = "0.1.0"
+version = "0.5.0"
 description = "One function to MCP and Tool calling"
 authors = [{ name = "ToolAnything" }]
 readme = "README.md"
@@ -9,7 +9,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 keywords = ["mcp", "tool-calling", "openai", "fastapi"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",

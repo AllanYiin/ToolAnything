@@ -44,9 +44,9 @@ ToolAnything 是一個給 LLM 應用開發者的 Python 工具層。你定義一
 
 ## 專案狀態
 
-- 版本：`0.1.0`
+- 版本：`0.5.0`
 - Python requirement：`>=3.10`
-- 開發狀態：Alpha
+- 開發狀態：Beta
 - 預設工作目錄：本文中的命令都假設你在 repo root 執行
 
 ## 文件地圖

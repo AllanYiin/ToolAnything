@@ -6,6 +6,9 @@ on:
       - main
     paths-ignore:
       - "skills/toolanything-tool-wrapper/wheels/**"
+      - "skills/toolanything-platform-ops/wheels/**"
+      - "skills/toolanything-mcp-router.skill"
+      - "skills/toolanything-platform-ops.skill"
       - "skills/toolanything-tool-wrapper.skill"
   workflow_dispatch:
 
@@ -40,17 +43,28 @@ jobs:
       - name: Refresh wheel payload inside skill folder
         run: |
           mkdir -p skills/toolanything-tool-wrapper/wheels
+          mkdir -p skills/toolanything-platform-ops/wheels
           rm -f skills/toolanything-tool-wrapper/wheels/*.whl
+          rm -f skills/toolanything-platform-ops/wheels/*.whl
           cp dist/*.whl skills/toolanything-tool-wrapper/wheels/
+          cp dist/*.whl skills/toolanything-platform-ops/wheels/
 
-      - name: Package toolanything-tool-wrapper.skill
-        run: python scripts/package_skills.py toolanything-tool-wrapper
+      - name: Package skill bundles
+        run: |
+          python scripts/package_skills.py toolanything-mcp-router
+          python scripts/package_skills.py toolanything-platform-ops
+          python scripts/package_skills.py toolanything-tool-wrapper
 
       - name: Commit generated wheel and skill bundle
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add skills/toolanything-tool-wrapper/wheels skills/toolanything-tool-wrapper.skill
+          git add \
+            skills/toolanything-tool-wrapper/wheels \
+            skills/toolanything-platform-ops/wheels \
+            skills/toolanything-mcp-router.skill \
+            skills/toolanything-platform-ops.skill \
+            skills/toolanything-tool-wrapper.skill
           if git diff --cached --quiet; then
             echo "No generated artifact changes to commit."
             exit 0

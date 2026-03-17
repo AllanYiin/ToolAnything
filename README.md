@@ -13,6 +13,15 @@ ToolAnything 是一個給 LLM 應用開發者的 Python 工具層。它把最容
 
 ToolAnything 的目標不是再做一個全能 agent framework，而是把這一層 integration glue code 拿掉，讓你把心力放回工具契約、產品邏輯與模型行為。
 
+## 給 coding agent 的入口
+
+如果你是讓 Codex、OpenClaw、Claude Code 或其他 coding agent 直接讀 repo，先看這幾份：
+
+- [AGENTS.md](AGENTS.md)：通用選型規則、最短 quickstart、何時用 `@tool`、何時用 source-based API
+- [OPENCLAW.md](OPENCLAW.md)：OpenClaw 的 skill routing、metadata 與 shared server 規則
+- [CLAUDE.md](CLAUDE.md)：Claude Code / Claude Desktop 的本地整合與 `install-claude`
+- [llms.txt](llms.txt)：文件地圖、quickstart、migration、verification 索引
+
 ## 為什麼 LLM 開發者會想用它
 
 ### 1. 一次定義，同時接 MCP 與 OpenAI
@@ -155,17 +164,17 @@ toolanything doctor --mode http --url http://127.0.0.1:9092
 
 ## 安裝
 
-目前建議直接從 repo 安裝：
+預設安裝路徑就是 PyPI：
+
+```bash
+pip install toolanything
+```
+
+如果你是這個 repo 的貢獻者，才改用 editable install：
 
 ```bash
 git clone <this-repo>
 cd ToolAnything
-pip install -e .
-```
-
-如果你要跑測試或開發工具：
-
-```bash
 pip install -e .[dev]
 ```
 
@@ -345,9 +354,9 @@ python .toolanything/mytools.py math add --a 2 --b 3 --json
 
 ## 專案狀態
 
-- 目前版本：`0.1.0`
+- 目前版本：`0.5.0`
 - Python requirement：`>=3.10`
-- 開發狀態：Alpha
+- 開發狀態：Beta
 
 目前已具備：
 

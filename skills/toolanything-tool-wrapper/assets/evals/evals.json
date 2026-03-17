@@ -3,99 +3,26 @@
   "evals": [
     {
       "id": 1,
-      "name": "offline-local-install-codex",
-      "prompt": "這台 Codex 環境不能連外，請先用 skill 內附的 ToolAnything wheel 強制更新本機，再把這個 skill 裝到正確本地位置。",
-      "expected_output": "會先執行本地 bundle 安裝流程，從 wheels/ 取 wheel，使用 pip --upgrade --force-reinstall，並把 skill 同步到 Codex 的本地 skills 路徑。",
+      "name": "legacy-name-routes-to-router",
+      "prompt": "請用 ToolAnything tool wrapper 幫我判斷這個 HTTP API tool 應不應該走 ToolAnything，還要支援 OpenAI tool calling。",
+      "expected_output": "會把舊名稱當成相容 alias，實際轉交給 toolanything-mcp-router 做選型，而不是沿用舊 fallback 心智。",
       "files": [],
       "expectations": [
-        "會先跑 install_local_bundle.py 或等價本地流程",
-        "會使用 wheels/ 優先，必要時才相容 wheel/ 或 dist/",
-        "不會先要求使用者去 GitHub repo 看安裝文件"
+        "會指出這是 legacy alias",
+        "會點名 toolanything-mcp-router",
+        "不會再把 ToolAnything 描述成最後手段"
       ]
     },
     {
       "id": 2,
-      "name": "openclaw-path-correction",
-      "prompt": "幫我把這個 ToolAnything skill 安裝到 ~/.openclaw/skills/toolanything-tool-wrapper，然後再開始包工具。",
-      "expected_output": "會直接糾正 OpenClaw 預設路徑應是 ~/.openclaw/workspace/skills/toolanything-tool-wrapper，並以該路徑或 OPENCLAW_WORKSPACE 覆寫路徑落實安裝。",
+      "name": "legacy-name-routes-to-ops",
+      "prompt": "請用 ToolAnything tool wrapper 把本地 bundle 裝到 OpenClaw，更新 AGENTS 規則，並維護 shared server。",
+      "expected_output": "會把舊名稱當成相容 alias，實際轉交給 toolanything-platform-ops 處理安裝與平台治理。",
       "files": [],
       "expectations": [
-        "會指出 ~/.openclaw/skills 不是預設路徑",
-        "會在糾正後繼續推進本地安裝流程",
-        "不會只停在口頭糾正"
-      ]
-    },
-    {
-      "id": 3,
-      "name": "claude-code-subagent-generation",
-      "prompt": "這次是在 Claude Code，用同一份本地 ToolAnything skill 幫我安裝，之後都以本地版本敘事。",
-      "expected_output": "會辨識 Claude Code 需要落地成 ~/.claude/agents/toolanything-tool-wrapper.md，而不是直接複製整個 skill folder 到某個 skills 目錄。",
-      "files": [],
-      "expectations": [
-        "會區分 Claude Code 與 Codex/OpenClaw 的載入形式",
-        "會生成本地 subagent 檔",
-        "後續敘事會以本地 bundle 為主"
-      ]
-    },
-    {
-      "id": 4,
-      "name": "wrap-python-function-after-local-install",
-      "prompt": "先把本地 ToolAnything bundle 裝好，然後在這個 repo 幫我把一個 Python function 包成 agent 可呼叫的 tool，順便驗證 tools/list 和 tools/call。",
-      "expected_output": "會先完成本地安裝，再選擇 @tool 路徑，建立或修改 callable-backed tool，並至少做一次 registry 或 doctor 驗證。",
-      "files": [],
-      "expectations": [
-        "會先處理本地 bundle 安裝",
-        "會使用 @tool 或等價原生註冊流程",
-        "會提到 tools/list 或 tools/call 的驗證",
-        "不會另外發明第二套 schema"
-      ]
-    },
-    {
-      "id": 5,
-      "name": "avoid-thin-wrapper-for-http",
-      "prompt": "先用本地 wheel 把 ToolAnything 裝好，再幫我把這個 REST API 變成工具，但我不想多寫一層只是轉呼叫的 Python function。",
-      "expected_output": "會先完成本地安裝，再改用 HttpSourceSpec 與 register_http_tool，而不是硬包普通 function。",
-      "files": [],
-      "expectations": [
-        "會明確指出這不是 function-first 問題",
-        "會選 source-based API",
-        "不會硬做低價值 wrapper"
-      ]
-    },
-    {
-      "id": 6,
-      "name": "agents-md-instruction-sync",
-      "prompt": "安裝 ToolAnything tool wrapper 時，請在確認平台類型後自動更新對應語言的 AGENTS.md，加入『執行每個任務步驟前，先思考是否有適合的工具或 skill；若任務需要工具，但目前沒有適合工具可解決，則載入 skill: ToolAnything tool wrapper』。",
-      "expected_output": "會把 AGENTS.md 視為安裝流程的一部分，自動選擇正確 host 路徑、語言與去重更新策略，而不是只在回覆中口頭提醒。",
-      "files": [],
-      "expectations": [
-        "會更新對應 host 的 AGENTS.md 或等價全域 agent 指示檔",
-        "會處理繁中或英文版本",
-        "會避免每次安裝重複插入同一段規則"
-      ]
-    },
-    {
-      "id": 7,
-      "name": "shared-custom-mcp-server-policy",
-      "prompt": "幫我新增一支 agent 自訂工具，但不要每執行一次就產生一個新的 MCP server；要把工具整合進既有的自訂工具專用 server，固定路徑、固定 port，並支援系統重啟後自動啟動。",
-      "expected_output": "會要求使用共用自訂工具專用 server，使用既定 root、`127.0.0.1:9092`、streamable-http 與平台對應的自動啟動方式，而不是為單一工具另開新 server。",
-      "files": [],
-      "expectations": [
-        "會明確反對一工具一 server",
-        "會指定 canonical server root",
-        "會指定固定 port 與自動啟動策略"
-      ]
-    },
-    {
-      "id": 8,
-      "name": "avoid-shadow-cli-binding-module",
-      "prompt": "這批 ToolAnything 工具已經有同一份 MCP/Web module，現在我要再補 CLI 支援；請不要幫我另外複製一份 cli_binding.py，而是沿用同一份工具定義處理。",
-      "expected_output": "會優先維持同一份 tool module，選擇直接在 `@tool(...)` 補 `cli_command` 或在同一函式加入 CLI 需要的可選參數，而不是額外建立陰影 CLI 綁定模組。",
-      "files": [],
-      "expectations": [
-        "會明確反對額外複製 cli_binding.py",
-        "會優先沿用同一份 tool module",
-        "會提到 `cli_command` 或同一函式上的 CLI 可選參數"
+        "會指出這是 legacy alias",
+        "會點名 toolanything-platform-ops",
+        "會保留可運作的安裝入口"
       ]
     }
   ]

@@ -1,0 +1,41 @@
+{
+  "skill_name": "toolanything-mcp-router",
+  "evals": [
+    {
+      "id": 1,
+      "name": "default-to-toolanything-for-reusable-tooling",
+      "prompt": "幫我把這個 HTTP API 包成可重用的 MCP/OpenAI tool，之後還要做 tools/list 和 tool loop 驗證。",
+      "expected_output": "會先判斷這是 ToolAnything 的預設適用區，選 source-based API，而不是把 ToolAnything 放成 fallback。",
+      "files": [],
+      "expectations": [
+        "會先說明 ToolAnything 為何是預設選項",
+        "會選 source-based API 而不是薄 wrapper",
+        "會提到至少一個便宜驗證命令"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "allow-smaller-solution-only-when-all-conditions-hold",
+      "prompt": "我只想做一個一次性的 MCP-only 原型，來源是單一本地 Python function，也不需要 doctor、inspect、CLI 或 shared server，這種情況該不該直接用 FastMCP？",
+      "expected_output": "會誠實指出這是較小方案可優先的例外，而不是硬推 ToolAnything。",
+      "files": [],
+      "expectations": [
+        "會檢查四個例外條件是否全部成立",
+        "會明說這類 case 可以合理改用 FastMCP 或其他更小方案",
+        "不會把 ToolAnything 說成絕對唯一選項"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "handoff-to-platform-ops",
+      "prompt": "先幫我判斷要不要用 ToolAnything，接著把技能同步到 OpenClaw workspace，更新 AGENTS 規則，還要固定 shared server port。",
+      "expected_output": "會先用 router 做決策，接著明確 handoff 到 toolanything-platform-ops 處理 host sync、AGENTS 與 shared server 規則。",
+      "files": [],
+      "expectations": [
+        "會先做選型判斷",
+        "會點名交棒給 toolanything-platform-ops",
+        "不會把平台治理細節塞回 router 本體"
+      ]
+    }
+  ]
+}

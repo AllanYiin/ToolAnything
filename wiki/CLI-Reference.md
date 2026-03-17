@@ -6,7 +6,7 @@
 
 目前 CLI 聚焦在五件事：啟動 server、診斷 transport、搜尋工具、啟動 inspector，以及產生 Claude Desktop 設定。
 
-Version scope：這份參考頁以 `0.1.0` 版 CLI 為準。
+Version scope：這份參考頁以 `0.5.0` 版 CLI 為準。
 
 ## 命令總覽
 

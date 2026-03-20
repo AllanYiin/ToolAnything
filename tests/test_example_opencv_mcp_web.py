@@ -212,6 +212,18 @@ def test_opencv_dual_protocol_demo_runs_as_direct_file():
     assert "opencv.info" in completed.stdout
 
 
+def test_opencv_server_runs_as_direct_file_help():
+    completed = subprocess.run(
+        [sys.executable, "examples/opencv_mcp_web/server.py", "--help"],
+        cwd=Path.cwd(),
+        env=_example_subprocess_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "啟動 OpenCV MCP Web 範例" in completed.stdout
+
+
 def test_opencv_smoke_test_runs_as_direct_file():
     _import_opencv_example_module()
     completed = subprocess.run(

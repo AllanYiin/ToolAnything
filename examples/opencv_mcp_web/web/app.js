@@ -376,7 +376,7 @@ function renderTools(tools) {
     toolSelect.innerHTML = '<option value="">沒有可用工具</option>';
     toolCount.textContent = "0";
     footerToolCount.textContent = "0";
-    toolDescription.textContent = "目前 server 沒有回傳工具，請確認是用 examples.opencv_mcp_web.server 啟動。";
+    toolDescription.textContent = "目前 server 沒有回傳工具，請確認是用 examples/opencv_mcp_web/server.py 啟動。";
     toggleSettings();
     return;
   }

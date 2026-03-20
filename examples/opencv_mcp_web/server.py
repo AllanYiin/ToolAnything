@@ -2,26 +2,47 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 from typing import Any
 
 from toolanything import ToolError, ToolRegistry, tool
 from toolanything.server.mcp_streamable_http import run_server
 from toolanything.utils.logger import logger
 
-from examples.opencv_mcp_web.image_ops import (
-    adjust_color_image,
-    build_demo_image,
-    build_demo_image_base64,
-    canny_image,
-    clahe_image,
-    cv2,
-    decode_image_base64,
-    encode_image_base64,
-    image_metadata,
-    read_image_file,
-    resize_image,
-    write_image_file,
-)
+if __package__ in (None, ""):
+    example_dir = Path(__file__).resolve().parent
+    if str(example_dir) not in sys.path:
+        sys.path.insert(0, str(example_dir))
+    from image_ops import (
+        adjust_color_image,
+        build_demo_image,
+        build_demo_image_base64,
+        canny_image,
+        clahe_image,
+        cv2,
+        decode_image_base64,
+        encode_image_base64,
+        image_metadata,
+        read_image_file,
+        resize_image,
+        write_image_file,
+    )
+else:
+    from .image_ops import (
+        adjust_color_image,
+        build_demo_image,
+        build_demo_image_base64,
+        canny_image,
+        clahe_image,
+        cv2,
+        decode_image_base64,
+        encode_image_base64,
+        image_metadata,
+        read_image_file,
+        resize_image,
+        write_image_file,
+    )
 
 # 這個範例同時支援：
 # 1. `toolanything serve examples/opencv_mcp_web/server.py`

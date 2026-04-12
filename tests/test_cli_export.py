@@ -218,6 +218,29 @@ def test_tool_decorator_cli_command_changes_path():
     assert app.command_defs[0].command_path == ["wx", "current"]
 
 
+def test_cli_argument_metadata_can_disable_path_like_inference(capsys: pytest.CaptureFixture[str]):
+    registry = ToolRegistry()
+
+    def read_virtual(relative_path: str) -> dict:
+        return {"relative_path": relative_path}
+
+    registry.register(
+        ToolSpec.from_function(
+            read_virtual,
+            name="virtual.read",
+            description="讀取虛擬 root 內的相對路徑",
+            metadata={"cli": {"arguments": {"relative_path": {"path_like": False}}}},
+        )
+    )
+    app = build_cli_app(registry, CLIExportOptions(app_name="mytools"))
+
+    exit_code = app.run(["virtual", "read", "--relative-path", "missing.txt", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["result"] == {"relative_path": "missing.txt"}
+
+
 def test_project_config_override_precedes_tool_cli_command():
     registry = ToolRegistry()
 

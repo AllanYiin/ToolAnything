@@ -88,11 +88,18 @@ def build_argument_specs(tool: ToolSpec) -> list[CLIArgumentSpec]:
     properties = tool.parameters.get("properties", {})
     required_set = set(tool.parameters.get("required", []))
     parameter_help = tool.documentation.parameters if tool.documentation else {}
+    cli_arg_overrides = _cli_argument_overrides(tool)
     specs: list[CLIArgumentSpec] = []
 
     for name, schema in properties.items():
         option_name = f"--{name.replace('_', '-')}"
-        help_text = parameter_help.get(name) or schema.get("description")
+        override = cli_arg_overrides.get(name, {})
+        help_text = override.get("help") or parameter_help.get(name) or schema.get("description")
+        path_like = (
+            bool(override["path_like"])
+            if "path_like" in override
+            else _infer_path_like(name, schema, help_text)
+        )
         specs.append(
             CLIArgumentSpec(
                 name=name,
@@ -101,10 +108,25 @@ def build_argument_specs(tool: ToolSpec) -> list[CLIArgumentSpec]:
                 required=name in required_set,
                 help_text=help_text,
                 kind=_schema_kind(schema),
-                path_like=_infer_path_like(name, schema, help_text),
+                path_like=path_like,
             )
         )
     return specs
+
+
+def _cli_argument_overrides(tool: ToolSpec) -> dict[str, dict[str, Any]]:
+    raw_cli = tool.metadata.get("cli")
+    if not isinstance(raw_cli, dict):
+        return {}
+    raw_arguments = raw_cli.get("arguments")
+    if not isinstance(raw_arguments, dict):
+        return {}
+
+    overrides: dict[str, dict[str, Any]] = {}
+    for name, value in raw_arguments.items():
+        if isinstance(value, dict):
+            overrides[str(name)] = dict(value)
+    return overrides
 
 
 def add_argument_to_parser(parser: argparse.ArgumentParser, arg_spec: CLIArgumentSpec) -> None:

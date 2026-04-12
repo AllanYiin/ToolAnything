@@ -589,6 +589,14 @@ def _register_callable(
         "side_effect": not read_only,
         "risk_level": "medium" if not read_only else "low",
         "requires_approval": requires_approval,
+        "cli": {
+            "command_path": _cli_command_path(name),
+            "summary": description,
+            "arguments": {
+                "root_id": {"path_like": False},
+                "relative_path": {"path_like": False},
+            },
+        },
         "mcp_annotations": {
             "readOnlyHint": read_only,
             "destructiveHint": destructive,
@@ -608,6 +616,11 @@ def _register_callable(
     )
     registry.register(spec)
     return spec
+
+
+def _cli_command_path(tool_name: str) -> list[str]:
+    parts = [part for part in tool_name.split(".") if part]
+    return [part.replace("_", "-") for part in parts] or ["standard", "tool"]
 
 
 def _fetch_url(

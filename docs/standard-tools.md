@@ -45,6 +45,15 @@ mcp_tools = registry.to_mcp_tools()
 openai_tools = registry.to_openai_tools()
 ```
 
+The same registry can also be exported as a CLI app:
+
+```python
+from toolanything import CLIExportOptions, build_cli_app
+
+app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
+app.run(["standard", "data", "json-parse", "--text", '{"ok": true}', "--json"])
+```
+
 Write tools are disabled by default. Enable them only for roots that should be
 writable:
 
@@ -80,6 +89,43 @@ Write tools are opt-in and guarded:
 
 MCP annotations are exported when present in tool metadata. They are hints for
 hosts and clients, not a replacement for runtime policy enforcement.
+
+## CLI Commands
+
+Standard tools define stable CLI command paths through `metadata["cli"]`.
+Command paths keep the tool namespace:
+
+- `standard.web.fetch` -> `standard web fetch`
+- `standard.web.extract_text` -> `standard web extract-text`
+- `standard.fs.read_text` -> `standard fs read-text`
+- `standard.fs.patch_text` -> `standard fs patch-text`
+- `standard.data.json_parse` -> `standard data json-parse`
+
+The CLI layer still invokes the same registered `ToolSpec`, so MCP, OpenAI tool
+calling, and CLI share one schema and one execution path.
+
+Filesystem tools also set CLI argument metadata so `relative_path` is treated as
+a sandbox-relative value, not as a path that must exist in the current shell
+working directory.
+
+Example:
+
+```bash
+stdtools standard fs read-text --root-id workspace --relative-path README.md --json
+```
+
+Guarded write example:
+
+```bash
+stdtools standard fs patch-text \
+  --root-id workspace \
+  --relative-path draft.txt \
+  --old-string before \
+  --new-string after \
+  --expected-sha256 "<current-sha256>" \
+  --no-dry-run \
+  --json
+```
 
 ## Search Provider
 

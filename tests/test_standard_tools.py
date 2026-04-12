@@ -8,9 +8,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from toolanything import (
+    CLIExportOptions,
     StandardToolOptions,
     StandardToolRoot,
     ToolRegistry,
+    build_cli_app,
     register_standard_tools,
 )
 from toolanything.standard_tools import StandardToolError
@@ -70,6 +72,100 @@ def test_standard_tools_registers_safe_default_bundle(tmp_path):
     web_fetch = next(tool for tool in registry.to_mcp_tools() if tool["name"] == "standard.web.fetch")
     assert web_fetch["annotations"]["readOnlyHint"] is True
     assert web_fetch["annotations"]["openWorldHint"] is True
+
+
+def test_standard_tools_define_stable_cli_commands(tmp_path):
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+
+    app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
+    commands = {tuple(command.command_path): command for command in app.command_defs}
+
+    assert ("standard", "web", "fetch") in commands
+    assert ("standard", "fs", "read-text") in commands
+    assert ("standard", "data", "json-parse") in commands
+    assert commands[("standard", "web", "fetch")].metadata["cli"]["summary"].startswith("Fetch an HTTP")
+
+
+def test_standard_data_tool_runs_through_cli(tmp_path, capsys: pytest.CaptureFixture[str]):
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+    app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
+
+    exit_code = app.run(["standard", "data", "json-parse", "--text", '{"name":"tool"}', "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["tool_name"] == "standard.data.json_parse"
+    assert payload["result"]["value"] == {"name": "tool"}
+
+
+def test_standard_filesystem_tool_runs_through_cli(tmp_path, capsys: pytest.CaptureFixture[str]):
+    (tmp_path / "note.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+    app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
+
+    exit_code = app.run(
+        [
+            "standard",
+            "fs",
+            "read-text",
+            "--root-id",
+            "workspace",
+            "--relative-path",
+            "note.txt",
+            "--max-lines",
+            "1",
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["tool_name"] == "standard.fs.read_text"
+    assert payload["result"]["content"] == "1|alpha"
+
+
+def test_standard_write_tool_hash_guard_runs_through_cli(tmp_path, capsys: pytest.CaptureFixture[str]):
+    target = tmp_path / "draft.txt"
+    target.write_text("one", encoding="utf-8")
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(
+            roots=(StandardToolRoot("workspace", tmp_path, writable=True),),
+            include_write_tools=True,
+        ),
+    )
+    app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
+    expected = hashlib.sha256(b"one").hexdigest()
+
+    exit_code = app.run(
+        [
+            "standard",
+            "fs",
+            "patch-text",
+            "--root-id",
+            "workspace",
+            "--relative-path",
+            "draft.txt",
+            "--old-string",
+            "one",
+            "--new-string",
+            "two",
+            "--expected-sha256",
+            expected,
+            "--no-dry-run",
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["tool_name"] == "standard.fs.patch_text"
+    assert payload["result"]["patched"] is True
+    assert target.read_text(encoding="utf-8") == "two"
 
 
 @pytest.mark.asyncio

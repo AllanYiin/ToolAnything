@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import json
+import shutil
+import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -294,6 +297,48 @@ def register_filesystem_write_tools(
             payload["patched"] = True
         return payload
 
+    def fs_apply_unified_patch(
+        root_id: str = "workspace",
+        relative_path: str = "",
+        patch: str = "",
+        expected_sha256: str = "",
+        dry_run: bool = True,
+        encoding: str = "utf-8",
+    ) -> dict[str, Any]:
+        """Preview or apply a single-file unified diff; applying requires expected sha256."""
+
+        selected_root_id = selected_root_id_or_default(roots, root_id)
+        target = resolve_under_root(roots, root_id, relative_path, require_writable=True)
+        if not target.exists() or not target.is_file():
+            raise StandardToolError("target file does not exist")
+        ensure_text_file(target, max_file_bytes=active_options.max_file_bytes)
+        current_sha = sha256_file(target)
+        if not dry_run and current_sha != expected_sha256:
+            raise StandardToolError("applying a patch requires a matching expected_sha256")
+        current = target.read_text(encoding=encoding)
+        updated = apply_unified_patch_to_text(current, patch)
+        preview = "\n".join(
+            difflib.unified_diff(
+                current.splitlines(),
+                updated.splitlines(),
+                fromfile=f"{relative_path}:before",
+                tofile=f"{relative_path}:after",
+                lineterm="",
+            )
+        )
+        payload: dict[str, Any] = {
+            "root_id": selected_root_id,
+            "relative_path": relative_path,
+            "dry_run": dry_run,
+            "diff": preview,
+            "previous_sha256": current_sha,
+        }
+        if not dry_run:
+            target.write_text(updated, encoding=encoding)
+            payload["sha256"] = sha256_file(target)
+            payload["patched"] = True
+        return payload
+
     write_specs = (
         (
             fs_write_create_only,
@@ -311,6 +356,12 @@ def register_filesystem_write_tools(
             fs_patch_text,
             "standard.fs.patch_text",
             "Preview or apply a guarded text replacement under a writable configured root.",
+            True,
+        ),
+        (
+            fs_apply_unified_patch,
+            "standard.fs.apply_unified_patch",
+            "Preview or apply a single-file unified diff under a writable configured root.",
             True,
         ),
     )
@@ -375,6 +426,16 @@ def search_file_content(
 ) -> list[dict[str, Any]]:
     if not query:
         raise StandardToolError("query is required for content search")
+    rg_matches = search_file_content_with_rg(
+        target,
+        root_path=root_path,
+        glob=glob,
+        query=query,
+        limit=limit,
+    )
+    if rg_matches is not None:
+        return rg_matches
+
     matches = []
     files = target.rglob(glob) if target.is_dir() else [target]
     for path in files:
@@ -397,6 +458,137 @@ def search_file_content(
         except (OSError, UnicodeError, StandardToolError):
             continue
     return matches
+
+
+def search_file_content_with_rg(
+    target: Path,
+    *,
+    root_path: Path,
+    glob: str,
+    query: str,
+    limit: int,
+) -> list[dict[str, Any]] | None:
+    rg = shutil.which("rg")
+    if not rg:
+        return None
+    command = [
+        rg,
+        "--json",
+        "--ignore-case",
+        "--fixed-strings",
+        "--glob",
+        glob,
+        query,
+        str(target),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode not in (0, 1):
+        return None
+
+    matches: list[dict[str, Any]] = []
+    for line in completed.stdout.splitlines():
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if item.get("type") != "match":
+            continue
+        data = item.get("data", {})
+        path_text = data.get("path", {}).get("text")
+        line_text = data.get("lines", {}).get("text", "").rstrip("\r\n")
+        line_number = data.get("line_number")
+        if not path_text or line_number is None:
+            continue
+        matches.append(
+            {
+                "relative_path": relative_to_root(Path(path_text), root_path),
+                "line": line_number,
+                "text": line_text[:500],
+                "engine": "rg",
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+def apply_unified_patch_to_text(current: str, patch: str) -> str:
+    current_lines = current.splitlines()
+    patch_lines = [line.rstrip("\r") for line in patch.splitlines()]
+    output: list[str] = []
+    current_index = 0
+    saw_hunk = False
+    patch_index = 0
+
+    while patch_index < len(patch_lines):
+        line = patch_lines[patch_index]
+        if not line.startswith("@@"):
+            patch_index += 1
+            continue
+
+        saw_hunk = True
+        old_start = parse_unified_hunk_old_start(line)
+        hunk_start_index = old_start - 1
+        if hunk_start_index < current_index:
+            raise StandardToolError("unified patch hunks overlap or are out of order")
+        output.extend(current_lines[current_index:hunk_start_index])
+        current_index = hunk_start_index
+        patch_index += 1
+
+        while patch_index < len(patch_lines) and not patch_lines[patch_index].startswith("@@"):
+            hunk_line = patch_lines[patch_index]
+            if hunk_line.startswith("\\"):
+                patch_index += 1
+                continue
+            if not hunk_line:
+                raise StandardToolError("invalid unified patch line")
+            marker = hunk_line[0]
+            text = hunk_line[1:]
+            if marker == " ":
+                assert_current_line(current_lines, current_index, text)
+                output.append(text)
+                current_index += 1
+            elif marker == "-":
+                assert_current_line(current_lines, current_index, text)
+                current_index += 1
+            elif marker == "+":
+                output.append(text)
+            else:
+                raise StandardToolError("invalid unified patch marker")
+            patch_index += 1
+
+    if not saw_hunk:
+        raise StandardToolError("unified patch must contain at least one hunk")
+    output.extend(current_lines[current_index:])
+    suffix = "\n" if current.endswith("\n") else ""
+    return "\n".join(output) + suffix
+
+
+def parse_unified_hunk_old_start(header: str) -> int:
+    parts = header.split()
+    if len(parts) < 2 or not parts[1].startswith("-"):
+        raise StandardToolError("invalid unified patch hunk header")
+    old_range = parts[1][1:]
+    old_start = old_range.split(",", 1)[0]
+    try:
+        return int(old_start)
+    except ValueError as exc:
+        raise StandardToolError("invalid unified patch old range") from exc
+
+
+def assert_current_line(lines: list[str], index: int, expected: str) -> None:
+    if index >= len(lines) or lines[index] != expected:
+        raise StandardToolError("unified patch context does not match target file")
 
 
 def should_skip_path(path: Path) -> bool:

@@ -28,12 +28,12 @@ def register_data_tools(
         return {"ok": True, "value": value, "type": type(value).__name__}
 
     def data_json_validate(text: str, schema_text: str) -> dict[str, Any]:
-        """Validate JSON text against a small dependency-free JSON Schema subset."""
+        """Validate JSON text against JSON Schema, using jsonschema when installed."""
 
         value = json.loads(text)
         schema = json.loads(schema_text)
-        errors = validate_json_subset(value, schema)
-        return {"valid": not errors, "errors": errors}
+        errors, validator = validate_json(value, schema)
+        return {"valid": not errors, "errors": errors, "validator": validator}
 
     def data_csv_inspect(text: str, delimiter: str = ",", limit: int = 20) -> dict[str, Any]:
         """Inspect CSV headers, sample rows, and rough shape without writing files."""
@@ -132,3 +132,27 @@ def json_type_matches(value: Any, expected_type: Any) -> bool:
     }
     target = mapping.get(expected_type)
     return isinstance(value, target) if target else True
+
+
+def validate_json(value: Any, schema: Mapping[str, Any]) -> tuple[list[str], str]:
+    try:
+        from jsonschema import validators  # type: ignore[import-not-found]
+    except ImportError:
+        return validate_json_subset(value, schema), "subset"
+
+    try:
+        validator_cls = validators.validator_for(schema)
+        validator_cls.check_schema(schema)
+        validator = validator_cls(schema)
+        errors = sorted(validator.iter_errors(value), key=lambda error: list(error.path))
+        return [format_jsonschema_error(error) for error in errors], validator_cls.__name__
+    except Exception as exc:
+        return [f"$: schema validation setup failed: {exc}"], "jsonschema"
+
+
+def format_jsonschema_error(error: Any) -> str:
+    try:
+        path = "$" + "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in error.path)
+        return f"{path}: {error.message}"
+    except Exception:
+        return str(error)

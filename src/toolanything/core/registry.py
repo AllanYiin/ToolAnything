@@ -183,6 +183,36 @@ class ToolRegistry:
         entries += [definition.to_mcp() for definition in self._pipelines.values()]
         return entries
 
+    def to_tool_manifest(
+        self,
+        *,
+        tags: Optional[List[str]] = None,
+        adapter: str | None = None,
+        include_schemas: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Export canonical ToolAnything metadata for host UIs and agent runtimes."""
+
+        entries: list[dict[str, Any]] = []
+        for definition in self.list(tags=tags):
+            if adapter is not None and definition.adapters is not None and adapter not in definition.adapters:
+                continue
+            payload: dict[str, Any] = {
+                "name": definition.name,
+                "description": definition.description,
+                "adapters": list(definition.adapters) if definition.adapters is not None else None,
+                "tags": list(definition.tags),
+                "strict": definition.strict,
+                "source_type": definition.source_type,
+                "invoker_id": definition.invoker_id,
+                "metadata": dict(definition.metadata),
+            }
+            if include_schemas:
+                payload["parameters"] = dict(definition.parameters)
+                payload["openai"] = definition.contract.to_openai()
+                payload["mcp"] = definition.contract.to_mcp()
+            entries.append(payload)
+        return entries
+
     def _build_context(
         self, *, user_id: str | None, state_manager: StateManager | None
     ) -> ExecutionContext:

@@ -26,7 +26,8 @@ class _StandardToolHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(
                 b"<html><head><title>Example</title></head>"
-                b"<body><p>Hello standard tools</p><a href='/next'>Next</a></body></html>"
+                b"<body><nav>Hidden navigation</nav><script>function hidden(){}</script>"
+                b"<p>Hello standard tools</p><a href='/next'>Next</a></body></html>"
             )
             return
 
@@ -72,6 +73,11 @@ def test_standard_tools_registers_safe_default_bundle(tmp_path):
     web_fetch = next(tool for tool in registry.to_mcp_tools() if tool["name"] == "standard.web.fetch")
     assert web_fetch["annotations"]["readOnlyHint"] is True
     assert web_fetch["annotations"]["openWorldHint"] is True
+    manifest = registry.to_tool_manifest(tags=["standard"])
+    fetch_manifest = next(tool for tool in manifest if tool["name"] == "standard.web.fetch")
+    assert fetch_manifest["metadata"]["scopes"] == ["net:http:get"]
+    assert fetch_manifest["mcp"]["annotations"]["readOnlyHint"] is True
+    assert fetch_manifest["openai"]["function"]["name"] == "standard.web.fetch"
 
 
 def test_standard_tools_define_stable_cli_commands(tmp_path):
@@ -168,6 +174,46 @@ def test_standard_write_tool_hash_guard_runs_through_cli(tmp_path, capsys: pytes
     assert target.read_text(encoding="utf-8") == "two"
 
 
+def test_standard_unified_patch_tool_runs_through_cli(tmp_path, capsys: pytest.CaptureFixture[str]):
+    target = tmp_path / "draft.txt"
+    target.write_text("one\ntwo\n", encoding="utf-8")
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(
+            roots=(StandardToolRoot("workspace", tmp_path, writable=True),),
+            include_write_tools=True,
+        ),
+    )
+    app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+    patch = "--- draft.txt\n+++ draft.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\n"
+
+    exit_code = app.run(
+        [
+            "standard",
+            "fs",
+            "apply-unified-patch",
+            "--root-id",
+            "workspace",
+            "--relative-path",
+            "draft.txt",
+            "--patch",
+            patch,
+            "--expected-sha256",
+            expected,
+            "--no-dry-run",
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["tool_name"] == "standard.fs.apply_unified_patch"
+    assert payload["result"]["patched"] is True
+    assert target.read_text(encoding="utf-8") == "one\nthree\n"
+
+
 @pytest.mark.asyncio
 async def test_filesystem_read_blocks_traversal_and_binary(tmp_path):
     (tmp_path / "note.txt").write_text("alpha\nbeta\n", encoding="utf-8")
@@ -262,6 +308,7 @@ async def test_data_tools_parse_validate_and_inspect_csv(tmp_path):
 
     assert parsed["value"] == {"name": "tool"}
     assert validation["valid"] is True
+    assert validation["validator"]
     assert csv_info["headers"] == ["name", "count"]
     assert csv_info["sample_rows"] == [["a", "1"]]
     assert csv_info["truncated"] is True
@@ -295,3 +342,20 @@ async def test_web_fetch_blocks_private_network_by_default_and_allows_opt_in(tmp
     assert fetched["title"] == "Example"
     assert "Hello standard tools" in fetched["text"]
     assert links["links"][0]["url"] == f"{http_server}/next"
+
+
+@pytest.mark.asyncio
+async def test_web_extract_text_ignores_script_and_navigation(tmp_path, http_server):
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(roots={"workspace": tmp_path}, allow_private_network=True),
+    )
+
+    fetched = await registry.invoke_tool_async(
+        "standard.web.extract_text",
+        arguments={"url": f"{http_server}/page"},
+    )
+
+    assert "Hello standard tools" in fetched["text"]
+    assert "function" not in fetched["text"]

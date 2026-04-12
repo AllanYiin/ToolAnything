@@ -211,11 +211,15 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 class HTMLTextExtractor(HTMLParser):
+    SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "header", "footer"}
+    BLOCK_TAGS = {"article", "aside", "br", "div", "h1", "h2", "h3", "li", "main", "p", "section", "td", "th", "tr"}
+
     def __init__(self) -> None:
         super().__init__()
         self._parts: list[str] = []
         self._in_title = False
         self._title_parts: list[str] = []
+        self._skip_depth = 0
 
     @property
     def title(self) -> str:
@@ -223,14 +227,28 @@ class HTMLTextExtractor(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         del attrs
-        if tag.lower() == "title":
+        lowered = tag.lower()
+        if lowered in self.SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if lowered == "title":
             self._in_title = True
+        if lowered in self.BLOCK_TAGS:
+            self._parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() == "title":
+        lowered = tag.lower()
+        if lowered in self.SKIP_TAGS and self._skip_depth:
+            self._skip_depth -= 1
+            return
+        if lowered == "title":
             self._in_title = False
+        if lowered in self.BLOCK_TAGS:
+            self._parts.append("\n")
 
     def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
         text = data.strip()
         if not text:
             return
@@ -240,7 +258,9 @@ class HTMLTextExtractor(HTMLParser):
             self._parts.append(text)
 
     def text(self) -> str:
-        return html.unescape("\n".join(self._parts))
+        raw = html.unescape(" ".join(self._parts))
+        lines = [reduced for line in raw.splitlines() if (reduced := " ".join(line.split()))]
+        return "\n".join(lines)
 
 
 class HTMLLinkExtractor(HTMLParser):

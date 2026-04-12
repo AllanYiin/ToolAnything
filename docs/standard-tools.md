@@ -51,6 +51,7 @@ register_standard_tools(
 
 mcp_tools = registry.to_mcp_tools()
 openai_tools = registry.to_openai_tools()
+tool_manifest = registry.to_tool_manifest(tags=["standard"])
 ```
 
 The same registry can also be exported as a CLI app:
@@ -135,6 +136,22 @@ stdtools standard fs patch-text \
   --json
 ```
 
+Single-file unified diff patches are also supported:
+
+```bash
+stdtools standard fs apply-unified-patch \
+  --root-id workspace \
+  --relative-path draft.txt \
+  --patch "<unified-diff-text>" \
+  --expected-sha256 "<current-sha256>" \
+  --no-dry-run \
+  --json
+```
+
+`standard.fs.apply_unified_patch` intentionally supports one target file per
+call. It validates hunk context against the current file and requires
+`expected_sha256` when applying.
+
 ## Search Provider
 
 `standard.web.search` is registered as part of the web bundle, but it requires a
@@ -150,6 +167,22 @@ register_standard_tools(
     StandardToolOptions(search_provider=search_provider),
 )
 ```
+
+## Optional Enhancements
+
+The standard tools avoid mandatory heavy dependencies, but use stronger engines
+when they are available:
+
+- `standard.data.json_validate` uses the optional `jsonschema` package when it
+  is installed. Otherwise it falls back to a small built-in subset validator.
+- `standard.fs.search` uses `rg --json` for content search when ripgrep is on
+  `PATH`. If ripgrep is missing or fails, it falls back to the stdlib scanner.
+- `standard.web.extract_text` filters common non-content HTML blocks such as
+  `script`, `style`, `nav`, `header`, and `footer` before returning text.
+
+`ToolRegistry.to_tool_manifest(tags=["standard"])` exports the canonical
+ToolAnything manifest. Use it for host UIs, policy engines, or agent runtimes
+that need full metadata beyond what MCP or OpenAI tool schemas can carry.
 
 ## Configuration
 

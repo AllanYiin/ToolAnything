@@ -71,11 +71,16 @@ class DefinitionMixin:
         }
 
     def to_mcp(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "name": self.name,
             "description": self._compose_description(),
             "input_schema": self.parameters,
         }
+        metadata = getattr(self, "metadata", {}) or {}
+        annotations = metadata.get("mcp_annotations")
+        if isinstance(annotations, dict) and annotations:
+            payload["annotations"] = dict(annotations)
+        return payload
 
 
 @dataclass(frozen=True)

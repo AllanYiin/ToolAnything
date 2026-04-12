@@ -10,6 +10,14 @@ The bundle is opt-in. Calling `register_standard_tools()` registers tools into
 the registry you pass in. It does not change the global tool set unless you pass
 no registry and intentionally use the global registry.
 
+Implementation modules are split by responsibility:
+
+- `toolanything.standard_tools.web`: network-facing read-only tools and SSRF checks.
+- `toolanything.standard_tools.filesystem`: root-scoped filesystem tools and write guards.
+- `toolanything.standard_tools.data`: dependency-free data transformation helpers.
+- `toolanything.standard_tools.registration`: shared MCP/OpenAI/CLI metadata projection.
+- `toolanything.standard_tools.tools`: backward-compatible bundle facade.
+
 Included by default:
 
 - `standard.web.*`: read-only HTTP(S) fetch, text extraction, link extraction,

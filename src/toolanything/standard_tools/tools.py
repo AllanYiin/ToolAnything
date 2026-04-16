@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from toolanything.core import ToolRegistry, ToolSpec
 
+from .browser import register_browser_readonly_tools
 from .data import register_data_tools
 from .filesystem import register_filesystem_readonly_tools, register_filesystem_write_tools
 from .options import StandardToolOptions
@@ -29,10 +30,13 @@ def register_standard_tools(
     if active_options.include_write_tools:
         specs.extend(register_filesystem_write_tools(active_registry, active_options))
     specs.extend(register_data_tools(active_registry, active_options))
+    if active_options.include_browser_tools:
+        specs.extend(register_browser_readonly_tools(active_registry, active_options))
     return specs
 
 
 __all__ = [
+    "register_browser_readonly_tools",
     "register_data_tools",
     "register_filesystem_readonly_tools",
     "register_filesystem_write_tools",

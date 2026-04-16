@@ -147,6 +147,8 @@ def register_filesystem_readonly_tools(
                 glob=glob,
                 query=query,
                 limit=max_items,
+                ignored_dirs=set(active_options.ignored_dirs),
+                max_scanned_files=active_options.max_scanned_files,
             )
         elif mode == "content":
             matches = search_file_content(
@@ -156,6 +158,9 @@ def register_filesystem_readonly_tools(
                 query=query,
                 limit=max_items,
                 max_file_bytes=active_options.max_file_bytes,
+                ignored_dirs=set(active_options.ignored_dirs),
+                max_scanned_files=active_options.max_scanned_files,
+                timeout_sec=active_options.fs_search_timeout_sec,
             )
         else:
             raise StandardToolError("mode must be 'content' or 'files'")
@@ -378,6 +383,10 @@ def register_filesystem_write_tools(
                 open_world=False,
                 destructive=destructive,
                 requires_approval=True,
+                cli_arguments={
+                    "content": {"input_mode": "text_or_file"},
+                    "patch": {"input_mode": "text_or_file"},
+                },
             )
         )
     return specs
@@ -390,12 +399,19 @@ def search_file_names(
     glob: str,
     query: str,
     limit: int,
+    ignored_dirs: set[str] | None = None,
+    max_scanned_files: int = 10_000,
 ) -> list[dict[str, Any]]:
     matches = []
     iterator = target.rglob(glob) if target.is_dir() else [target]
+    scanned = 0
+    ignored = ignored_dirs if ignored_dirs is not None else DEFAULT_IGNORED_DIRS
     for path in iterator:
-        if should_skip_path(path):
+        if should_skip_path(path, ignored_dirs=ignored):
             continue
+        scanned += 1
+        if scanned > max_scanned_files:
+            break
         if query.lower() in path.name.lower():
             matches.append(
                 {
@@ -423,6 +439,9 @@ def search_file_content(
     query: str,
     limit: int,
     max_file_bytes: int,
+    ignored_dirs: set[str] | None = None,
+    max_scanned_files: int = 10_000,
+    timeout_sec: float = 10.0,
 ) -> list[dict[str, Any]]:
     if not query:
         raise StandardToolError("query is required for content search")
@@ -432,15 +451,21 @@ def search_file_content(
         glob=glob,
         query=query,
         limit=limit,
+        timeout_sec=timeout_sec,
     )
     if rg_matches is not None:
         return rg_matches
 
     matches = []
     files = target.rglob(glob) if target.is_dir() else [target]
+    scanned = 0
+    ignored = ignored_dirs if ignored_dirs is not None else DEFAULT_IGNORED_DIRS
     for path in files:
-        if should_skip_path(path) or not path.is_file():
+        if should_skip_path(path, ignored_dirs=ignored) or not path.is_file():
             continue
+        scanned += 1
+        if scanned > max_scanned_files:
+            break
         try:
             ensure_text_file(path, max_file_bytes=max_file_bytes)
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -467,6 +492,7 @@ def search_file_content_with_rg(
     glob: str,
     query: str,
     limit: int,
+    timeout_sec: float,
 ) -> list[dict[str, Any]] | None:
     rg = shutil.which("rg")
     if not rg:
@@ -487,7 +513,7 @@ def search_file_content_with_rg(
             capture_output=True,
             encoding="utf-8",
             errors="replace",
-            timeout=10,
+            timeout=timeout_sec,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -591,8 +617,9 @@ def assert_current_line(lines: list[str], index: int, expected: str) -> None:
         raise StandardToolError("unified patch context does not match target file")
 
 
-def should_skip_path(path: Path) -> bool:
-    return any(part in DEFAULT_IGNORED_DIRS for part in path.parts)
+def should_skip_path(path: Path, *, ignored_dirs: set[str] | frozenset[str] | None = None) -> bool:
+    ignored_dirs = ignored_dirs if ignored_dirs is not None else DEFAULT_IGNORED_DIRS
+    return any(part in ignored_dirs for part in path.parts)
 
 
 def relative_to_root(path: Path, root: str | Path) -> str:

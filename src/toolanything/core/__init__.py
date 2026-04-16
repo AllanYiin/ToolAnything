@@ -24,6 +24,14 @@ from .connection_tester import (
 from .failure_log import FailureLogManager
 from .schema import build_parameters_schema, python_type_to_schema
 from .metadata import ToolMetadata, normalize_metadata
+from .policy import (
+    AllowAllToolPolicy,
+    MetadataToolPolicy,
+    ToolExecutionPolicy,
+    ToolPolicyDecision,
+    ToolPolicyError,
+    enforce_tool_policy,
+)
 from .selection_strategies import BaseToolSelectionStrategy, HybridStrategy, RuleBasedStrategy
 from .semantic_search import (
     JinaOnnxEmbeddingsV5TextNanoRetrievalProvider,
@@ -76,6 +84,12 @@ __all__ = [
     "python_type_to_schema",
     "ToolMetadata",
     "normalize_metadata",
+    "AllowAllToolPolicy",
+    "MetadataToolPolicy",
+    "ToolExecutionPolicy",
+    "ToolPolicyDecision",
+    "ToolPolicyError",
+    "enforce_tool_policy",
     "BaseToolSelectionStrategy",
     "RuleBasedStrategy",
     "HybridStrategy",

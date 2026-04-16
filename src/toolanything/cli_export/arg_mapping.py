@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,17 @@ def _json_or_file(value: str) -> Any:
         return json.loads(value)
     except json.JSONDecodeError as exc:
         raise CLIArgumentValidationError(f"JSON 解析失敗: {exc.msg}") from exc
+
+
+def _text_or_file(value: str) -> str:
+    if value == "-":
+        return sys.stdin.read()
+    if value.startswith("@"):
+        path = Path(value[1:])
+        if not path.exists():
+            raise CLIArgumentValidationError(f"找不到文字檔案: {path}")
+        return path.read_text(encoding="utf-8")
+    return value
 
 
 def _resolve_effective_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +106,9 @@ def build_argument_specs(tool: ToolSpec) -> list[CLIArgumentSpec]:
     for name, schema in properties.items():
         option_name = f"--{name.replace('_', '-')}"
         override = cli_arg_overrides.get(name, {})
+        schema_copy = dict(schema)
+        if "input_mode" in override:
+            schema_copy["x-cli-input-mode"] = override["input_mode"]
         help_text = override.get("help") or parameter_help.get(name) or schema.get("description")
         path_like = (
             bool(override["path_like"])
@@ -104,7 +119,7 @@ def build_argument_specs(tool: ToolSpec) -> list[CLIArgumentSpec]:
             CLIArgumentSpec(
                 name=name,
                 option_strings=(option_name,),
-                schema=dict(schema),
+                schema=schema_copy,
                 required=name in required_set,
                 help_text=help_text,
                 kind=_schema_kind(schema),
@@ -180,6 +195,9 @@ def add_argument_to_parser(parser: argparse.ArgumentParser, arg_spec: CLIArgumen
             return
 
     kwargs["type"] = _scalar_type(effective_schema)
+    if effective_schema.get("type") == "string" and schema.get("x-cli-input-mode") == "text_or_file":
+        kwargs["type"] = _text_or_file
+        kwargs["metavar"] = "TEXT|@FILE|-"
     if "default" in schema:
         kwargs["default"] = schema["default"]
     elif arg_spec.required:

@@ -19,6 +19,7 @@ def register_callable(
     open_world: bool,
     destructive: bool = False,
     requires_approval: bool = False,
+    cli_arguments: Mapping[str, Mapping[str, Any]] | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> ToolSpec:
     """Create and register a standard ToolSpec with shared adapter metadata."""
@@ -45,8 +46,12 @@ def register_callable(
             "openWorldHint": open_world,
         },
     }
+    if cli_arguments:
+        metadata["cli"]["arguments"].update(  # type: ignore[index, union-attr]
+            {name: dict(value) for name, value in cli_arguments.items()}
+        )
     if extra_metadata:
-        metadata.update(dict(extra_metadata))
+        metadata = merge_metadata(metadata, extra_metadata)
     spec = ToolSpec.from_function(
         func,
         name=name,
@@ -68,3 +73,24 @@ def positive_limit(value: int, *, default: int) -> int:
     if value <= 0:
         return default
     return value
+
+
+def merge_metadata(
+    base: dict[str, Any],
+    extra: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in extra.items():
+        if key == "cli" and isinstance(value, Mapping) and isinstance(merged.get("cli"), dict):
+            cli = dict(merged["cli"])
+            for cli_key, cli_value in value.items():
+                if cli_key == "arguments" and isinstance(cli_value, Mapping) and isinstance(cli.get("arguments"), dict):
+                    arguments = dict(cli["arguments"])
+                    arguments.update({str(name): dict(arg) for name, arg in cli_value.items() if isinstance(arg, Mapping)})
+                    cli["arguments"] = arguments
+                else:
+                    cli[cli_key] = cli_value
+            merged["cli"] = cli
+        else:
+            merged[key] = value
+    return merged

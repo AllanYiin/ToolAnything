@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,8 +10,11 @@ import pytest
 
 from toolanything import (
     CLIExportOptions,
+    MetadataToolPolicy,
+    StandardSearchResult,
     StandardToolOptions,
     StandardToolRoot,
+    ToolPolicyError,
     ToolRegistry,
     build_cli_app,
     register_standard_tools,
@@ -29,6 +33,13 @@ class _StandardToolHandler(BaseHTTPRequestHandler):
                 b"<body><nav>Hidden navigation</nav><script>function hidden(){}</script>"
                 b"<p>Hello standard tools</p><a href='/next'>Next</a></body></html>"
             )
+            return
+
+        if self.path == "/binary":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.end_headers()
+            self.wfile.write(b"\x00\x01")
             return
 
         if self.path == "/redirect-private":
@@ -78,6 +89,27 @@ def test_standard_tools_registers_safe_default_bundle(tmp_path):
     assert fetch_manifest["metadata"]["scopes"] == ["net:http:get"]
     assert fetch_manifest["mcp"]["annotations"]["readOnlyHint"] is True
     assert fetch_manifest["openai"]["function"]["name"] == "standard.web.fetch"
+    schema = registry.tool_manifest_schema()
+    assert schema["type"] == "array"
+    assert "metadata" in schema["items"]["required"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_policy_blocks_side_effecting_tools(tmp_path):
+    registry = ToolRegistry(execution_policy=MetadataToolPolicy(block_side_effects=True))
+    register_standard_tools(
+        registry,
+        StandardToolOptions(
+            roots=(StandardToolRoot("workspace", tmp_path, writable=True),),
+            include_write_tools=True,
+        ),
+    )
+
+    with pytest.raises(ToolPolicyError):
+        await registry.invoke_tool_async(
+            "standard.fs.write_create_only",
+            arguments={"root_id": "workspace", "relative_path": "blocked.txt", "content": "x"},
+        )
 
 
 def test_standard_tools_define_stable_cli_commands(tmp_path):
@@ -104,6 +136,29 @@ def test_standard_data_tool_runs_through_cli(tmp_path, capsys: pytest.CaptureFix
     assert exit_code == 0
     assert payload["tool_name"] == "standard.data.json_parse"
     assert payload["result"]["value"] == {"name": "tool"}
+
+
+def test_standard_data_cli_reads_scalar_from_file_and_stdin(
+    tmp_path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    text_file = tmp_path / "payload.json"
+    text_file.write_text('{"name":"file"}', encoding="utf-8")
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+    app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
+
+    exit_code = app.run(["standard", "data", "json-parse", "--text", f"@{text_file}", "--json"])
+    file_payload = json.loads(capsys.readouterr().out)
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"name":"stdin"}'))
+    stdin_exit_code = app.run(["standard", "data", "json-parse", "--text", "-", "--json"])
+    stdin_payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert stdin_exit_code == 0
+    assert file_payload["result"]["value"] == {"name": "file"}
+    assert stdin_payload["result"]["value"] == {"name": "stdin"}
 
 
 def test_standard_filesystem_tool_runs_through_cli(tmp_path, capsys: pytest.CaptureFixture[str]):
@@ -305,6 +360,14 @@ async def test_data_tools_parse_validate_and_inspect_csv(tmp_path):
         "standard.data.csv_inspect",
         arguments={"text": "name,count\na,1\nb,2", "limit": 1},
     )
+    jsonl_info = await registry.invoke_tool_async(
+        "standard.data.jsonl_inspect",
+        arguments={"text": '{"a":1}\n{"b":2}\n{bad}', "limit": 1},
+    )
+    xml_info = await registry.invoke_tool_async(
+        "standard.data.xml_inspect",
+        arguments={"text": '<root><item id="1" /></root>'},
+    )
 
     assert parsed["value"] == {"name": "tool"}
     assert validation["valid"] is True
@@ -312,6 +375,9 @@ async def test_data_tools_parse_validate_and_inspect_csv(tmp_path):
     assert csv_info["headers"] == ["name", "count"]
     assert csv_info["sample_rows"] == [["a", "1"]]
     assert csv_info["truncated"] is True
+    assert jsonl_info["record_count"] == 2
+    assert jsonl_info["errors"][0]["line"] == 3
+    assert xml_info["root_tag"] == "root"
 
 
 @pytest.mark.asyncio
@@ -342,6 +408,106 @@ async def test_web_fetch_blocks_private_network_by_default_and_allows_opt_in(tmp
     assert fetched["title"] == "Example"
     assert "Hello standard tools" in fetched["text"]
     assert links["links"][0]["url"] == f"{http_server}/next"
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_applies_content_policy_and_observability(tmp_path, http_server):
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(roots={"workspace": tmp_path}, allow_private_network=True),
+    )
+
+    fetched = await registry.invoke_tool_async("standard.web.fetch", arguments={"url": f"{http_server}/page"})
+    with pytest.raises(StandardToolError):
+        await registry.invoke_tool_async("standard.web.fetch", arguments={"url": f"{http_server}/binary"})
+
+    assert fetched["observability"]["host"] == "127.0.0.1"
+    assert fetched["observability"]["max_bytes"] == 2_000_000
+
+
+@pytest.mark.asyncio
+async def test_web_search_normalizes_standard_search_result(tmp_path):
+    def provider(query: str, limit: int):
+        return [
+            StandardSearchResult(
+                title=f"{query} title",
+                url="https://example.com",
+                snippet="summary",
+                source="test",
+            )
+        ][:limit]
+
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(roots={"workspace": tmp_path}, search_provider=provider),
+    )
+
+    result = await registry.invoke_tool_async("standard.web.search", arguments={"query": "tool", "limit": 1})
+
+    assert result["results"] == [
+        {
+            "title": "tool title",
+            "url": "https://example.com",
+            "snippet": "summary",
+            "source": "test",
+            "published_at": "",
+            "rank": 1,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_filesystem_search_respects_ignored_dirs(tmp_path):
+    (tmp_path / "visible.txt").write_text("needle", encoding="utf-8")
+    hidden_dir = tmp_path / ".hidden"
+    hidden_dir.mkdir()
+    (hidden_dir / "secret.txt").write_text("needle", encoding="utf-8")
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(roots={"workspace": tmp_path}, ignored_dirs=(".hidden",)),
+    )
+
+    result = await registry.invoke_tool_async(
+        "standard.fs.search",
+        arguments={"root_id": "workspace", "relative_path": ".", "query": "needle", "mode": "content"},
+    )
+
+    paths = {match["relative_path"] for match in result["matches"]}
+    assert "visible.txt" in paths
+    assert ".hidden/secret.txt" not in paths
+
+
+@pytest.mark.asyncio
+async def test_optional_browser_readonly_bundle(tmp_path, http_server):
+    calls = []
+
+    def browser_provider(url: str, mode: str, limit: int):
+        calls.append((url, mode, limit))
+        return {"text": "dynamic text", "title": "Dynamic"}
+
+    registry = ToolRegistry()
+    specs = register_standard_tools(
+        registry,
+        StandardToolOptions(
+            roots={"workspace": tmp_path},
+            allow_private_network=True,
+            include_browser_tools=True,
+            browser_readonly_provider=browser_provider,
+        ),
+    )
+
+    names = {spec.name for spec in specs}
+    result = await registry.invoke_tool_async(
+        "standard.browser.extract_text",
+        arguments={"url": f"{http_server}/page"},
+    )
+
+    assert "standard.browser.extract_text" in names
+    assert result["text"] == "dynamic text"
+    assert calls[0][1] == "extract_text"
 
 
 @pytest.mark.asyncio

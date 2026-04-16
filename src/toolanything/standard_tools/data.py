@@ -4,6 +4,8 @@ from __future__ import annotations
 import csv
 import json
 import re
+import sys
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from typing import Any
 
@@ -62,20 +64,108 @@ def register_data_tools(
         ]
         return {"links": links[:max_items], "truncated": len(links) > max_items}
 
-    for func, name, description in (
-        (data_json_parse, "standard.data.json_parse", "Parse JSON text and return the decoded value."),
+    def data_jsonl_inspect(text: str, limit: int = 20) -> dict[str, Any]:
+        """Inspect JSON Lines text and return sample values and parse errors."""
+
+        max_items = positive_limit(limit, default=20)
+        rows = []
+        errors = []
+        for line_number, line in enumerate(text.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+                if len(rows) < max_items:
+                    rows.append(value)
+            except json.JSONDecodeError as exc:
+                errors.append({"line": line_number, "message": exc.msg})
+        return {
+            "record_count": sum(1 for line in text.splitlines() if line.strip()) - len(errors),
+            "sample_records": rows,
+            "errors": errors[:max_items],
+            "truncated": len(rows) >= max_items or len(errors) > max_items,
+        }
+
+    def data_toml_parse(text: str) -> dict[str, Any]:
+        """Parse TOML text with stdlib tomllib or optional tomli."""
+
+        value = parse_toml(text)
+        return {"ok": True, "value": value}
+
+    def data_yaml_parse(text: str) -> dict[str, Any]:
+        """Parse YAML text when PyYAML is installed."""
+
+        value = parse_yaml(text)
+        return {"ok": True, "value": value}
+
+    def data_xml_inspect(text: str, limit: int = 50) -> dict[str, Any]:
+        """Safely inspect XML root, attributes, and child tags."""
+
+        max_items = positive_limit(limit, default=50)
+        root = ET.fromstring(text)
+        children = [{"tag": child.tag, "attributes": dict(child.attrib)} for child in list(root)[:max_items]]
+        return {
+            "root_tag": root.tag,
+            "root_attributes": dict(root.attrib),
+            "children": children,
+            "child_count": len(list(root)),
+            "truncated": len(list(root)) > max_items,
+        }
+
+    tool_specs = (
+        (
+            data_json_parse,
+            "standard.data.json_parse",
+            "Parse JSON text and return the decoded value.",
+            {"text": {"input_mode": "text_or_file"}},
+        ),
         (
             data_json_validate,
             "standard.data.json_validate",
             "Validate JSON text against a small dependency-free JSON Schema subset.",
+            {
+                "text": {"input_mode": "text_or_file"},
+                "schema_text": {"input_mode": "text_or_file"},
+            },
         ),
-        (data_csv_inspect, "standard.data.csv_inspect", "Inspect CSV headers, sample rows, and rough shape."),
+        (
+            data_csv_inspect,
+            "standard.data.csv_inspect",
+            "Inspect CSV headers, sample rows, and rough shape.",
+            {"text": {"input_mode": "text_or_file"}},
+        ),
         (
             data_markdown_extract_links,
             "standard.data.markdown_extract_links",
             "Extract inline Markdown links from text.",
+            {"text": {"input_mode": "text_or_file"}},
         ),
-    ):
+        (
+            data_jsonl_inspect,
+            "standard.data.jsonl_inspect",
+            "Inspect JSON Lines text and return sample records and parse errors.",
+            {"text": {"input_mode": "text_or_file"}},
+        ),
+        (
+            data_toml_parse,
+            "standard.data.toml_parse",
+            "Parse TOML text with stdlib tomllib or optional tomli.",
+            {"text": {"input_mode": "text_or_file"}},
+        ),
+        (
+            data_yaml_parse,
+            "standard.data.yaml_parse",
+            "Parse YAML text when PyYAML is installed.",
+            {"text": {"input_mode": "text_or_file"}},
+        ),
+        (
+            data_xml_inspect,
+            "standard.data.xml_inspect",
+            "Safely inspect XML root, attributes, and child tags.",
+            {"text": {"input_mode": "text_or_file"}},
+        ),
+    )
+    for func, name, description, cli_arguments in tool_specs:
         specs.append(
             register_callable(
                 active_registry,
@@ -86,6 +176,7 @@ def register_data_tools(
                 scopes=("data:transform",),
                 read_only=True,
                 open_world=False,
+                cli_arguments=cli_arguments,
             )
         )
     return specs
@@ -156,3 +247,23 @@ def format_jsonschema_error(error: Any) -> str:
         return f"{path}: {error.message}"
     except Exception:
         return str(error)
+
+
+def parse_toml(text: str) -> Any:
+    if sys.version_info >= (3, 11):
+        import tomllib
+
+        return tomllib.loads(text)
+    try:
+        import tomli  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError("TOML parsing requires Python 3.11+ or optional dependency 'tomli'") from exc
+    return tomli.loads(text)
+
+
+def parse_yaml(text: str) -> Any:
+    try:
+        import yaml  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError("YAML parsing requires optional dependency 'PyYAML'") from exc
+    return yaml.safe_load(text)

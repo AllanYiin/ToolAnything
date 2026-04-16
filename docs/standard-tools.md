@@ -52,6 +52,7 @@ register_standard_tools(
 mcp_tools = registry.to_mcp_tools()
 openai_tools = registry.to_openai_tools()
 tool_manifest = registry.to_tool_manifest(tags=["standard"])
+manifest_schema = registry.tool_manifest_schema()
 ```
 
 The same registry can also be exported as a CLI app:
@@ -99,6 +100,26 @@ Write tools are opt-in and guarded:
 MCP annotations are exported when present in tool metadata. They are hints for
 hosts and clients, not a replacement for runtime policy enforcement.
 
+## Runtime Policy
+
+Tool metadata can be enforced before a tool is invoked:
+
+```python
+from toolanything import MetadataToolPolicy, ToolRegistry
+
+registry = ToolRegistry(
+    execution_policy=MetadataToolPolicy(
+        allowed_scopes={"fs:read", "data:transform", "net:http:get", "net:search"},
+        block_side_effects=True,
+    )
+)
+```
+
+`MetadataToolPolicy` checks `metadata["scopes"]`,
+`metadata["side_effect"]`, and `metadata["requires_approval"]`. Hosts with a
+separate approval workflow can pass approved tool names or install a custom
+policy object with `before_tool_call(...)`.
+
 ## CLI Commands
 
 Standard tools define stable CLI command paths through `metadata["cli"]`.
@@ -116,6 +137,15 @@ calling, and CLI share one schema and one execution path.
 Filesystem tools also set CLI argument metadata so `relative_path` is treated as
 a sandbox-relative value, not as a path that must exist in the current shell
 working directory.
+
+Large scalar text arguments can opt into file/stdin input. Standard data and
+patch tools enable this for payload-like fields:
+
+```bash
+stdtools standard data json-parse --text @payload.json --json
+stdtools standard data json-parse --text - --json
+stdtools standard fs apply-unified-patch --patch @patch.diff --relative-path draft.txt --json
+```
 
 Example:
 
@@ -177,8 +207,17 @@ when they are available:
   is installed. Otherwise it falls back to a small built-in subset validator.
 - `standard.fs.search` uses `rg --json` for content search when ripgrep is on
   `PATH`. If ripgrep is missing or fails, it falls back to the stdlib scanner.
+- `standard.fs.search` supports configurable ignored directories, scanned file
+  budget, and search timeout through `StandardToolOptions`.
 - `standard.web.extract_text` filters common non-content HTML blocks such as
   `script`, `style`, `nav`, `header`, and `footer` before returning text.
+- `standard.web.fetch` enforces content-type allow/block policy and returns
+  observability fields such as host, elapsed time, redirect count, and max bytes.
+- `standard.browser.*` tools are optional and require
+  `include_browser_tools=True` plus a `browser_readonly_provider`.
+
+Additional data helpers include JSONL inspection, TOML parsing, YAML parsing
+when PyYAML is installed, and XML inspection.
 
 `ToolRegistry.to_tool_manifest(tags=["standard"])` exports the canonical
 ToolAnything manifest. Use it for host UIs, policy engines, or agent runtimes
@@ -190,12 +229,16 @@ Important `StandardToolOptions` fields:
 
 - `roots`: mapping or sequence of `StandardToolRoot`.
 - `include_write_tools`: enables guarded write tools.
+- `include_browser_tools`: enables optional read-only browser provider tools.
 - `allowed_domains` / `blocked_domains`: web domain policy.
+- `allowed_content_types` / `blocked_content_types`: web response content policy.
 - `allow_private_network`: allows private network fetches for local dev.
 - `max_file_bytes`, `max_read_chars`, `max_search_results`, `max_web_bytes`:
   resource limits.
-- `web_timeout_sec`, `web_user_agent`: HTTP runtime settings.
+- `web_timeout_sec`, `web_user_agent`, `web_max_redirects`: HTTP runtime settings.
+- `ignored_dirs`, `max_scanned_files`, `fs_search_timeout_sec`: filesystem search budgets.
 - `search_provider`: implementation for `standard.web.search`.
+- `browser_readonly_provider`: implementation for optional browser readonly tools.
 
 ## Verification
 

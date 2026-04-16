@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .failure_log import FailureLogManager
 from .invokers import CallableInvoker, Invoker
 from .models import PipelineDefinition, ToolSpec
+from .policy import ToolExecutionPolicy, enforce_tool_policy
 from .runtime_types import ExecutionContext, StreamEmitter
 from ..state import StateManager
 
@@ -21,6 +22,7 @@ class ToolRegistry:
         tool_prefix: str = "tool:",
         pipeline_prefix: str = "pipeline:",
         enable_type_prefix: bool = True,
+        execution_policy: ToolExecutionPolicy | None = None,
     ) -> None:
         self._tools: Dict[str, ToolSpec] = {}
         self._invokers: Dict[str, Invoker] = {}
@@ -34,6 +36,7 @@ class ToolRegistry:
         self.tool_prefix = tool_prefix
         self.pipeline_prefix = pipeline_prefix
         self.enable_type_prefix = enable_type_prefix
+        self.execution_policy = execution_policy
 
     @classmethod
     def global_instance(cls) -> "ToolRegistry":
@@ -108,6 +111,9 @@ class ToolRegistry:
     def remove_observer(self, observer: Any) -> None:
         if observer in self._observers:
             self._observers.remove(observer)
+
+    def set_execution_policy(self, policy: ToolExecutionPolicy | None) -> None:
+        self.execution_policy = policy
 
     # pipeline
     def register_pipeline(self, definition: PipelineDefinition) -> None:
@@ -213,6 +219,36 @@ class ToolRegistry:
             entries.append(payload)
         return entries
 
+    def tool_manifest_schema(self) -> dict[str, Any]:
+        """Return a JSON Schema for entries emitted by to_tool_manifest()."""
+
+        return {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "description", "tags", "source_type", "metadata"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "adapters": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"},
+                        ]
+                    },
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "strict": {"type": "boolean"},
+                    "source_type": {"type": "string"},
+                    "invoker_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "metadata": {"type": "object"},
+                    "parameters": {"type": "object"},
+                    "openai": {"type": "object"},
+                    "mcp": {"type": "object"},
+                },
+                "additionalProperties": True,
+            },
+        }
+
     def _build_context(
         self, *, user_id: str | None, state_manager: StateManager | None
     ) -> ExecutionContext:
@@ -316,6 +352,7 @@ class ToolRegistry:
                 user_id=user_id,
                 state_manager=state_manager,
             )
+            enforce_tool_policy(self.execution_policy, definition, arguments, context)
             result = await invoker.invoke(
                 arguments,
                 context,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,7 +12,7 @@ from typing import Any
 
 from toolanything.core import ToolRegistry, ToolSpec
 
-from .options import StandardToolOptions
+from .options import StandardSearchResult, StandardToolOptions
 from .registration import positive_limit, register_callable
 from .safety import DomainPolicy, StandardToolError, validate_url
 
@@ -152,7 +153,9 @@ def fetch_url(
     max_bytes: int,
 ) -> dict[str, Any]:
     current_url = url
-    for _ in range(6):
+    redirects: list[str] = []
+    started_at = time.monotonic()
+    for _ in range(active_redirect_limit(options)):
         validate_url(
             current_url,
             allow_private_network=options.allow_private_network,
@@ -166,19 +169,27 @@ def fetch_url(
         try:
             opener = urllib.request.build_opener(NoRedirectHandler)
             with opener.open(request, timeout=options.web_timeout_sec) as response:
-                raw = response.read(max_bytes + 1)
                 content_type = response.headers.get("Content-Type", "")
+                validate_content_type(content_type, options=options)
+                raw = response.read(max_bytes + 1)
                 charset = response.headers.get_content_charset() or "utf-8"
                 text = raw[:max_bytes].decode(charset, errors="replace")
                 return {
                     "url": url,
                     "final_url": response.geturl(),
+                    "redirects": redirects,
                     "status": response.status,
                     "content_type": content_type,
                     "encoding": charset,
                     "text": text,
                     "bytes_read": min(len(raw), max_bytes),
                     "truncated": len(raw) > max_bytes,
+                    "observability": {
+                        "elapsed_ms": int((time.monotonic() - started_at) * 1000),
+                        "host": urllib.parse.urlparse(response.geturl()).hostname,
+                        "redirect_count": len(redirects),
+                        "max_bytes": max_bytes,
+                    },
                 }
         except urllib.error.HTTPError as exc:
             if exc.code in {301, 302, 303, 307, 308}:
@@ -186,23 +197,52 @@ def fetch_url(
                 if not location:
                     raise StandardToolError("redirect response is missing Location") from exc
                 current_url = urllib.parse.urljoin(current_url, location)
+                redirects.append(current_url)
                 continue
+            content_type = exc.headers.get("Content-Type", "")
+            validate_content_type(content_type, options=options)
             raw = exc.read(max_bytes + 1)
             text = raw[:max_bytes].decode("utf-8", errors="replace")
             return {
                 "url": url,
                 "final_url": exc.geturl(),
+                "redirects": redirects,
                 "status": exc.code,
-                "content_type": exc.headers.get("Content-Type", ""),
+                "content_type": content_type,
                 "encoding": "utf-8",
                 "text": text,
                 "bytes_read": min(len(raw), max_bytes),
                 "truncated": len(raw) > max_bytes,
+                "observability": {
+                    "elapsed_ms": int((time.monotonic() - started_at) * 1000),
+                    "host": urllib.parse.urlparse(exc.geturl()).hostname,
+                    "redirect_count": len(redirects),
+                    "max_bytes": max_bytes,
+                },
             }
         except urllib.error.URLError as exc:
             raise StandardToolError(f"request failed: {exc.reason}") from exc
 
     raise StandardToolError("too many redirects")
+
+
+def active_redirect_limit(options: StandardToolOptions) -> int:
+    return max(options.web_max_redirects, 0) + 1
+
+
+def validate_content_type(content_type: str, *, options: StandardToolOptions) -> None:
+    normalized = content_type.split(";", 1)[0].strip().lower()
+    if not normalized:
+        return
+    for blocked in options.blocked_content_types:
+        rule = blocked.lower()
+        if normalized == rule or (rule.endswith("/") and normalized.startswith(rule)):
+            raise StandardToolError(f"blocked content type: {normalized}")
+    if options.allowed_content_types and not any(
+        normalized == rule.lower() or (rule.endswith("/") and normalized.startswith(rule.lower()))
+        for rule in options.allowed_content_types
+    ):
+        raise StandardToolError(f"content type is not allowed: {normalized}")
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -289,9 +329,21 @@ def normalize_search_results(raw_results: Any, limit: int) -> list[dict[str, Any
         raise StandardToolError("search_provider must return a list or {'results': list}")
 
     normalized: list[dict[str, Any]] = []
-    for item in raw_items[:limit]:
+    for index, item in enumerate(raw_items[:limit], 1):
+        if isinstance(item, StandardSearchResult):
+            normalized.append(
+                {
+                    "title": item.title,
+                    "url": item.url,
+                    "snippet": item.snippet,
+                    "source": item.source,
+                    "published_at": item.published_at,
+                    "rank": item.rank or index,
+                }
+            )
+            continue
         if isinstance(item, str):
-            normalized.append({"title": item, "url": "", "snippet": ""})
+            normalized.append({"title": item, "url": "", "snippet": "", "source": "", "published_at": "", "rank": index})
             continue
         if not isinstance(item, Mapping):
             continue
@@ -300,6 +352,9 @@ def normalize_search_results(raw_results: Any, limit: int) -> list[dict[str, Any
                 "title": item.get("title", ""),
                 "url": item.get("url") or item.get("link", ""),
                 "snippet": item.get("snippet") or item.get("summary", ""),
+                "source": item.get("source", ""),
+                "published_at": item.get("published_at") or item.get("date", ""),
+                "rank": item.get("rank", index),
             }
         )
     return normalized

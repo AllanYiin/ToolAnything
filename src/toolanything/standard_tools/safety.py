@@ -46,7 +46,11 @@ BINARY_EXTENSIONS = {
     ".xlsx",
     ".zip",
 }
-METADATA_HOSTS = {"metadata.google.internal", "metadata.goog"}
+METADATA_HOSTS = {
+    "metadata.amazonaws.com",
+    "metadata.google.internal",
+    "metadata.goog",
+}
 CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
 
 
@@ -142,6 +146,12 @@ def validate_url(url: str, *, allow_private_network: bool, domain_policy: Domain
     domain_policy.check(url)
     for address in _resolve_addresses(hostname):
         _validate_ip_address(address, allow_private_network=allow_private_network)
+
+
+def validate_ip_text(address: str, *, allow_private_network: bool) -> None:
+    """Validate a concrete peer IP address using the standard network policy."""
+
+    _validate_ip_address(ipaddress.ip_address(address), allow_private_network=allow_private_network)
 
 
 def _resolve_addresses(hostname: str) -> list[ipaddress._BaseAddress]:

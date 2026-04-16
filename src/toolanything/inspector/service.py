@@ -872,7 +872,7 @@ class MCPInspectorService:
                     "function": {
                         "name": tool["name"],
                         "description": tool.get("description", ""),
-                        "parameters": tool.get("input_schema", {}),
+                        "parameters": tool.get("inputSchema", {}),
                     },
                 }
                 for tool in tools

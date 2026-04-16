@@ -33,8 +33,8 @@ def test_streamable_http_lab_examples_cover_handshake_modes_and_session_lifecycl
     assert handshake["initialize"]["session_id"]
     assert any(tool["name"] == "audio.vad.inspect_chunk" for tool in handshake["tools"])
     vad_tool = next(tool for tool in handshake["tools"] if tool["name"] == "audio.vad.inspect_chunk")
-    assert vad_tool["input_schema"]["properties"]["avg_energy"]["type"] == "number"
-    assert vad_tool["input_schema"]["properties"]["speech_band_ratio"]["type"] == "number"
+    assert vad_tool["inputSchema"]["properties"]["avg_energy"]["type"] == "number"
+    assert vad_tool["inputSchema"]["properties"]["speech_band_ratio"]["type"] == "number"
     assert handshake["vad_result"]["route"] == "forward_to_asr"
     assert handshake["asr_result"]["accepted"] is True
 

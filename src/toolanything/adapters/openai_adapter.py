@@ -60,14 +60,19 @@ class OpenAIAdapter(BaseAdapter):
 
     def to_schema(self) -> List[Dict[str, Any]]:
         original_to_openai, _ = self._build_name_mappings()
-        tools = self.registry.to_openai_tools(adapter="openai")
         normalized_tools: list[dict[str, Any]] = []
-        for tool in tools:
-            function = dict(tool["function"])
-            function["name"] = original_to_openai.get(function["name"], function["name"])
-            normalized_tool = dict(tool)
-            normalized_tool["function"] = function
-            normalized_tools.append(normalized_tool)
+        definitions = [
+            definition
+            for definition in self.registry.list()
+            if definition.adapters is None or "openai" in definition.adapters
+        ]
+        definitions.extend(getattr(self.registry, "_pipelines", {}).values())
+        for definition in definitions:
+            normalized_tools.append(
+                definition.to_openai(
+                    name=original_to_openai.get(definition.name, definition.name)
+                )
+            )
         return normalized_tools
 
     def to_function_call(

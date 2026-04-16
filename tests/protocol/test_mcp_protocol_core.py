@@ -117,8 +117,8 @@ def test_notifications_initialized_returns_none() -> None:
 def test_tools_list_returns_schemas() -> None:
     core = MCPJSONRPCProtocolCore()
     tools = [
-        {"name": "alpha", "description": "Alpha", "input_schema": {"type": "object"}},
-        {"name": "beta", "description": "Beta", "input_schema": {"type": "object"}},
+        {"name": "alpha", "description": "Alpha", "inputSchema": {"type": "object"}},
+        {"name": "beta", "description": "Beta", "inputSchema": {"type": "object"}},
     ]
     deps = _make_deps(tools=tools)
     request = build_request("tools/list", 2)

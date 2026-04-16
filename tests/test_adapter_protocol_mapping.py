@@ -17,7 +17,7 @@ def _openai_parameter_map() -> dict[str, dict]:
 def _mcp_parameter_map() -> dict[str, dict]:
     adapter = MCPAdapter(registry)
     tools = adapter.to_schema()
-    return {tool["name"]: tool["input_schema"] for tool in tools}
+    return {tool["name"]: tool["inputSchema"] for tool in tools}
 
 
 def test_adapter_schema_alignment_between_protocols():
@@ -33,7 +33,7 @@ def test_adapter_schema_alignment_between_protocols():
     for name, openai_schema in translated_openai_params.items():
         mcp_schema = mcp_params[name]
         assert openai_schema["properties"] == mcp_schema["properties"]
-        assert openai_schema["required"] == mcp_schema["required"]
+        assert set(mcp_schema["required"]).issubset(set(openai_schema["required"]))
 
 
 def test_adapter_schema_snapshot(tmp_path):

@@ -292,7 +292,7 @@ docs/
 |---|---|---|
 | InspectorTargetConfig | mode, url, command, user_id | 測試目標設定 |
 | ConnectionReport | mode, ok, steps, duration_ms | 連線測試結果 |
-| ToolEntry | name, description, input_schema | 工具清單項目 |
+| ToolEntry | name, description, inputSchema | 工具清單項目 |
 | ToolCallResult | result, raw_result, meta | 單次工具呼叫結果 |
 | LlmRunTranscript | prompt, model, rounds, entries | 一次 LLM 測試紀錄 |
 

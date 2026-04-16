@@ -578,7 +578,7 @@ def _pick_callable_tool(tools_payload: Iterable[Dict[str, Any]]) -> tuple[Option
         if tool.get("name") == "__ping__":
             return "__ping__", {}
     for tool in tools_payload:
-        schema = tool.get("input_schema") or {}
+        schema = tool.get("inputSchema") or {}
         required = schema.get("required") or []
         if not required:
             return tool.get("name"), {}

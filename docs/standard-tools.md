@@ -50,9 +50,17 @@ register_standard_tools(
 )
 
 mcp_tools = registry.to_mcp_tools()
-openai_tools = registry.to_openai_tools()
 tool_manifest = registry.to_tool_manifest(tags=["standard"])
 manifest_schema = registry.tool_manifest_schema()
+```
+
+For OpenAI tool calling, use the OpenAI adapter so tool names are normalized and
+deduplicated for OpenAI's function-name rules:
+
+```python
+from toolanything.adapters.openai_adapter import OpenAIAdapter
+
+openai_tools = OpenAIAdapter(registry).to_schema()
 ```
 
 The same registry can also be exported as a CLI app:
@@ -88,7 +96,17 @@ root are rejected.
 Web tools reject non-HTTP(S) URLs and validate redirects. By default they block
 private, loopback, link-local, reserved, multicast, carrier-grade NAT, and cloud
 metadata addresses to reduce SSRF risk. For local development tests, set
-`allow_private_network=True`.
+`allow_private_network=True`. The fetcher validates DNS results before opening a
+connection and validates the connected peer address before reading the response
+body when the runtime exposes it. Production deployments should still pair this
+with network-layer egress controls because DNS rebinding and proxy behavior can
+create time-of-check/time-of-use gaps outside the Python process.
+
+`standard.web.fetch` is for text-like HTTP resources. It blocks
+`application/pdf` by default and also rejects responses whose body starts with a
+PDF signature. PDF text extraction should be implemented as a separate opt-in
+document tool with its own parser, page limits, byte limits, and sandboxing
+policy.
 
 Write tools are opt-in and guarded:
 
@@ -122,7 +140,9 @@ policy object with `before_tool_call(...)`.
 
 ## CLI Commands
 
-Standard tools define stable CLI command paths through `metadata["cli"]`.
+Standard tools define stable CLI command paths through `metadata["cli"]` and
+the canonical manifest exposes the same information through each tool's `cli`
+entry.
 Command paths keep the tool namespace:
 
 - `standard.web.fetch` -> `standard web fetch`
@@ -198,6 +218,18 @@ register_standard_tools(
 )
 ```
 
+Provider contract:
+
+- Providers must enforce their own credentials, quotas, timeout, and privacy
+  policies.
+- Providers must not return secrets or private-only URLs unless the host has
+  explicitly opted into that trust boundary.
+- Browser providers must be read-only: no form submission, no download writes,
+  no cookie exfiltration, and no authenticated browsing state unless the host
+  intentionally supplies it.
+- Provider-backed tools are marked with `metadata["requires_provider"] = True`
+  so hosts can surface setup requirements before tool invocation.
+
 ## Optional Enhancements
 
 The standard tools avoid mandatory heavy dependencies, but use stronger engines
@@ -205,8 +237,12 @@ when they are available:
 
 - `standard.data.json_validate` uses the optional `jsonschema` package when it
   is installed. Otherwise it falls back to a small built-in subset validator.
+- `standard.data.*` tools respect `max_read_chars`; XML inspection rejects DTD
+  and ENTITY declarations.
 - `standard.fs.search` uses `rg --json` for content search when ripgrep is on
   `PATH`. If ripgrep is missing or fails, it falls back to the stdlib scanner.
+  The ripgrep path and stdlib fallback both apply ignored-directory and file-size
+  policy.
 - `standard.fs.search` supports configurable ignored directories, scanned file
   budget, and search timeout through `StandardToolOptions`.
 - `standard.web.extract_text` filters common non-content HTML blocks such as

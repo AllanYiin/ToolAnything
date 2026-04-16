@@ -22,4 +22,4 @@ def test_pipeline_registry_execution_uses_registered_state_manager():
 
 def test_pipeline_registered_to_registry():
     exported = registry.to_openai_tools()
-    assert any(t["function"]["name"] == "math.workflow" for t in exported)
+    assert any(t["function"]["name"] == "math_workflow" for t in exported)

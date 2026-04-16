@@ -2,7 +2,7 @@
   {
     "name": "math.add",
     "description": "兩數相加",
-    "input_schema": {
+    "inputSchema": {
       "type": "object",
       "properties": {
         "a": {
@@ -22,7 +22,7 @@
   {
     "name": "math.workflow",
     "description": "示範 pipeline 串接",
-    "input_schema": {
+    "inputSchema": {
       "type": "object",
       "properties": {
         "a": {

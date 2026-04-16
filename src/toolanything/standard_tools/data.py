@@ -13,6 +13,10 @@ from toolanything.core import ToolRegistry, ToolSpec
 
 from .options import StandardToolOptions
 from .registration import positive_limit, register_callable
+from .safety import StandardToolError
+
+
+XML_UNSAFE_DECLARATION_RE = re.compile(r"<!\s*(DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 
 def register_data_tools(
@@ -20,18 +24,21 @@ def register_data_tools(
     options: StandardToolOptions | None = None,
 ) -> list[ToolSpec]:
     active_registry = registry or ToolRegistry.global_instance()
-    del options
+    active_options = options or StandardToolOptions()
     specs: list[ToolSpec] = []
 
     def data_json_parse(text: str) -> dict[str, Any]:
         """Parse JSON text and return the decoded value."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
         value = json.loads(text)
         return {"ok": True, "value": value, "type": type(value).__name__}
 
     def data_json_validate(text: str, schema_text: str) -> dict[str, Any]:
         """Validate JSON text against JSON Schema, using jsonschema when installed."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
+        ensure_data_size(schema_text, max_chars=active_options.max_read_chars)
         value = json.loads(text)
         schema = json.loads(schema_text)
         errors, validator = validate_json(value, schema)
@@ -40,6 +47,7 @@ def register_data_tools(
     def data_csv_inspect(text: str, delimiter: str = ",", limit: int = 20) -> dict[str, Any]:
         """Inspect CSV headers, sample rows, and rough shape without writing files."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
         reader = csv.reader(text.splitlines(), delimiter=delimiter)
         rows = list(reader)
         sample_limit = positive_limit(limit, default=20)
@@ -57,6 +65,7 @@ def register_data_tools(
     def data_markdown_extract_links(text: str, limit: int = 100) -> dict[str, Any]:
         """Extract inline Markdown links from text."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
         max_items = positive_limit(limit, default=100)
         links = [
             {"label": match.group(1), "url": match.group(2)}
@@ -67,6 +76,7 @@ def register_data_tools(
     def data_jsonl_inspect(text: str, limit: int = 20) -> dict[str, Any]:
         """Inspect JSON Lines text and return sample values and parse errors."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
         max_items = positive_limit(limit, default=20)
         rows = []
         errors = []
@@ -89,18 +99,22 @@ def register_data_tools(
     def data_toml_parse(text: str) -> dict[str, Any]:
         """Parse TOML text with stdlib tomllib or optional tomli."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
         value = parse_toml(text)
         return {"ok": True, "value": value}
 
     def data_yaml_parse(text: str) -> dict[str, Any]:
         """Parse YAML text when PyYAML is installed."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
         value = parse_yaml(text)
         return {"ok": True, "value": value}
 
     def data_xml_inspect(text: str, limit: int = 50) -> dict[str, Any]:
         """Safely inspect XML root, attributes, and child tags."""
 
+        ensure_data_size(text, max_chars=active_options.max_read_chars)
+        ensure_safe_xml_text(text)
         max_items = positive_limit(limit, default=50)
         root = ET.fromstring(text)
         children = [{"tag": child.tag, "attributes": dict(child.attrib)} for child in list(root)[:max_items]]
@@ -204,6 +218,16 @@ def validate_json_subset(value: Any, schema: Mapping[str, Any], path: str = "$")
         for index, item in enumerate(value):
             errors.extend(validate_json_subset(item, item_schema, f"{path}[{index}]"))
     return errors
+
+
+def ensure_data_size(text: str, *, max_chars: int) -> None:
+    if len(text) > max_chars:
+        raise StandardToolError("input exceeds configured max_read_chars")
+
+
+def ensure_safe_xml_text(text: str) -> None:
+    if XML_UNSAFE_DECLARATION_RE.search(text):
+        raise StandardToolError("XML DTD and ENTITY declarations are not allowed")
 
 
 def json_type_matches(value: Any, expected_type: Any) -> bool:

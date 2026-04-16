@@ -216,6 +216,7 @@ class ToolRegistry:
                 payload["parameters"] = dict(definition.parameters)
                 payload["openai"] = definition.contract.to_openai()
                 payload["mcp"] = definition.contract.to_mcp()
+                payload["cli"] = definition.contract.to_cli()
             entries.append(payload)
         return entries
 
@@ -244,6 +245,7 @@ class ToolRegistry:
                     "parameters": {"type": "object"},
                     "openai": {"type": "object"},
                     "mcp": {"type": "object"},
+                    "cli": {"type": "object"},
                 },
                 "additionalProperties": True,
             },

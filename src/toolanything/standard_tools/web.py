@@ -14,7 +14,10 @@ from toolanything.core import ToolRegistry, ToolSpec
 
 from .options import StandardSearchResult, StandardToolOptions
 from .registration import positive_limit, register_callable
-from .safety import DomainPolicy, StandardToolError, validate_url
+from .safety import DomainPolicy, StandardToolError, validate_ip_text, validate_url
+
+
+PDF_MAGIC = b"%PDF-"
 
 
 def register_web_readonly_tools(
@@ -32,7 +35,10 @@ def register_web_readonly_tools(
     def web_fetch(url: str, max_bytes: int = 0) -> dict[str, Any]:
         """Fetch a web page or text resource with SSRF protections and size limits."""
 
-        limit = positive_limit(max_bytes, default=active_options.max_web_bytes)
+        limit = min(
+            positive_limit(max_bytes, default=active_options.max_web_bytes),
+            active_options.max_web_bytes,
+        )
         return fetch_url(url, options=active_options, policy=policy, max_bytes=limit)
 
     def web_extract_text(url: str, max_chars: int = 20000) -> dict[str, Any]:
@@ -169,9 +175,11 @@ def fetch_url(
         try:
             opener = urllib.request.build_opener(NoRedirectHandler)
             with opener.open(request, timeout=options.web_timeout_sec) as response:
+                validate_response_peer(response, options=options)
                 content_type = response.headers.get("Content-Type", "")
                 validate_content_type(content_type, options=options)
                 raw = response.read(max_bytes + 1)
+                validate_body_signature(raw, content_type=content_type)
                 charset = response.headers.get_content_charset() or "utf-8"
                 text = raw[:max_bytes].decode(charset, errors="replace")
                 return {
@@ -202,6 +210,7 @@ def fetch_url(
             content_type = exc.headers.get("Content-Type", "")
             validate_content_type(content_type, options=options)
             raw = exc.read(max_bytes + 1)
+            validate_body_signature(raw, content_type=content_type)
             text = raw[:max_bytes].decode("utf-8", errors="replace")
             return {
                 "url": url,
@@ -243,6 +252,39 @@ def validate_content_type(content_type: str, *, options: StandardToolOptions) ->
         for rule in options.allowed_content_types
     ):
         raise StandardToolError(f"content type is not allowed: {normalized}")
+
+
+def validate_body_signature(raw: bytes, *, content_type: str) -> None:
+    if raw.startswith(PDF_MAGIC):
+        raise StandardToolError("PDF resources are not supported by standard.web.fetch")
+
+
+def validate_response_peer(response: Any, *, options: StandardToolOptions) -> None:
+    peer_ip = response_peer_ip(response)
+    if peer_ip:
+        validate_ip_text(peer_ip, allow_private_network=options.allow_private_network)
+
+
+def response_peer_ip(response: Any) -> str:
+    candidates = [
+        ("fp", "raw", "_sock"),
+        ("fp", "_sock"),
+    ]
+    for path in candidates:
+        target = response
+        for attr in path:
+            target = getattr(target, attr, None)
+            if target is None:
+                break
+        if target is None:
+            continue
+        try:
+            peer = target.getpeername()
+        except OSError:
+            continue
+        if isinstance(peer, tuple) and peer:
+            return str(peer[0])
+    return ""
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):

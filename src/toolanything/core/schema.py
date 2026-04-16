@@ -139,3 +139,43 @@ def build_parameters_schema(func: Any) -> Dict[str, Any]:
         "required": required,
         "additionalProperties": False,
     }
+
+
+def to_openai_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a schema normalized for OpenAI strict tool calling.
+
+    OpenAI strict mode requires every object to declare
+    ``additionalProperties: false`` and to list every property as required.
+    """
+
+    normalized = copy.deepcopy(schema)
+    _normalize_openai_strict_node(normalized)
+    return normalized
+
+
+def _normalize_openai_strict_node(node: Any) -> None:
+    if not isinstance(node, dict):
+        return
+
+    node_type = node.get("type")
+    is_object = node_type == "object" or "properties" in node
+    if is_object:
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            node["required"] = list(properties.keys())
+            for property_schema in properties.values():
+                _normalize_openai_strict_node(property_schema)
+        node["additionalProperties"] = False
+        additional = node.get("additionalProperties")
+        if isinstance(additional, dict):
+            _normalize_openai_strict_node(additional)
+
+    items = node.get("items")
+    if isinstance(items, dict):
+        _normalize_openai_strict_node(items)
+
+    for keyword in ("oneOf", "anyOf", "allOf"):
+        variants = node.get(keyword)
+        if isinstance(variants, list):
+            for variant in variants:
+                _normalize_openai_strict_node(variant)

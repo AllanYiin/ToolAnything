@@ -2,7 +2,7 @@
   "mcp": [
     {
       "description": "兩數相加",
-      "input_schema": {
+      "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "a": {
@@ -22,7 +22,7 @@
     },
     {
       "description": "示範 pipeline 串接",
-      "input_schema": {
+      "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "a": {
@@ -58,10 +58,12 @@
             }
           },
           "required": [
-            "a"
+            "a",
+            "b"
           ],
           "type": "object"
-        }
+        },
+        "strict": true
       },
       "type": "function"
     },
@@ -84,7 +86,8 @@
             "b"
           ],
           "type": "object"
-        }
+        },
+        "strict": false
       },
       "type": "function"
     }

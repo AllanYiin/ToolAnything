@@ -20,12 +20,14 @@ def register_callable(
     destructive: bool = False,
     requires_approval: bool = False,
     cli_arguments: Mapping[str, Mapping[str, Any]] | None = None,
+    output_schema: Mapping[str, Any] | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> ToolSpec:
     """Create and register a standard ToolSpec with shared adapter metadata."""
 
     metadata = {
         "toolanything_stdlib": True,
+        "title": name,
         "category": category,
         "scopes": list(scopes),
         "side_effect": not read_only,
@@ -46,6 +48,11 @@ def register_callable(
             "openWorldHint": open_world,
         },
     }
+    metadata["output_schema"] = (
+        dict(output_schema)
+        if output_schema
+        else {"type": "object", "additionalProperties": True}
+    )
     if cli_arguments:
         metadata["cli"]["arguments"].update(  # type: ignore[index, union-attr]
             {name: dict(value) for name, value in cli_arguments.items()}

@@ -71,7 +71,12 @@ class MCPToolSchema(TypedDict, total=False):
 
     name: str
     description: str
-    input_schema: Dict[str, Any]
+    title: str
+    inputSchema: Dict[str, Any]
+    outputSchema: Dict[str, Any]
+    annotations: Dict[str, Any]
+    execution: Dict[str, Any]
+    _meta: Dict[str, Any]
 
 
 class MCPToolCallParams(TypedDict, total=False):
@@ -122,7 +127,7 @@ class MCPToolSchemaProvider(Protocol):
     """Provides tool schemas for tools/list."""
 
     def list_tools(self) -> Sequence[MCPToolSchema]:
-        """Return tool schemas matching MCP input_schema format."""
+        """Return tool schemas matching MCP inputSchema format."""
 
 
 class MCPToolInvoker(Protocol):

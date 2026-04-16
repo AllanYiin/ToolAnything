@@ -154,7 +154,7 @@ def test_phase0_async_registry_schema_matches_existing_behavior():
         {
             "name": "async.echo",
             "description": "回傳輸入內容",
-            "input_schema": {
+                "inputSchema": {
                 "type": "object",
                 "properties": {"message": {"type": "string"}},
                 "required": ["message"],
@@ -164,7 +164,7 @@ def test_phase0_async_registry_schema_matches_existing_behavior():
         {
             "name": "sync.identity",
             "description": "同步回傳輸入",
-            "input_schema": {
+                "inputSchema": {
                 "type": "object",
                 "properties": {"value": {"type": "string"}},
                 "required": ["value"],
@@ -174,7 +174,7 @@ def test_phase0_async_registry_schema_matches_existing_behavior():
         {
             "name": "async.pipeline",
             "description": "示範 async pipeline 呼叫",
-            "input_schema": {
+                "inputSchema": {
                 "type": "object",
                 "properties": {"value": {"type": "integer"}},
                 "required": ["value"],

@@ -2,7 +2,7 @@
   {
     "type": "function",
     "function": {
-      "name": "math.add",
+      "name": "math_add",
       "description": "兩數相加",
       "parameters": {
         "type": "object",
@@ -16,16 +16,18 @@
           }
         },
         "required": [
-          "a"
+          "a",
+          "b"
         ],
         "additionalProperties": false
-      }
+      },
+      "strict": true
     }
   },
   {
     "type": "function",
     "function": {
-      "name": "math.workflow",
+      "name": "math_workflow",
       "description": "示範 pipeline 串接",
       "parameters": {
         "type": "object",
@@ -42,7 +44,8 @@
           "b"
         ],
         "additionalProperties": false
-      }
+      },
+      "strict": false
     }
   }
 ]

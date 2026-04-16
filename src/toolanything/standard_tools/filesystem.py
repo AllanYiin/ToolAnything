@@ -451,6 +451,8 @@ def search_file_content(
         glob=glob,
         query=query,
         limit=limit,
+        ignored_dirs=ignored_dirs if ignored_dirs is not None else DEFAULT_IGNORED_DIRS,
+        max_file_bytes=max_file_bytes,
         timeout_sec=timeout_sec,
     )
     if rg_matches is not None:
@@ -492,6 +494,8 @@ def search_file_content_with_rg(
     glob: str,
     query: str,
     limit: int,
+    ignored_dirs: set[str] | frozenset[str],
+    max_file_bytes: int,
     timeout_sec: float,
 ) -> list[dict[str, Any]] | None:
     rg = shutil.which("rg")
@@ -504,9 +508,13 @@ def search_file_content_with_rg(
         "--fixed-strings",
         "--glob",
         glob,
-        query,
-        str(target),
+        "--max-filesize",
+        str(max_file_bytes),
     ]
+    for ignored_dir in sorted(ignored_dirs):
+        command.extend(["--glob", f"!{ignored_dir}/**"])
+        command.extend(["--glob", f"!**/{ignored_dir}/**"])
+    command.extend([query, str(target)])
     try:
         completed = subprocess.run(
             command,

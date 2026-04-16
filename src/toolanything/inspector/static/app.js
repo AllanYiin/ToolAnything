@@ -535,13 +535,14 @@ function renderToolList(tools) {
     const article = document.createElement("article");
     article.className = "tool-card";
     const description = tool.description || "沒有描述";
+    const inputSchema = getToolInputSchema(tool);
     article.innerHTML = `
       <div class="tool-card-head">
         <strong>${tool.name}</strong>
-        <span>${(tool.input_schema?.required || []).length} required</span>
+        <span>${(inputSchema.required || []).length} required</span>
       </div>
       <p class="entry-meta">${description}</p>
-      <pre>${JSON.stringify(tool.input_schema || {}, null, 2)}</pre>
+      <pre>${JSON.stringify(inputSchema, null, 2)}</pre>
     `;
     article.addEventListener("click", () => {
       elements.toolSelect.value = tool.name;
@@ -571,6 +572,10 @@ function getToolByName(name) {
   return state.tools.find((tool) => tool.name === name) || null;
 }
 
+function getToolInputSchema(tool) {
+  return tool?.inputSchema || {};
+}
+
 function getFilteredTools() {
   const keyword = state.toolFilter.trim().toLowerCase();
   if (!keyword) {
@@ -580,7 +585,7 @@ function getFilteredTools() {
     const haystack = JSON.stringify({
       name: tool.name,
       description: tool.description || "",
-      schema: tool.input_schema || {},
+      schema: getToolInputSchema(tool),
     }).toLowerCase();
     return haystack.includes(keyword);
   });
@@ -766,7 +771,7 @@ function renderSchemaForm(tool) {
     elements.schemaForm.classList.add("empty-state");
     return;
   }
-  const schema = tool.input_schema || {};
+  const schema = getToolInputSchema(tool);
   const properties = schema.properties || {};
   const propertyNames = Object.keys(properties);
   if (!propertyNames.length) {
@@ -786,7 +791,7 @@ function collectArguments() {
   if (!tool) {
     return {};
   }
-  const schema = tool.input_schema || {};
+  const schema = getToolInputSchema(tool);
   const requiredNames = schema.required || [];
   const result = {};
   const fieldNodes = elements.schemaForm.querySelectorAll("[data-field-name]");

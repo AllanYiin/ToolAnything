@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -20,6 +21,8 @@ from toolanything import (
     register_standard_tools,
 )
 from toolanything.standard_tools import StandardToolError
+from toolanything.standard_tools.filesystem import search_file_content_with_rg
+from toolanything.standard_tools.safety import DomainPolicy, validate_url
 
 
 class _StandardToolHandler(BaseHTTPRequestHandler):
@@ -40,6 +43,13 @@ class _StandardToolHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/octet-stream")
             self.end_headers()
             self.wfile.write(b"\x00\x01")
+            return
+
+        if self.path == "/fake-pdf":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"%PDF-1.7\nbinary")
             return
 
         if self.path == "/redirect-private":
@@ -88,10 +98,43 @@ def test_standard_tools_registers_safe_default_bundle(tmp_path):
     fetch_manifest = next(tool for tool in manifest if tool["name"] == "standard.web.fetch")
     assert fetch_manifest["metadata"]["scopes"] == ["net:http:get"]
     assert fetch_manifest["mcp"]["annotations"]["readOnlyHint"] is True
-    assert fetch_manifest["openai"]["function"]["name"] == "standard.web.fetch"
+    assert fetch_manifest["openai"]["function"]["name"] == "standard_web_fetch"
+    assert fetch_manifest["mcp"]["inputSchema"]["type"] == "object"
+    assert fetch_manifest["mcp"]["outputSchema"]["type"] == "object"
+    assert fetch_manifest["cli"]["commandPath"] == ["standard", "web", "fetch"]
     schema = registry.tool_manifest_schema()
     assert schema["type"] == "array"
     assert "metadata" in schema["items"]["required"]
+
+
+def test_openai_export_uses_strict_schema_and_safe_names(tmp_path):
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+
+    fetch = next(tool for tool in registry.to_openai_tools() if tool["function"]["name"] == "standard_web_fetch")
+
+    assert fetch["function"]["strict"] is True
+    assert fetch["function"]["parameters"]["additionalProperties"] is False
+    assert set(fetch["function"]["parameters"]["required"]) == set(fetch["function"]["parameters"]["properties"])
+
+
+def test_standard_tool_contract_exports_openai_mcp_and_cli_metadata(tmp_path):
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+    spec = registry.get_tool("standard.web.fetch")
+
+    openai = spec.to_openai()
+    mcp = spec.to_mcp()
+    cli = spec.to_cli()
+
+    assert openai["function"]["name"] == "standard_web_fetch"
+    assert openai["function"]["strict"] is True
+    assert "inputSchema" in mcp
+    assert "input_schema" not in mcp
+    assert "outputSchema" in mcp
+    assert mcp["annotations"]["readOnlyHint"] is True
+    assert cli["commandPath"] == ["standard", "web", "fetch"]
+    assert cli["arguments"]["url"]["optionStrings"] == ["--url"]
 
 
 @pytest.mark.asyncio
@@ -381,6 +424,20 @@ async def test_data_tools_parse_validate_and_inspect_csv(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_data_tools_apply_size_limits_and_xml_hardening(tmp_path):
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}, max_read_chars=40))
+
+    with pytest.raises(StandardToolError):
+        await registry.invoke_tool_async("standard.data.json_parse", arguments={"text": '{"value":"' + "x" * 50 + '"}'})
+    with pytest.raises(StandardToolError):
+        await registry.invoke_tool_async(
+            "standard.data.xml_inspect",
+            arguments={"text": "<!DOCTYPE root><root />"},
+        )
+
+
+@pytest.mark.asyncio
 async def test_web_fetch_blocks_private_network_by_default_and_allows_opt_in(tmp_path, http_server):
     blocked_registry = ToolRegistry()
     register_standard_tools(blocked_registry, StandardToolOptions(roots={"workspace": tmp_path}))
@@ -424,6 +481,34 @@ async def test_web_fetch_applies_content_policy_and_observability(tmp_path, http
 
     assert fetched["observability"]["host"] == "127.0.0.1"
     assert fetched["observability"]["max_bytes"] == 2_000_000
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_caps_requested_bytes_and_rejects_pdf_signature(tmp_path, http_server):
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(roots={"workspace": tmp_path}, allow_private_network=True, max_web_bytes=8),
+    )
+
+    fetched = await registry.invoke_tool_async(
+        "standard.web.fetch",
+        arguments={"url": f"{http_server}/page", "max_bytes": 1000},
+    )
+    with pytest.raises(StandardToolError):
+        await registry.invoke_tool_async("standard.web.fetch", arguments={"url": f"{http_server}/fake-pdf"})
+
+    assert fetched["observability"]["max_bytes"] == 8
+    assert fetched["bytes_read"] == 8
+
+
+def test_web_url_policy_blocks_metadata_hosts():
+    with pytest.raises(StandardToolError):
+        validate_url(
+            "http://metadata.amazonaws.com/latest/meta-data/",
+            allow_private_network=True,
+            domain_policy=DomainPolicy(),
+        )
 
 
 @pytest.mark.asyncio
@@ -478,6 +563,34 @@ async def test_filesystem_search_respects_ignored_dirs(tmp_path):
     paths = {match["relative_path"] for match in result["matches"]}
     assert "visible.txt" in paths
     assert ".hidden/secret.txt" not in paths
+
+
+def test_rg_search_receives_ignored_dirs_and_file_size(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    commands = []
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+    monkeypatch.setattr("toolanything.standard_tools.filesystem.shutil.which", lambda name: "rg")
+    monkeypatch.setattr("toolanything.standard_tools.filesystem.subprocess.run", fake_run)
+
+    result = search_file_content_with_rg(
+        tmp_path,
+        root_path=tmp_path,
+        glob="*",
+        query="needle",
+        limit=10,
+        ignored_dirs={".hidden"},
+        max_file_bytes=123,
+        timeout_sec=1,
+    )
+
+    assert result == []
+    assert "--max-filesize" in commands[0]
+    assert "123" in commands[0]
+    assert "!**/.hidden/**" in commands[0]
 
 
 @pytest.mark.asyncio

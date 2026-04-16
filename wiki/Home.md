@@ -20,6 +20,7 @@ ToolAnything 是一個給 LLM 應用開發者的 Python 工具層。你定義一
 | `toolanything serve` | 用同一套入口啟動 stdio、Streamable HTTP 或 legacy HTTP/SSE |
 | `toolanything doctor` 與 `toolanything inspect` | 在本機驗證 transport、握手、`tools/list`、`tools/call` 與互動式測試 |
 | `OpenAIChatRuntime` | 直接跑 Chat Completions 的工具呼叫迴圈 |
+| 標準工具集 | 內建 web / filesystem / data 工具，並可輸出 OpenAI、MCP、CLI metadata |
 | metadata 與搜尋策略 | 工具變多後仍能做條件篩選與排序 |
 
 ## 快速閱讀路線
@@ -35,6 +36,12 @@ ToolAnything 是一個給 LLM 應用開發者的 Python 工具層。你定義一
 1. 看 [Getting Started](Getting-Started)
 2. 再看 [MCP Serving and Transports](MCP-Serving-and-Transports)
 3. 需要除錯時看 [Diagnostics and Troubleshooting](Diagnostics-and-Troubleshooting)
+
+### 我要直接使用內建標準工具集
+
+1. 看 [Standard Tools](Standard-Tools)
+2. 跑 `examples/standard_tools/`
+3. 再依 host 需求決定是否啟用 write tools 或 provider-backed search
 
 ### 我要理解設計與擴充點
 
@@ -55,6 +62,7 @@ ToolAnything 是一個給 LLM 應用開發者的 Python 工具層。你定義一
 - [Tool Definition and Registration](Tool-Definition-and-Registration)
 - [MCP Serving and Transports](MCP-Serving-and-Transports)
 - [OpenAI Tool Calling](OpenAI-Tool-Calling)
+- [Standard Tools](Standard-Tools)
 - [CLI Reference](CLI-Reference)
 - [Examples and Learning Paths](Examples-and-Learning-Paths)
 - [Architecture Walkthrough](Architecture-Walkthrough)

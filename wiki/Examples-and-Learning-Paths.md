@@ -9,6 +9,7 @@
 | 最短上手 | `examples/quickstart/` | 用 `@tool` 跑通定義、啟動、搜尋與呼叫 |
 | class method | `examples/class_method_tools/` | `@tool` 與 `@classmethod` 的兩種疊法 |
 | 新版 MCP HTTP | `examples/streamable_http/` | `/mcp` handshake、response mode、resume / close |
+| 標準工具集 | `examples/standard_tools/` | 註冊內建 web / filesystem / data tools，並輸出 OpenAI / MCP / CLI metadata |
 | source-based tools | `examples/non_function_tools/` | HTTP / SQL / ONNX / PyTorch 直接註冊成 tool |
 | 工具搜尋策略 | `examples/tool_selection/` | metadata、constraints、strategy 如何影響排序 |
 | 協議邊界 | `examples/protocol_boundary/` | protocol、runtime、transport 的責任分工 |
@@ -56,7 +57,22 @@
 - 避免為 REST API、SQL 或模型硬寫一層 wrapper function
 - 知道 SQL / model 工具各自需要哪些額外依賴
 
-## 路線 4：我要把工具搜尋做得更像平台能力
+## 路線 4：我要使用內建標準工具集
+
+建議順序：
+
+1. `examples/standard_tools/README.md`
+2. `python examples/standard_tools/01_register_and_export.py`
+3. `python examples/standard_tools/02_write_tools_opt_in.py`
+4. `python examples/standard_tools/03_provider_search.py`
+
+目標：
+
+- 知道標準工具集本體在 `src/toolanything/standard_tools/`，不是 `examples/`
+- 看懂 `to_openai()`、`to_mcp()`、`to_cli()` 的輸出差異
+- 知道寫入工具與 provider-backed search 都是 host 明確 opt-in
+
+## 路線 5：我要把工具搜尋做得更像平台能力
 
 看：
 
@@ -68,7 +84,7 @@
 - 理解 tags、cost、latency、side effect、category 等欄位的價值
 - 知道如何用自訂策略接進 `ToolSearchTool`
 
-## 路線 5：我要看較完整的 Web 範例
+## 路線 6：我要看較完整的 Web 範例
 
 看：
 
@@ -88,3 +104,4 @@
 - [Getting Started](Getting-Started)
 - [Tool Definition and Registration](Tool-Definition-and-Registration)
 - [MCP Serving and Transports](MCP-Serving-and-Transports)
+- [Standard Tools](Standard-Tools)

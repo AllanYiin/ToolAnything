@@ -72,6 +72,17 @@ app = build_cli_app(registry, CLIExportOptions(app_name="stdtools"))
 app.run(["standard", "data", "json-parse", "--text", '{"ok": true}', "--json"])
 ```
 
+Runnable examples live in `examples/standard_tools/`:
+
+```bash
+python examples/standard_tools/01_register_and_export.py
+python examples/standard_tools/02_write_tools_opt_in.py
+python examples/standard_tools/03_provider_search.py
+```
+
+The implementation belongs under `src/toolanything/standard_tools/` because it
+is a package feature. The examples directory should only contain usage samples.
+
 Write tools are disabled by default. Enable them only for roots that should be
 writable:
 

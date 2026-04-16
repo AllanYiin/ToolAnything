@@ -5,6 +5,7 @@
 - [Tool Definition and Registration](Tool-Definition-and-Registration)
 - [MCP Serving and Transports](MCP-Serving-and-Transports)
 - [OpenAI Tool Calling](OpenAI-Tool-Calling)
+- [Standard Tools](Standard-Tools)
 - [CLI Reference](CLI-Reference)
 - [Examples and Learning Paths](Examples-and-Learning-Paths)
 - [Architecture Walkthrough](Architecture-Walkthrough)

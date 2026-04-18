@@ -33,13 +33,20 @@ jobs:
       - name: Add github.com to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+          # Fingerprint from: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+          if ssh-keygen -lf ~/.ssh/known_hosts | grep -q "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU"; then
+            echo "GitHub host key fingerprint verified."
+          else
+            echo "GitHub host key fingerprint verification failed."
+            exit 1
+          fi
 
       - name: Clone wiki repository
         run: git clone "git@github.com:AllanYiin/ToolAnything.wiki.git" .wiki-publish
 
       - name: Sync wiki folder to wiki repository root
-        run: rsync -av --delete --exclude ".git" "wiki/" ".wiki-publish/"
+        run: rsync -a --delete --exclude ".git" "wiki/" ".wiki-publish/"
 
       - name: Commit and push wiki changes
         working-directory: .wiki-publish

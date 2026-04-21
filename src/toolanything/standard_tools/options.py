@@ -61,6 +61,7 @@ class StandardToolOptions:
     web_timeout_sec: float = 20.0
     web_user_agent: str = "ToolAnything-StandardTools/1.0"
     web_max_redirects: int = 6
+    serpapi_api_key_env: str = "SERPAPI_KEY"
     allowed_content_types: tuple[str, ...] = (
         "text/",
         "application/json",

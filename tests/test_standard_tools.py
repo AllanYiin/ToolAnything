@@ -5,6 +5,7 @@ import io
 import json
 import subprocess
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -88,9 +89,11 @@ def test_standard_tools_registers_safe_default_bundle(tmp_path):
     names = {spec.name for spec in specs}
 
     assert "standard.web.fetch" in names
-    assert "standard.fs.read_text" in names
+    assert "standard.fs.read_text" not in names
+    assert "standard.fs.read" in names
     assert "standard.data.json_parse" in names
     assert "standard.fs.write_create_only" not in names
+    assert "standard.fs.write" not in names
     web_fetch = next(tool for tool in registry.to_mcp_tools() if tool["name"] == "standard.web.fetch")
     assert web_fetch["annotations"]["readOnlyHint"] is True
     assert web_fetch["annotations"]["openWorldHint"] is True
@@ -150,7 +153,7 @@ async def test_runtime_policy_blocks_side_effecting_tools(tmp_path):
 
     with pytest.raises(ToolPolicyError):
         await registry.invoke_tool_async(
-            "standard.fs.write_create_only",
+            "standard.fs.write",
             arguments={"root_id": "workspace", "relative_path": "blocked.txt", "content": "x"},
         )
 
@@ -163,7 +166,8 @@ def test_standard_tools_define_stable_cli_commands(tmp_path):
     commands = {tuple(command.command_path): command for command in app.command_defs}
 
     assert ("standard", "web", "fetch") in commands
-    assert ("standard", "fs", "read-text") in commands
+    assert ("standard", "fs", "read-text") not in commands
+    assert ("standard", "fs", "read") in commands
     assert ("standard", "data", "json-parse") in commands
     assert commands[("standard", "web", "fetch")].metadata["cli"]["summary"].startswith("Fetch an HTTP")
 
@@ -214,7 +218,7 @@ def test_standard_filesystem_tool_runs_through_cli(tmp_path, capsys: pytest.Capt
         [
             "standard",
             "fs",
-            "read-text",
+            "read",
             "--root-id",
             "workspace",
             "--relative-path",
@@ -227,7 +231,7 @@ def test_standard_filesystem_tool_runs_through_cli(tmp_path, capsys: pytest.Capt
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == 0
-    assert payload["tool_name"] == "standard.fs.read_text"
+    assert payload["tool_name"] == "standard.fs.read"
     assert payload["result"]["content"] == "1|alpha"
 
 
@@ -321,21 +325,23 @@ async def test_filesystem_read_blocks_traversal_and_binary(tmp_path):
     registry = ToolRegistry()
     register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
 
-    result = await registry.invoke_tool_async(
-        "standard.fs.read_text",
+    alias_result = await registry.invoke_tool_async(
+        "standard.fs.read",
         arguments={"root_id": "workspace", "relative_path": "note.txt", "max_lines": 1},
     )
 
-    assert result["content"] == "1|alpha"
-    assert result["line_count"] == 2
+    assert alias_result["content"] == "1|alpha"
+    assert alias_result["line_count"] == 2
+    with pytest.raises(KeyError):
+        registry.get_tool("standard.fs.read_text")
     with pytest.raises(StandardToolError):
         await registry.invoke_tool_async(
-            "standard.fs.read_text",
+            "standard.fs.read",
             arguments={"root_id": "workspace", "relative_path": "../outside.txt"},
         )
     with pytest.raises(StandardToolError):
         await registry.invoke_tool_async(
-            "standard.fs.read_text",
+            "standard.fs.read",
             arguments={"root_id": "workspace", "relative_path": "image.png"},
         )
 
@@ -351,8 +357,10 @@ async def test_write_tools_are_opt_in_and_hash_guarded(tmp_path):
         ),
     )
 
+    with pytest.raises(KeyError):
+        registry.get_tool("standard.fs.write_create_only")
     created = await registry.invoke_tool_async(
-        "standard.fs.write_create_only",
+        "standard.fs.write",
         arguments={"root_id": "workspace", "relative_path": "draft.txt", "content": "one"},
     )
 
@@ -379,6 +387,45 @@ async def test_write_tools_are_opt_in_and_hash_guarded(tmp_path):
         },
     )
 
+    assert replaced["replaced"] is True
+    assert (tmp_path / "draft.txt").read_text(encoding="utf-8") == "two"
+
+
+@pytest.mark.asyncio
+async def test_standard_fs_write_creates_and_overwrites_with_hash_guard(tmp_path):
+    registry = ToolRegistry()
+    register_standard_tools(
+        registry,
+        StandardToolOptions(
+            roots=(StandardToolRoot("workspace", tmp_path, writable=True),),
+            include_write_tools=True,
+        ),
+    )
+
+    created = await registry.invoke_tool_async(
+        "standard.fs.write",
+        arguments={"root_id": "workspace", "relative_path": "draft.txt", "content": "one"},
+    )
+
+    assert created["created"] is True
+    with pytest.raises(StandardToolError):
+        await registry.invoke_tool_async(
+            "standard.fs.write",
+            arguments={"root_id": "workspace", "relative_path": "draft.txt", "content": "two"},
+        )
+
+    expected = hashlib.sha256(b"one").hexdigest()
+    replaced = await registry.invoke_tool_async(
+        "standard.fs.write",
+        arguments={
+            "root_id": "workspace",
+            "relative_path": "draft.txt",
+            "content": "two",
+            "expected_sha256": expected,
+        },
+    )
+
+    assert replaced["created"] is False
     assert replaced["replaced"] is True
     assert (tmp_path / "draft.txt").read_text(encoding="utf-8") == "two"
 
@@ -541,6 +588,82 @@ async def test_web_search_normalizes_standard_search_result(tmp_path):
             "rank": 1,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_web_search_uses_serpapi_env_provider_when_explicit_provider_is_missing(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    captured: dict[str, list[str]] = {}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "search_metadata": {"status": "Success"},
+                    "organic_results": [
+                        {
+                            "position": 1,
+                            "title": "ToolAnything",
+                            "link": "https://example.com/toolanything",
+                            "snippet": "Example result",
+                            "source": "example.com",
+                            "date": "2026-04-22",
+                        }
+                    ],
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        parsed = urllib.parse.urlparse(request.full_url)
+        captured.update(urllib.parse.parse_qs(parsed.query))
+        return _FakeResponse()
+
+    monkeypatch.setenv("SERPAPI_KEY", "serp-test-key")
+    monkeypatch.setattr("toolanything.standard_tools.web.urllib.request.urlopen", fake_urlopen)
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+
+    result = await registry.invoke_tool_async(
+        "standard.web.search",
+        arguments={"query": "toolanything", "limit": 1},
+    )
+
+    assert captured["api_key"] == ["serp-test-key"]
+    assert captured["engine"] == ["google"]
+    assert captured["q"] == ["toolanything"]
+    assert result["results"] == [
+        {
+            "title": "ToolAnything",
+            "url": "https://example.com/toolanything",
+            "snippet": "Example result",
+            "source": "example.com",
+            "published_at": "2026-04-22",
+            "rank": 1,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_web_search_requires_provider_or_serpapi_key(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SERPAPI_KEY", raising=False)
+    registry = ToolRegistry()
+    register_standard_tools(registry, StandardToolOptions(roots={"workspace": tmp_path}))
+
+    with pytest.raises(StandardToolError, match="SERPAPI_KEY"):
+        await registry.invoke_tool_async(
+            "standard.web.search",
+            arguments={"query": "toolanything", "limit": 1},
+        )
 
 
 @pytest.mark.asyncio

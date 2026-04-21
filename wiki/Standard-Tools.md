@@ -40,8 +40,8 @@ register_standard_tools(
 
 預設註冊的是安全優先的唯讀集合：
 
-- `standard.web.*`：文字型 HTTP fetch、HTML text/link extraction、provider-backed search。
-- `standard.fs.*`：root-scoped list、stat、read_text、search。
+- `standard.web.*`：文字型 HTTP fetch、HTML text/link extraction、search。
+- `standard.fs.*`：root-scoped list、stat、search，以及預設文字讀檔工具 `standard.fs.read`。
 - `standard.data.*`：JSON、JSON Schema subset、CSV、Markdown、JSONL、TOML、YAML、XML inspection。
 
 不會預設註冊：
@@ -55,7 +55,7 @@ register_standard_tools(
 同一個 `ToolSpec` 可以輸出三種正式 metadata。
 
 ```python
-spec = registry.get_tool("standard.fs.read_text")
+spec = registry.get_tool("standard.fs.read")
 
 openai_tool = spec.to_openai()
 mcp_tool = spec.to_mcp()
@@ -66,7 +66,7 @@ MCP 使用 `inputSchema`：
 
 ```json
 {
-  "name": "standard.fs.read_text",
+  "name": "standard.fs.read",
   "description": "...",
   "inputSchema": {
     "type": "object",
@@ -81,7 +81,7 @@ OpenAI function tool 使用 `function.parameters` 與 `function.strict`：
 {
   "type": "function",
   "function": {
-    "name": "standard_fs_read_text",
+    "name": "standard_fs_read",
     "parameters": {
       "type": "object",
       "additionalProperties": false
@@ -95,7 +95,7 @@ CLI export 使用 `commandPath`：
 
 ```json
 {
-  "commandPath": ["standard", "fs", "read-text"],
+  "commandPath": ["standard", "fs", "read"],
   "arguments": {}
 }
 ```
@@ -156,10 +156,14 @@ register_standard_tools(
 
 寫入工具的保護：
 
-- `standard.fs.write_create_only`：目標存在就失敗。
 - `standard.fs.replace_if_match`：需要目前檔案 SHA-256。
 - `standard.fs.patch_text`：預設只預覽；實際套用需要 SHA-256。
 - `standard.fs.apply_unified_patch`：一次只處理單檔 patch，並驗證 hunk context。
+- `standard.fs.write`：不存在就建立；已存在時必須提供且匹配 `expected_sha256` 才能覆寫。
+
+標準工具集目前不註冊裸 `read` / `write`，也不再註冊
+`standard.fs.read_text` 與 `standard.fs.write_create_only`。預設檔案讀寫名稱是
+`standard.fs.read` 與 `standard.fs.write`。
 
 ## Web Fetch 與 PDF
 
@@ -184,7 +188,8 @@ register_standard_tools(
 
 ## Provider-backed Search
 
-`standard.web.search` 需要 host 提供 provider。
+`standard.web.search` 預設會先嘗試從環境變數 `SERPAPI_KEY` 啟用 SerpApi。
+若有顯式提供 `search_provider`，則以顯式 provider 為主。
 
 ```python
 from toolanything import StandardSearchResult
@@ -203,6 +208,12 @@ register_standard_tools(
     registry,
     StandardToolOptions(search_provider=search_provider),
 )
+```
+
+若要直接使用內建預設搜尋 provider：
+
+```bash
+set SERPAPI_KEY=your-key
 ```
 
 provider 需自行負責：

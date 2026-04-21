@@ -27,7 +27,7 @@ async def main() -> None:
         )
 
         created = await registry.invoke_tool_async(
-            "standard.fs.write_create_only",
+            "standard.fs.write",
             arguments={
                 "root_id": "workspace",
                 "relative_path": "draft.txt",
@@ -37,7 +37,7 @@ async def main() -> None:
 
         expected_sha256 = hashlib.sha256(b"one").hexdigest()
         replaced = await registry.invoke_tool_async(
-            "standard.fs.replace_if_match",
+            "standard.fs.write",
             arguments={
                 "root_id": "workspace",
                 "relative_path": "draft.txt",

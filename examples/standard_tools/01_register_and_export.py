@@ -16,9 +16,9 @@ async def main() -> None:
         registry = ToolRegistry()
         specs = register_standard_tools(registry, StandardToolOptions(roots={"workspace": root}))
 
-        fs_read = registry.get_tool("standard.fs.read_text")
+        fs_read = registry.get_tool("standard.fs.read")
         read_result = await registry.invoke_tool_async(
-            "standard.fs.read_text",
+            "standard.fs.read",
             arguments={"root_id": "workspace", "relative_path": "note.txt", "max_lines": 1},
         )
         json_result = await registry.invoke_tool_async(
@@ -42,7 +42,7 @@ async def main() -> None:
                 "commandPath": fs_read.to_cli()["commandPath"],
             },
             "calls": {
-                "read_text": read_result,
+                "fs_read": read_result,
                 "json_parse": json_result,
             },
         }

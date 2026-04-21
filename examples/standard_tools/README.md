@@ -21,8 +21,8 @@ python examples/standard_tools/03_provider_search.py
 
 | 檔案 | 目的 |
 | --- | --- |
-| `01_register_and_export.py` | 註冊預設唯讀工具，呼叫 `standard.fs.read_text` 與 `standard.data.json_parse`，並展示 `to_openai()`、`to_mcp()`、`to_cli()` 的輸出形狀 |
-| `02_write_tools_opt_in.py` | 示範寫入工具必須同時啟用 `include_write_tools=True` 與 writable root，並用 SHA-256 guard 更新檔案 |
+| `01_register_and_export.py` | 註冊預設唯讀工具，呼叫 `standard.fs.read` 與 `standard.data.json_parse`，並展示 `to_openai()`、`to_mcp()`、`to_cli()` 的輸出形狀 |
+| `02_write_tools_opt_in.py` | 示範寫入工具必須同時啟用 `include_write_tools=True` 與 writable root，並以 `standard.fs.write` 搭配 SHA-256 guard 更新檔案 |
 | `03_provider_search.py` | 示範 `standard.web.search` 如何接入 host 自己提供的搜尋 provider |
 
 ## 重要邊界
@@ -32,4 +32,5 @@ python examples/standard_tools/03_provider_search.py
 - CLI metadata 使用 `commandPath` 與 arguments。
 - `standard.web.fetch` 是文字型 HTTP fetch，不負責 PDF 解析。
 - 寫入工具預設不註冊；需要 host 明確設定 writable root。
+- 預設檔案讀寫工具名稱是 `standard.fs.read` / `standard.fs.write`；不使用裸 `read` / `write`。
 

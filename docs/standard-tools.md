@@ -21,8 +21,9 @@ Implementation modules are split by responsibility:
 Included by default:
 
 - `standard.web.*`: read-only HTTP(S) fetch, text extraction, link extraction,
-  and provider-backed search.
-- `standard.fs.*`: root-scoped list, stat, text read, and search.
+  and search.
+- `standard.fs.*`: root-scoped list, stat, search, and the canonical
+  `standard.fs.read` text-read tool.
 - `standard.data.*`: JSON parsing, small JSON Schema subset validation, CSV
   inspection, and Markdown link extraction.
 
@@ -121,10 +122,15 @@ policy.
 
 Write tools are opt-in and guarded:
 
-- `standard.fs.write_create_only` fails if the target already exists.
 - `standard.fs.replace_if_match` requires the current file SHA-256.
 - `standard.fs.patch_text` previews by default; applying requires the current
   file SHA-256.
+- `standard.fs.write` creates a file, or overwrites it only when `expected_sha256`
+  matches the current file.
+
+The standard bundle does not register bare `read` / `write` names, and it no
+longer registers `standard.fs.read_text` or `standard.fs.write_create_only`.
+Use `standard.fs.read` and `standard.fs.write` as the default file read/write tool names.
 
 MCP annotations are exported when present in tool metadata. They are hints for
 hosts and clients, not a replacement for runtime policy enforcement.
@@ -158,7 +164,8 @@ Command paths keep the tool namespace:
 
 - `standard.web.fetch` -> `standard web fetch`
 - `standard.web.extract_text` -> `standard web extract-text`
-- `standard.fs.read_text` -> `standard fs read-text`
+- `standard.fs.read` -> `standard fs read`
+- `standard.fs.write` -> `standard fs write`
 - `standard.fs.patch_text` -> `standard fs patch-text`
 - `standard.data.json_parse` -> `standard data json-parse`
 
@@ -181,7 +188,7 @@ stdtools standard fs apply-unified-patch --patch @patch.diff --relative-path dra
 Example:
 
 ```bash
-stdtools standard fs read-text --root-id workspace --relative-path README.md --json
+stdtools standard fs read --root-id workspace --relative-path README.md --json
 ```
 
 Guarded write example:
@@ -215,9 +222,10 @@ call. It validates hunk context against the current file and requires
 
 ## Search Provider
 
-`standard.web.search` is registered as part of the web bundle, but it requires a
-caller-supplied provider. The provider receives `(query, limit)` and should
-return either a list or `{"results": list}`.
+`standard.web.search` is registered as part of the web bundle. By default it
+uses SerpApi when the environment variable `SERPAPI_KEY` is present. An explicit
+`search_provider` still overrides that default. Providers receive `(query,
+limit)` and should return either a list or `{"results": list}`.
 
 ```python
 def search_provider(query: str, limit: int):
@@ -227,6 +235,12 @@ register_standard_tools(
     registry,
     StandardToolOptions(search_provider=search_provider),
 )
+```
+
+If you want the built-in default instead of a custom provider:
+
+```bash
+set SERPAPI_KEY=your-key
 ```
 
 Provider contract:
@@ -284,7 +298,8 @@ Important `StandardToolOptions` fields:
   resource limits.
 - `web_timeout_sec`, `web_user_agent`, `web_max_redirects`: HTTP runtime settings.
 - `ignored_dirs`, `max_scanned_files`, `fs_search_timeout_sec`: filesystem search budgets.
-- `search_provider`: implementation for `standard.web.search`.
+- `search_provider`: custom implementation for `standard.web.search`.
+- `serpapi_api_key_env`: environment variable name used by the default SerpApi-backed search provider.
 - `browser_readonly_provider`: implementation for optional browser readonly tools.
 
 ## Verification

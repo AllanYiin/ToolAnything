@@ -169,8 +169,8 @@ def register_filesystem_readonly_tools(
     for func, name, description in (
         (fs_list, "standard.fs.list", "List files and directories under a configured root."),
         (fs_stat, "standard.fs.stat", "Return safe metadata and optional sha256 for a path under a configured root."),
-        (fs_read_text, "standard.fs.read_text", "Read text files under a configured root with size, binary, and line limits."),
         (fs_search, "standard.fs.search", "Search file names or text content under a configured root."),
+        (fs_read_text, "standard.fs.read", "Read a text file under a configured root with size, binary, and line limits."),
     ):
         specs.append(
             register_callable(
@@ -195,32 +195,6 @@ def register_filesystem_write_tools(
     active_options = options or StandardToolOptions(include_write_tools=True)
     roots = active_options.normalized_roots()
     specs: list[ToolSpec] = []
-
-    def fs_write_create_only(
-        root_id: str = "workspace",
-        relative_path: str = "",
-        content: str = "",
-        encoding: str = "utf-8",
-    ) -> dict[str, Any]:
-        """Create a new text file only when it does not already exist."""
-
-        selected_root_id = selected_root_id_or_default(roots, root_id)
-        target = resolve_under_root(roots, root_id, relative_path, require_writable=True)
-        if target.exists():
-            raise StandardToolError("target already exists")
-        ensure_text_file(target, max_file_bytes=active_options.max_file_bytes)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        encoded = content.encode(encoding)
-        if len(encoded) > active_options.max_file_bytes:
-            raise StandardToolError("content exceeds configured max_file_bytes")
-        target.write_text(content, encoding=encoding)
-        return {
-            "root_id": selected_root_id,
-            "relative_path": relative_path,
-            "created": True,
-            "sha256": sha256_file(target),
-            "bytes_written": len(encoded),
-        }
 
     def fs_replace_if_match(
         root_id: str = "workspace",
@@ -250,6 +224,52 @@ def register_filesystem_write_tools(
             "relative_path": relative_path,
             "replaced": True,
             "previous_sha256": current_sha,
+            "sha256": sha256_file(target),
+            "bytes_written": len(encoded),
+        }
+
+    def fs_write(
+        root_id: str = "workspace",
+        relative_path: str = "",
+        content: str = "",
+        expected_sha256: str = "",
+        encoding: str = "utf-8",
+    ) -> dict[str, Any]:
+        """Create a text file, or replace it when the caller provides a matching sha256."""
+
+        selected_root_id = selected_root_id_or_default(roots, root_id)
+        target = resolve_under_root(roots, root_id, relative_path, require_writable=True)
+        ensure_text_file(target, max_file_bytes=active_options.max_file_bytes)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        encoded = content.encode(encoding)
+        if len(encoded) > active_options.max_file_bytes:
+            raise StandardToolError("content exceeds configured max_file_bytes")
+        if target.exists():
+            if not target.is_file():
+                raise StandardToolError("target path is not a file")
+            ensure_text_file(target, max_file_bytes=active_options.max_file_bytes)
+            current_sha = sha256_file(target)
+            if not expected_sha256:
+                raise StandardToolError("expected_sha256 is required to overwrite an existing file")
+            if current_sha != expected_sha256:
+                raise StandardToolError("expected_sha256 does not match current file")
+            target.write_text(content, encoding=encoding)
+            return {
+                "root_id": selected_root_id,
+                "relative_path": relative_path,
+                "created": False,
+                "replaced": True,
+                "previous_sha256": current_sha,
+                "sha256": sha256_file(target),
+                "bytes_written": len(encoded),
+            }
+
+        target.write_text(content, encoding=encoding)
+        return {
+            "root_id": selected_root_id,
+            "relative_path": relative_path,
+            "created": True,
+            "replaced": False,
             "sha256": sha256_file(target),
             "bytes_written": len(encoded),
         }
@@ -346,10 +366,10 @@ def register_filesystem_write_tools(
 
     write_specs = (
         (
-            fs_write_create_only,
-            "standard.fs.write_create_only",
-            "Create a new text file under a writable configured root, failing if it already exists.",
-            False,
+            fs_write,
+            "standard.fs.write",
+            "Create a text file, or replace it only when expected_sha256 matches the existing file.",
+            True,
         ),
         (
             fs_replace_if_match,

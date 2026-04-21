@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import html
+import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -12,7 +14,7 @@ from typing import Any
 
 from toolanything.core import ToolRegistry, ToolSpec
 
-from .options import StandardSearchResult, StandardToolOptions
+from .options import StandardSearchProvider, StandardSearchResult, StandardToolOptions
 from .registration import positive_limit, register_callable
 from .safety import DomainPolicy, StandardToolError, validate_ip_text, validate_url
 
@@ -88,12 +90,9 @@ def register_web_readonly_tools(
     def web_search(query: str, limit: int = 10) -> dict[str, Any]:
         """Run a configured search provider and normalize its result shape."""
 
-        if active_options.search_provider is None:
-            raise StandardToolError(
-                "standard.web.search requires StandardToolOptions(search_provider=...)"
-            )
         max_items = min(positive_limit(limit, default=10), active_options.max_search_results)
-        raw_results = active_options.search_provider(query, max_items)
+        search_provider = resolve_search_provider(active_options)
+        raw_results = search_provider(query, max_items)
         return {
             "query": query,
             "results": normalize_search_results(raw_results, max_items),
@@ -140,12 +139,15 @@ def register_web_readonly_tools(
             active_registry,
             web_search,
             name="standard.web.search",
-            description="Search the web through a caller-supplied provider and return normalized title/url/snippet results.",
+            description="Search the web through an explicit provider or the default SerpApi-backed provider configured from the environment.",
             category="web",
             scopes=("net:search",),
             read_only=True,
             open_world=True,
-            extra_metadata={"requires_provider": True},
+            extra_metadata={
+                "requires_provider": True,
+                "default_provider_env": active_options.serpapi_api_key_env,
+            },
         )
     )
     return specs
@@ -400,3 +402,155 @@ def normalize_search_results(raw_results: Any, limit: int) -> list[dict[str, Any
             }
         )
     return normalized
+
+
+def resolve_search_provider(options: StandardToolOptions) -> StandardSearchProvider:
+    if options.search_provider is not None:
+        return options.search_provider
+    return build_serpapi_search_provider(options)
+
+
+def build_serpapi_search_provider(options: StandardToolOptions) -> StandardSearchProvider:
+    api_key = os.getenv(options.serpapi_api_key_env, "").strip()
+    if not api_key:
+        raise StandardToolError(
+            "standard.web.search requires StandardToolOptions(search_provider=...) "
+            f"or environment variable {options.serpapi_api_key_env}"
+        )
+
+    def provider(query: str, limit: int) -> dict[str, Any]:
+        return {
+            "results": serpapi_google_search(
+                query=query,
+                limit=limit,
+                api_key=api_key,
+                user_agent=options.web_user_agent,
+                timeout_sec=options.web_timeout_sec,
+            )
+        }
+
+    return provider
+
+
+def serpapi_google_search(
+    *,
+    query: str,
+    limit: int,
+    api_key: str,
+    user_agent: str,
+    timeout_sec: float,
+) -> list[dict[str, Any]]:
+    if not query.strip():
+        raise StandardToolError("query is required")
+
+    params = urllib.parse.urlencode(
+        {
+            "engine": "google",
+            "q": query,
+            "num": min(max(limit, 1), 100),
+            "api_key": api_key,
+            "output": "json",
+        }
+    )
+    request = urllib.request.Request(
+        f"https://serpapi.com/search?{params}",
+        headers={
+            "User-Agent": user_agent,
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+            payload = json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", errors="replace")
+        raise StandardToolError(f"SerpApi request failed with status {exc.code}: {raw_body[:500]}") from exc
+    except urllib.error.URLError as exc:
+        raise StandardToolError(f"SerpApi request failed: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise StandardToolError("SerpApi returned invalid JSON") from exc
+
+    if not isinstance(payload, Mapping):
+        raise StandardToolError("SerpApi returned an unexpected response shape")
+
+    error_message = payload.get("error")
+    if isinstance(error_message, str) and error_message.strip():
+        raise StandardToolError(f"SerpApi returned an error: {error_message}")
+
+    search_metadata = payload.get("search_metadata")
+    if isinstance(search_metadata, Mapping):
+        status = str(search_metadata.get("status") or "").strip().lower()
+        if status == "error":
+            raise StandardToolError(
+                f"SerpApi search failed: {payload.get('error') or search_metadata.get('status')}"
+            )
+
+    return extract_serpapi_results(payload, limit)
+
+
+def extract_serpapi_results(payload: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+
+    answer_box = payload.get("answer_box")
+    if isinstance(answer_box, Mapping):
+        title = str(answer_box.get("title") or answer_box.get("answer") or "").strip()
+        link = str(answer_box.get("link") or "").strip()
+        snippet = str(answer_box.get("snippet") or answer_box.get("answer") or "").strip()
+        if title or link or snippet:
+            results.append(
+                {
+                    "title": title or link or "Answer",
+                    "url": link,
+                    "snippet": snippet,
+                    "source": "answer_box",
+                    "published_at": "",
+                    "rank": 1,
+                }
+            )
+
+    organic_results = payload.get("organic_results")
+    if isinstance(organic_results, list):
+        for item in organic_results:
+            if not isinstance(item, Mapping):
+                continue
+            title = str(item.get("title") or "").strip()
+            url = str(item.get("link") or "").strip()
+            if not title and not url:
+                continue
+            results.append(
+                {
+                    "title": title or url,
+                    "url": url,
+                    "snippet": str(item.get("snippet") or "").strip(),
+                    "source": str(item.get("source") or item.get("displayed_link") or "").strip(),
+                    "published_at": str(item.get("date") or "").strip(),
+                    "rank": item.get("position") or len(results) + 1,
+                }
+            )
+            if len(results) >= limit:
+                return results[:limit]
+
+    news_results = payload.get("news_results")
+    if isinstance(news_results, list):
+        for item in news_results:
+            if not isinstance(item, Mapping):
+                continue
+            title = str(item.get("title") or "").strip()
+            url = str(item.get("link") or "").strip()
+            if not title and not url:
+                continue
+            results.append(
+                {
+                    "title": title or url,
+                    "url": url,
+                    "snippet": str(item.get("snippet") or "").strip(),
+                    "source": str(item.get("source") or "").strip(),
+                    "published_at": str(item.get("date") or "").strip(),
+                    "rank": len(results) + 1,
+                }
+            )
+            if len(results) >= limit:
+                return results[:limit]
+
+    return results[:limit]

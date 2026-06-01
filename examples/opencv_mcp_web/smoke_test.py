@@ -2,18 +2,20 @@
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 from contextlib import closing
+from pathlib import Path
 from urllib import error as url_error
 from urllib import request as url_request
 
 from toolanything.inspector.service import MCPInspectorService
 
 if __package__ in (None, ""):
-    from server import build_demo_image_base64, start_server
-else:
-    from .server import build_demo_image_base64, start_server
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from examples.opencv_mcp_web.server import build_demo_image_base64, start_server
 
 
 def _find_free_port() -> int:

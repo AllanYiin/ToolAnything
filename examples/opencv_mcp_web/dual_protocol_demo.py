@@ -4,13 +4,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+from pathlib import Path
 
 from toolanything import OpenAIChatRuntime
 
 if __package__ in (None, ""):
-    from server import build_demo_image_base64, registry
-else:
-    from .server import build_demo_image_base64, registry
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from examples.opencv_mcp_web.server import build_demo_image_base64, registry
 
 
 def _build_parser() -> argparse.ArgumentParser:

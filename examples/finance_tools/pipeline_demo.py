@@ -5,7 +5,7 @@ registry = ToolRegistry()
 state_manager = StateManager()
 
 
-@tool(path="finance.rate", description="回傳匯率", registry=registry)
+@tool(name="finance.rate", description="回傳匯率", registry=registry)
 def get_rate(pair: str) -> dict:
     return {"pair": pair, "rate": 32.5}
 

@@ -9,6 +9,8 @@
 
 如果你是第一次接觸 ToolAnything，請先跑「情境式學習路線」；如果你已經知道自己要把哪種來源接進來，可以直接跳到對應範例。
 
+`examples/_catalog.json` 是可機械檢查的 examples 索引；新增或重命名範例時，請同步更新 `id/status/level/audience/run/test/owner` 等欄位。
+
 ## 建議學習順序
 
 1. **Quickstart** — `examples/quickstart/`  
@@ -64,3 +66,13 @@
 - 想把新版 `/mcp` transport 看懂：先跑 `examples/streamable_http/`。
 - 想把外部系統直接接成 tool：直接看 HTTP / SQL / model 範例。
 - 想釐清 MCP transport 與 runtime 邊界：看 `examples/protocol_boundary/`。
+
+## 維護驗證
+
+最小 examples gate：
+
+```bash
+pytest tests/test_examples_catalog.py tests/test_example_class_method_tools.py tests/test_tool_selection_examples.py tests/test_streamable_http_and_model_examples.py -q
+```
+
+這個 gate 會檢查 catalog metadata、已知 smoke examples 與 model/source-based 範例。需要外部模型或 API key 的範例必須標成 experimental 或 optional，不應進入預設 smoke gate。

@@ -48,13 +48,14 @@ def _wait_for_server(port: int, host: str, timeout: float = 8.0) -> None:
     raise RuntimeError("MCP Server 未在預期時間內就緒")
 
 
+def _server_process_target(port: int, host: str) -> None:
+    import server
+
+    server.start_server(port=port, host=host)
+
+
 def _run_server_process(port: int, host: str) -> multiprocessing.Process:
-    def _target() -> None:
-        import server
-
-        server.start_server(port=port, host=host)
-
-    process = multiprocessing.Process(target=_target, daemon=True)
+    process = multiprocessing.Process(target=_server_process_target, args=(port, host), daemon=True)
     process.start()
     return process
 

@@ -319,7 +319,7 @@ mkdocs build
 
 ## 專案狀態
 
-- 目前版本：`0.6.0`
+- 目前版本：`0.0.7`
 - Python requirement：`>=3.10`
 - 開發狀態：Beta
 

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ToolAnything Basic Tool Chatbot</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="chat">
+        <header class="topbar">
+          <div>
+            <h1>Basic Tool Chatbot</h1>
+            <p>Standard tools + OpenAI-style tool loop</p>
+          </div>
+          <span id="toolCount" class="status">tools: -</span>
+        </header>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <form id="composer" class="composer">
+          <input
+            id="messageInput"
+            name="message"
+            autocomplete="off"
+            placeholder="試試：讀取 notes/intro.txt、解析 JSON {&quot;city&quot;:&quot;Taipei&quot;}、搜尋 standard tools"
+          />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+      <aside class="transcript">
+        <h2>Tool Transcript</h2>
+        <pre id="transcriptOutput">尚未呼叫工具</pre>
+      </aside>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

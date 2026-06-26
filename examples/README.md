@@ -21,9 +21,11 @@
    用 3 支小範例看懂新版 `/mcp` transport：initialize、response mode、session resume/close。
 4. **Source-based tools** — `examples/non_function_tools/`  
    把 HTTP API、SQL、ONNX、PyTorch 直接變成 tool，理解新的 source-based / invoker-first 設計。
-5. **Tool Selection** — `examples/tool_selection/`  
+5. **Standard Tool Chatbot** — `examples/basic_tool_chatbot/`
+   把基礎工具集接到一個本機 chatbot 介面，觀察 OpenAI-style tool call、tool result 與最後回覆。
+6. **Tool Selection** — `examples/tool_selection/`
    了解 metadata、constraints、strategy 如何影響搜尋與排序。
-6. **Protocol Boundary** — `examples/protocol_boundary/`  
+7. **Protocol Boundary** — `examples/protocol_boundary/`
    了解 protocol、runtime、transport 的邊界，避免把功能改在錯誤層級。
 
 ## Source-based tools 範例
@@ -57,6 +59,7 @@
 - `examples/mcp_server_demo/`：簡單 client/server 對接示範。
 - `examples/weather_tool/`：模組化工具定義範例。
 - `examples/finance_tools/pipeline_demo.py`：金融工具管線示範。
+- `examples/basic_tool_chatbot/`：基礎工具集 chatbot 介面，示範本機 tool loop transcript。
 - `examples/class_method_tools/`：獨立教程，示範 `@tool` 與 `@classmethod` 的兩種疊法、底層機制與取捨。
 
 ## 你可以怎麼選
@@ -65,6 +68,7 @@
 - 想理解 class method 為什麼也能直接變成 tool：看 `examples/class_method_tools/`。
 - 想把新版 `/mcp` transport 看懂：先跑 `examples/streamable_http/`。
 - 想把外部系統直接接成 tool：直接看 HTTP / SQL / model 範例。
+- 想看基礎工具集如何接到 chatbot 介面：看 `examples/basic_tool_chatbot/`。
 - 想釐清 MCP transport 與 runtime 邊界：看 `examples/protocol_boundary/`。
 
 ## 維護驗證

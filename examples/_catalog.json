@@ -135,6 +135,21 @@
     "requires": {"package": "toolanything>=0.5.0"}
   },
   {
+    "id": "basic_tool_chatbot",
+    "status": "stable",
+    "level": "L2",
+    "audience": "integration",
+    "summary": "Connect standard tools to a local chatbot UI with an OpenAI-style tool loop transcript.",
+    "path": "examples/basic_tool_chatbot",
+    "readme": "examples/basic_tool_chatbot/README.md",
+    "run": "python examples/basic_tool_chatbot/server.py --once \"讀取 notes/intro.txt\"",
+    "test": "pytest tests/test_examples_catalog.py -q",
+    "owner": "toolanything.examples",
+    "introduced": "0.5.0",
+    "verified_on": {"python": [">=3.10"]},
+    "requires": {"package": "toolanything>=0.5.0"}
+  },
+  {
     "id": "mcp_transports",
     "status": "stable",
     "level": "L2",
